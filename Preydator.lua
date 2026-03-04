@@ -80,7 +80,7 @@ local DEFAULTS = {
     fontSize = 12,
     locked = true,
     forceShowBar = false,
-    showWhenNoPrey = true,
+    onlyShowInPreyZone = false,
     fillColor = { 0.85, 0.2, 0.2, 0.95 },
     bgColor = { 0, 0, 0, 0.6 },
     titleColor = { 1, 0.82, 0, 1 },
@@ -124,6 +124,7 @@ local barBorder
 local barTickMarks = {}
 local barTickLabels = {}
 local optionsPanel
+local optionsCategoryID
 local candidateWidgetSetIDs = {}
 local ExtractWidgetQuestID
 local colorPickerSessionCounter = 0
@@ -982,7 +983,9 @@ local function UpdateBarDisplay()
     local now = GetTime and GetTime() or 0
     local hasActiveQuest = state.activeQuestID ~= nil
     local forceKillStage = now < (state.killStageUntil or 0)
-    local shouldShow = state.forceShowBar or hasActiveQuest or forceKillStage or settings.showWhenNoPrey
+    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
+    local hideOutOfZoneForActivePrey = hasActiveQuest and isOutOfPreyZone and settings.onlyShowInPreyZone
+    local shouldShow = state.forceShowBar or forceKillStage or (hasActiveQuest and not hideOutOfZoneForActivePrey)
 
     if not shouldShow then
         barFrame:Hide()
@@ -994,7 +997,6 @@ local function UpdateBarDisplay()
     local stage = forceKillStage and MAX_STAGE or GetStageFromState(state.progressState)
     local pct = 0
     local displayReason = "default"
-    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
     if forceKillStage then
         pct = 100
         displayReason = "killStage"
@@ -1053,6 +1055,26 @@ local function UpdateBarDisplay()
     end
 
     barText:SetText(string.format("%d%%", pct))
+end
+
+local function OpenOptionsPanel()
+    EnsureOptionsPanel()
+
+    if Settings and Settings.OpenToCategory then
+        if type(optionsCategoryID) == "number" then
+            Settings.OpenToCategory(optionsCategoryID)
+            return
+        end
+
+        if optionsPanel and type(optionsPanel.categoryID) == "number" then
+            Settings.OpenToCategory(optionsPanel.categoryID)
+            return
+        end
+    end
+
+    if _G.InterfaceOptionsFrame_OpenToCategory then
+        _G.InterfaceOptionsFrame_OpenToCategory("Preydator")
+    end
 end
 
 local function ClearPreyStateAndDisplay()
@@ -1265,7 +1287,9 @@ local function PrintInspectState()
     else
         print("  objective none")
     end
-    print("- bar shown=" .. tostring(barFrame and barFrame:IsShown() or false) .. " | forceShow=" .. tostring(state.forceShowBar) .. " | showWhenNoPrey=" .. tostring(settings and settings.showWhenNoPrey))
+    print("- bar shown=" .. tostring(barFrame and barFrame:IsShown() or false)
+        .. " | forceShow=" .. tostring(state.forceShowBar)
+        .. " | onlyShowInPreyZone=" .. tostring(settings and settings.onlyShowInPreyZone))
     local frameWidth = barFrame and barFrame:GetWidth() or 0
     local fillWidth = barFill and barFill:GetWidth() or 0
     local fillPct = 0
@@ -1779,8 +1803,8 @@ local function EnsureOptionsPanel()
         ApplyBarSettings()
     end)
 
-    local showNoPreyCheckbox = AddCheckbox(panel, "Show when no active prey", 20, -80, function() return settings.showWhenNoPrey end, function(value)
-        settings.showWhenNoPrey = value
+    local onlyShowInPreyZoneCheckbox = AddCheckbox(panel, "Only show in prey zone", 20, -80, function() return settings.onlyShowInPreyZone end, function(value)
+        settings.onlyShowInPreyZone = value
         UpdateBarDisplay()
     end)
 
@@ -1998,7 +2022,7 @@ local function EnsureOptionsPanel()
 
     local function RefreshOptionsControls()
         if lockCheckbox then lockCheckbox:SetChecked(settings.locked) end
-        if showNoPreyCheckbox then showNoPreyCheckbox:SetChecked(settings.showWhenNoPrey) end
+        if onlyShowInPreyZoneCheckbox then onlyShowInPreyZoneCheckbox:SetChecked(settings.onlyShowInPreyZone) end
         if soundsCheckbox then soundsCheckbox:SetChecked(settings.soundsEnabled) end
         if showTicksCheckbox then showTicksCheckbox:SetChecked(settings.showTicks) end
 
@@ -2059,6 +2083,10 @@ local function EnsureOptionsPanel()
     if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
         local category = Settings.RegisterCanvasLayoutCategory(panel, "Preydator", "Preydator")
         Settings.RegisterAddOnCategory(category)
+        if type(category) == "table" then
+            optionsCategoryID = category.ID or (category.GetID and category:GetID())
+            panel.categoryID = optionsCategoryID
+        end
     elseif _G.InterfaceOptions_AddCategory then
         _G.InterfaceOptions_AddCategory(panel)
     end
@@ -2144,11 +2172,7 @@ local function HandleSlashCommand(message)
     end
 
     if text == "options" or text == "open" then
-        if Settings and Settings.OpenToCategory then
-            Settings.OpenToCategory("Preydator")
-        elseif _G.InterfaceOptionsFrame_OpenToCategory then
-            _G.InterfaceOptionsFrame_OpenToCategory("Preydator")
-        end
+        OpenOptionsPanel()
         return
     end
 

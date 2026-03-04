@@ -32,6 +32,10 @@ Behavior flow:
 - Stage 1 -> Stage 2 -> Stage 3 -> Stage 4
 - Stage 4 always displays as `100%`
 
+Optional behavior:
+
+- Enable **Only show in prey zone** to hide the bar until you enter the correct prey zone.
+
 ## Using your own audio clips
 
 Drop your custom files into:
@@ -50,6 +54,7 @@ Notes:
 ## What you can customize in settings
 
 - Bar lock/unlock and on-screen position
+- Only show in prey zone
 - Scale, width, height, font size
 - Texture preset and colors (bar, title, percent text)
 - Stage names and out-of-zone label

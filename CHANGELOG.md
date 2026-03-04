@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.1 - 2026-03-04
+
+### Added
+- New settings option: **Only show in prey zone** to hide the bar while you are outside the active prey zone.
+
+### Changed
+- Replaced **Show when no active prey** with **Only show in prey zone** for clearer visibility behavior.
+
+- README now clarifies out-of-zone visibility behavior and the new zone-gated display option.
+
+### Fixed
+- `/preydator options` and `/pd options` now open the settings category using a valid numeric category ID in modern Settings API flows.
+- Resolved Lua error: `bad argument #1 to 'OpenSettingsPanel'` caused by passing a string category name to `Settings.OpenToCategory`.
+
 ## 1.0.0 - 2026-03-03
 
 ### Added
