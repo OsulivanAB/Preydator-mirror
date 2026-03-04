@@ -39,7 +39,7 @@ local TORMENT_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-torme
 local KILL_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-kill.ogg"
 local DEBUG_LOG_LIMIT = 200
 local DEFAULT_OUT_OF_ZONE_LABEL = "No Sign in These Fields"
-local BAR_TICK_PCTS = { 0, 25, 50, 75 }
+local BAR_TICK_PCTS = { 25, 50, 75 }
 local PERCENT_DISPLAY_INSIDE = "inside"
 local PERCENT_DISPLAY_BELOW_BAR = "below_bar"
 local PERCENT_DISPLAY_UNDER_TICKS = "under_ticks"
@@ -985,8 +985,16 @@ local function UpdateBarDisplay()
     local hasActiveQuest = state.activeQuestID ~= nil
     local forceKillStage = now < (state.killStageUntil or 0)
     local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
-    local hideOutOfZoneForActivePrey = hasActiveQuest and isOutOfPreyZone and settings.onlyShowInPreyZone
-    local shouldShow = state.forceShowBar or forceKillStage or (hasActiveQuest and not hideOutOfZoneForActivePrey)
+    local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
+    local shouldShow = false
+
+    if state.forceShowBar or forceKillStage then
+        shouldShow = true
+    elseif onlyShowInPreyZone then
+        shouldShow = hasActiveQuest and not isOutOfPreyZone
+    else
+        shouldShow = true
+    end
 
     if not shouldShow then
         barFrame:Hide()

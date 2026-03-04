@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2026-03-04
+
+### Changed
+- `Only show in prey zone` behavior now works as: unchecked = bar visible, checked = hide unless active prey is in-zone.
+- Progress tick marks now show only `25`, `50`, and `75` (removed `0`).
+
 ## 1.0.1 - 2026-03-04
 
 ### Added
@@ -7,7 +13,6 @@
 
 ### Changed
 - Replaced **Show when no active prey** with **Only show in prey zone** for clearer visibility behavior.
-
 - README now clarifies out-of-zone visibility behavior and the new zone-gated display option.
 
 ### Fixed
