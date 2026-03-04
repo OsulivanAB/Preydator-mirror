@@ -125,6 +125,7 @@ local barTickMarks = {}
 local barTickLabels = {}
 local optionsPanel
 local optionsCategoryID
+local EnsureOptionsPanel
 local candidateWidgetSetIDs = {}
 local ExtractWidgetQuestID
 local colorPickerSessionCounter = 0
@@ -1777,7 +1778,7 @@ local function AddColorSwatch(parent, x, y, getter, setter, allowAlpha)
     return button
 end
 
-local function EnsureOptionsPanel()
+EnsureOptionsPanel = function()
     if optionsPanel then
         return
     end
