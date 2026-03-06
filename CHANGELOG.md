@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 - 2026-03-05
+
+### Added
+- Ambush alert system updates: configurable ambush sound/visual toggles and custom ambush text override support.
+- In-settings **Custom Sound Files** tools to add and remove entries without slash commands.
+- Flexible custom sound input handling: accepts names without spaces, optional `.ogg`, and optional full addon sound path prefix.
+
+### Changed
+- Ambush sound default is now `predator-kill.ogg`.
+- Sound failure warning text now points to the current custom file workflow.
+- Debug logging now defaults to **off** at startup.
+
+### Fixed
+- Removal logic now handles legacy malformed custom sound entries more reliably (without enabling space-containing names).
+
 ## 1.0.2 - 2026-03-04
 
 ### Changed

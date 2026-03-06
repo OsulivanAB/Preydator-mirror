@@ -2,6 +2,8 @@
 
 Preydator is a World of Warcraft addon that tracks your active Prey Hunt stage, displays a customizable progress bar, and plays stage-based audio cues.
 
+Current release: `v1.1.0`
+
 ## Quick start
 
 1. Install the addon in:
@@ -36,20 +38,29 @@ Optional behavior:
 
 - Enable **Only show in prey zone** to hide the bar until you enter the correct prey zone.
 
-## Using your own audio clips
+## Using custom audio files
 
-Drop your custom files into:
+1. Put your `.ogg` files in:
+   `Interface/AddOns/Preydator/sounds/`
+2. Open options: `/pd options`
+3. In **Custom Sound Files**:
+   - Type the filename (examples: `my alert`, `my alert.ogg`, or full path)
+   - Click **Add File**
+4. Select the file in stage/ambush dropdowns.
 
-- `Interface/AddOns/Preydator/sounds/predator-alert.ogg`
-- `Interface/AddOns/Preydator/sounds/predator-ambush.ogg`
-- `Interface/AddOns/Preydator/sounds/predator-torment.ogg`
-- `Interface/AddOns/Preydator/sounds/predator-kill.ogg`
+Input behavior:
 
-Notes:
+- `.ogg` is optional when typing; it is appended automatically.
+- Names with spaces are supported.
+- Full prefix path is accepted: `Interface\\AddOns\\Preydator\\sounds\\...`
+- Default files are protected and cannot be removed.
 
-- Keep the exact filenames above.
-- Use `.ogg` format.
-- Reload UI after replacing audio files.
+Default bundled files:
+
+- `predator-alert.ogg`
+- `predator-ambush.ogg`
+- `predator-torment.ogg`
+- `predator-kill.ogg`
 
 ## What you can customize in settings
 
@@ -58,10 +69,17 @@ Notes:
 - Scale, width, height, font size
 - Texture preset and colors (bar, title, percent text)
 - Stage names and out-of-zone label
+- Ambush custom text (full override of ambush display text)
 - Percent display style and tick marks
 - Sound enable/disable, channel, and sound enhancement
+- Stage 1/2/3 sound selection and ambush sound selection
+- Custom sound file add/remove controls in options
 - Test buttons for each stage sound
 - Reset all settings to defaults
+
+Sound defaults:
+
+- Ambush default sound is `predator-kill.ogg`.
 
 ## Slash commands
 
@@ -72,3 +90,15 @@ Notes:
 - `/preydator toggle` - toggle force show
 - `/preydator mem` - print memory usage snapshot
 - `/preydator debug <on|off|show|clear>` - debug logging controls
+
+Note: debug logging is off by default on load.
+
+## Packaging ZIP Reminder
+
+When creating a release ZIP, include addon runtime files only.
+
+Exclude:
+
+- `.git/`
+- `issues/`
+- `Modules/`

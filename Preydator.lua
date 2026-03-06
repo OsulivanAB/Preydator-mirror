@@ -31,6 +31,7 @@ _G.SLASH_PREYDATOR2 = "/pd"
 local PREY_WIDGET_TYPE = 31
 local PREY_PROGRESS_FINAL = 3
 local MAX_STAGE = 4
+local MAX_TICK_MARKS = 3
 local WIDGET_SHOWN = 1
 -- local IDLE_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-idle.ogg"
 local ALERT_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-alert.ogg"
@@ -39,23 +40,55 @@ local TORMENT_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-torme
 local KILL_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-kill.ogg"
 local DEBUG_LOG_LIMIT = 200
 local DEFAULT_OUT_OF_ZONE_LABEL = "No Sign in These Fields"
-local BAR_TICK_PCTS = { 25, 50, 75 }
+local DEFAULT_AMBUSH_LABEL = "AMBUSH"
+local PROGRESS_SEGMENTS_QUARTERS = "quarters"
+local PROGRESS_SEGMENTS_THIRDS = "thirds"
+local BAR_TICK_PCTS_BY_SEGMENT = {
+    [PROGRESS_SEGMENTS_QUARTERS] = { 25, 50, 75 },
+    [PROGRESS_SEGMENTS_THIRDS] = { 33, 66 },
+}
 local PERCENT_DISPLAY_INSIDE = "inside"
 local PERCENT_DISPLAY_BELOW_BAR = "below_bar"
 local PERCENT_DISPLAY_UNDER_TICKS = "under_ticks"
 local PERCENT_DISPLAY_OFF = "off"
 local PERCENT_FALLBACK_STAGE = "stage"
+local AMBUSH_ALERT_DURATION_SECONDS = 6
+local AMBUSH_SOUND_ALERT = "alert"
+local AMBUSH_SOUND_AMBUSH = "ambush"
+local AMBUSH_SOUND_TORMENT = "torment"
+local AMBUSH_SOUND_KILL = "kill"
+local SOUND_FOLDER_PREFIX = "Interface\\AddOns\\Preydator\\sounds\\"
+local DEFAULT_SOUND_FILENAMES = {
+    "predator-alert.ogg",
+    "predator-ambush.ogg",
+    "predator-torment.ogg",
+    "predator-kill.ogg",
+}
+local PROTECTED_SOUND_FILENAMES = {
+    ["predator-alert.ogg"] = true,
+    ["predator-ambush.ogg"] = true,
+    ["predator-torment.ogg"] = true,
+    ["predator-kill.ogg"] = true,
+}
 local DEFAULT_STAGE_LABELS = {
     [1] = "Scent in the Wind",
     [2] = "Blood in the Shadows",
     [3] = "Echoes of the Kill",
     [4] = "Feast of the Fang",
 }
-local STAGE_PCT = {
-    [1] = 25,
-    [2] = 50,
-    [3] = 75,
-    [4] = 100,
+local STAGE_PCT_BY_SEGMENT = {
+    [PROGRESS_SEGMENTS_QUARTERS] = {
+        [1] = 25,
+        [2] = 50,
+        [3] = 75,
+        [4] = 100,
+    },
+    [PROGRESS_SEGMENTS_THIRDS] = {
+        [1] = 0,
+        [2] = 33,
+        [3] = 66,
+        [4] = 100,
+    },
 }
 
 local TEXTURE_PRESETS = {
@@ -89,6 +122,8 @@ local DEFAULTS = {
     titleFontKey = "frizqt",
     percentFontKey = "frizqt",
     outOfZoneLabel = DEFAULT_OUT_OF_ZONE_LABEL,
+    ambushLabel = DEFAULT_AMBUSH_LABEL,
+    ambushCustomText = "",
     stageLabels = {
         [1] = DEFAULT_STAGE_LABELS[1],
         [2] = DEFAULT_STAGE_LABELS[2],
@@ -104,17 +139,39 @@ local DEFAULTS = {
     soundsEnabled = true,
     soundChannel = "SFX",
     soundEnhance = 0,
-    debugSounds = true,
+    soundFileNames = {
+        "predator-alert.ogg",
+        "predator-ambush.ogg",
+        "predator-torment.ogg",
+        "predator-kill.ogg",
+    },
+    debugSounds = false,
+    ambushSoundEnabled = true,
+    ambushVisualEnabled = true,
+    ambushSoundPath = KILL_SOUND_PATH,
     showTicks = true,
+    progressSegments = PROGRESS_SEGMENTS_QUARTERS,
     percentDisplay = PERCENT_DISPLAY_INSIDE,
     percentFallbackMode = PERCENT_FALLBACK_STAGE,
 }
 
 local settings
 local debugDB
+local Preydator = _G.Preydator or {}
+_G.Preydator = Preydator
+Preydator.modules = Preydator.modules or {}
+
+function Preydator:RegisterModule(name, module)
+    if type(name) ~= "string" or name == "" or type(module) ~= "table" then
+        return
+    end
+
+    module.name = name
+    self.modules[name] = module
+end
 
 local frame = CreateFrame("Frame")
-local warnedMissingSound = false
+local warnedMissingSoundPaths = {}
 local barFrame
 local barFillContainer
 local barFill
@@ -125,10 +182,26 @@ local barTickMarks = {}
 local barTickLabels = {}
 local optionsPanel
 local optionsCategoryID
+local optionsScrollFrame
+local optionsContentFrame
 local EnsureOptionsPanel
 local candidateWidgetSetIDs = {}
 local ExtractWidgetQuestID
 local colorPickerSessionCounter = 0
+local AddDebugLog
+local TryPlaySound
+local TryPlayStageSound
+local UpdateBarDisplay
+
+local function RunModuleHook(hookName, ...)
+    for _, module in pairs(Preydator.modules) do
+        local fn = module and module[hookName]
+        if type(fn) == "function" then
+            pcall(fn, module, ...)
+        end
+    end
+end
+
 local state = {
     activeQuestID = nil,
     progressState = nil,
@@ -147,10 +220,32 @@ local state = {
     lastDisplayPct = 0,
     lastDisplayReason = "init",
     lastPercentSource = "none",
+    preyTargetName = nil,
+    preyTargetDifficulty = nil,
+    ambushAlertUntil = 0,
+    lastAmbushSystemMessage = nil,
 }
 
 local UPDATE_INTERVAL_SECONDS = 0.5
-local INSPECT_VERSION = "v3"
+local INSPECT_VERSION = "v4"
+
+Preydator.GetState = function()
+    return state
+end
+
+Preydator.GetSettings = function()
+    return settings
+end
+
+Preydator.GetBarFrame = function()
+    return barFrame
+end
+
+Preydator.RequestRefresh = function()
+    if type(UpdateBarDisplay) == "function" then
+        UpdateBarDisplay()
+    end
+end
 
 local function ApplyDefaults(dst, src)
     for key, value in pairs(src) do
@@ -209,6 +304,14 @@ local function NormalizeLabelSettings()
     if type(settings.outOfZoneLabel) ~= "string" or settings.outOfZoneLabel == "" then
         settings.outOfZoneLabel = DEFAULT_OUT_OF_ZONE_LABEL
     end
+
+    if type(settings.ambushLabel) ~= "string" or settings.ambushLabel == "" then
+        settings.ambushLabel = DEFAULT_AMBUSH_LABEL
+    end
+
+    if type(settings.ambushCustomText) ~= "string" then
+        settings.ambushCustomText = ""
+    end
 end
 
 local function NormalizeColorSettings()
@@ -243,6 +346,45 @@ local function NormalizeDisplaySettings()
     settings.percentDisplay = mode
 
     settings.percentFallbackMode = PERCENT_FALLBACK_STAGE
+end
+
+local function NormalizeProgressSettings()
+    local mode = settings.progressSegments
+    if mode ~= PROGRESS_SEGMENTS_QUARTERS and mode ~= PROGRESS_SEGMENTS_THIRDS then
+        settings.progressSegments = PROGRESS_SEGMENTS_QUARTERS
+        return
+    end
+
+    settings.progressSegments = mode
+end
+
+local function NormalizeAmbushSettings()
+    settings.ambushSoundEnabled = settings.ambushSoundEnabled ~= false
+    settings.ambushVisualEnabled = settings.ambushVisualEnabled ~= false
+
+    if type(settings.ambushSoundPath) ~= "string" or settings.ambushSoundPath == "" then
+        local legacySoundKey = settings.ambushSoundKey
+        settings.ambushSoundPath = GetSoundPathForKey(legacySoundKey, KILL_SOUND_PATH)
+    end
+
+    settings.ambushSoundKey = nil
+    settings.ambushCustomSoundPath = nil
+end
+
+local function GetProgressTickPercents()
+    local mode = (settings and settings.progressSegments) or PROGRESS_SEGMENTS_QUARTERS
+    local tickPercents = BAR_TICK_PCTS_BY_SEGMENT[mode]
+    if type(tickPercents) ~= "table" then
+        return BAR_TICK_PCTS_BY_SEGMENT[PROGRESS_SEGMENTS_QUARTERS]
+    end
+
+    return tickPercents
+end
+
+local function GetStageFallbackPercent(stage)
+    local mode = (settings and settings.progressSegments) or PROGRESS_SEGMENTS_QUARTERS
+    local stagePercents = STAGE_PCT_BY_SEGMENT[mode] or STAGE_PCT_BY_SEGMENT[PROGRESS_SEGMENTS_QUARTERS]
+    return stagePercents[stage] or 0
 end
 
 local function GetPreyZoneInfo(questID)
@@ -317,6 +459,201 @@ local function GetDefaultStageSoundPath(stage)
     return nil
 end
 
+local function BuildAddonSoundPath(fileName)
+    if type(fileName) ~= "string" then
+        return nil
+    end
+
+    local trimmed = fileName:match("^%s*(.-)%s*$")
+    if trimmed == "" then
+        return nil
+    end
+
+    if string.find(trimmed, "\\", 1, true) then
+        return trimmed
+    end
+
+    return SOUND_FOLDER_PREFIX .. trimmed
+end
+
+local function ExtractAddonSoundFileName(path)
+    if type(path) ~= "string" or path == "" then
+        return nil
+    end
+
+    local lower = string.lower(path)
+    local prefixLower = string.lower(SOUND_FOLDER_PREFIX)
+    if string.sub(lower, 1, #prefixLower) ~= prefixLower then
+        return nil
+    end
+
+    local fileName = string.sub(path, #SOUND_FOLDER_PREFIX + 1)
+    if fileName == "" then
+        return nil
+    end
+
+    return fileName
+end
+
+local function NormalizeSoundFileName(fileName)
+    if type(fileName) ~= "string" then
+        return nil
+    end
+
+    local normalized = string.lower(fileName:match("^%s*(.-)%s*$") or "")
+    if normalized == "" then
+        return nil
+    end
+
+    local prefixLower = string.lower(SOUND_FOLDER_PREFIX)
+    if string.sub(normalized, 1, #prefixLower) == prefixLower then
+        normalized = string.sub(normalized, #prefixLower + 1)
+    end
+
+    if normalized == "" then
+        return nil
+    end
+
+    if normalized:find("[/\\]") then
+        return nil
+    end
+
+    if not normalized:match("%.ogg$") then
+        normalized = normalized .. ".ogg"
+    end
+
+    return normalized
+end
+
+local function AddSoundFileName(fileName)
+    local normalized = NormalizeSoundFileName(fileName)
+    if not normalized then
+        return false, "Use a valid sound filename (optionally with .ogg)"
+    end
+
+    settings.soundFileNames = settings.soundFileNames or {}
+    for _, existing in ipairs(settings.soundFileNames) do
+        if NormalizeSoundFileName(existing) == normalized then
+            return false, "File is already in the list"
+        end
+    end
+
+    table.insert(settings.soundFileNames, normalized)
+    NormalizeSoundSettings()
+    return true, normalized
+end
+
+local function RemoveSoundFileName(fileName)
+    local normalized = NormalizeSoundFileName(fileName)
+    if not normalized then
+        return false, "Use a valid sound filename (optionally with .ogg)"
+    end
+
+    if PROTECTED_SOUND_FILENAMES[normalized] then
+        return false, "Default sound files cannot be removed"
+    end
+
+    settings.soundFileNames = settings.soundFileNames or {}
+    local removed = false
+    for index = #settings.soundFileNames, 1, -1 do
+        local existing = NormalizeSoundFileName(settings.soundFileNames[index])
+        if existing == normalized then
+            table.remove(settings.soundFileNames, index)
+            removed = true
+            break
+        end
+    end
+
+    if not removed then
+        local rawInput = string.lower((tostring(fileName or ""):match("^%s*(.-)%s*$") or ""))
+        local candidates = {}
+
+        if rawInput ~= "" then
+            for index = #settings.soundFileNames, 1, -1 do
+                local existing = NormalizeSoundFileName(settings.soundFileNames[index])
+                if existing then
+                    local existingNoExt = existing:gsub("%.ogg$", "")
+                    if rawInput == existing
+                        or rawInput == existingNoExt
+                        or string.sub(existingNoExt, -#rawInput) == rawInput
+                    then
+                        table.insert(candidates, { index = index, name = existing })
+                    end
+                end
+            end
+        end
+
+        if #candidates == 1 then
+            table.remove(settings.soundFileNames, candidates[1].index)
+            removed = true
+            normalized = candidates[1].name
+        elseif #candidates > 1 then
+            return false, "Multiple matches found. Type more of the file name."
+        end
+    end
+
+    if not removed then
+        return false, "File is not in the custom list"
+    end
+
+    NormalizeSoundSettings()
+    return true, normalized
+end
+
+local function GetSoundPathForKey(soundKey, fallbackPath)
+    if soundKey == AMBUSH_SOUND_ALERT then
+        return ALERT_SOUND_PATH
+    end
+    if soundKey == AMBUSH_SOUND_AMBUSH then
+        return AMBUSH_SOUND_PATH
+    end
+    if soundKey == AMBUSH_SOUND_TORMENT then
+        return TORMENT_SOUND_PATH
+    end
+    if soundKey == AMBUSH_SOUND_KILL then
+        return KILL_SOUND_PATH
+    end
+    return fallbackPath
+end
+
+local function BuildSoundDisplayName(fileName)
+    local short = tostring(fileName or "")
+    short = short:gsub("%.ogg$", "")
+    short = short:gsub("[_%-]+", " ")
+    short = short:gsub("%s+", " ")
+    short = short:gsub("^%l", string.upper)
+    short = short:gsub("%s%l", function(s)
+        return string.upper(s)
+    end)
+    return short
+end
+
+local function BuildSoundDropdownOptions()
+    local options = {}
+    local files = (settings and settings.soundFileNames) or DEFAULT_SOUND_FILENAMES
+
+    for _, fileName in ipairs(files) do
+        local normalized = NormalizeSoundFileName(fileName)
+        if normalized then
+            local path = BuildAddonSoundPath(normalized)
+            options[path] = {
+                text = BuildSoundDisplayName(normalized),
+            }
+        end
+    end
+
+    return options
+end
+
+local function ResolveAmbushAlertSoundPath()
+    local path = settings and settings.ambushSoundPath
+    if type(path) == "string" and path ~= "" then
+        return path
+    end
+
+    return KILL_SOUND_PATH
+end
+
 local function GetWidgetTypePreyHuntProgress()
     if Enum and Enum.UIWidgetVisualizationType and Enum.UIWidgetVisualizationType.PreyHuntProgress then
         return Enum.UIWidgetVisualizationType.PreyHuntProgress
@@ -339,6 +676,81 @@ local function GetCurrentActivePreyQuest()
     end
 
     return nil
+end
+
+local function GetQuestTitle(questID)
+    if not (C_QuestLog and C_QuestLog.GetTitleForQuestID) then
+        return nil
+    end
+
+    local titleInfo = C_QuestLog.GetTitleForQuestID(questID)
+    if type(titleInfo) == "table" then
+        return titleInfo.title
+    end
+
+    return titleInfo
+end
+
+local function ExtractPreyTargetFromQuestTitle(questID)
+    if type(questID) ~= "number" or questID < 1 then
+        return nil, nil
+    end
+
+    local title = GetQuestTitle(questID)
+    if type(title) ~= "string" or title == "" then
+        return nil, nil
+    end
+
+    local preyName, difficulty = title:match("^%s*[Pp]rey:%s*(.-)%s*%((.-)%)%s*$")
+    if preyName and preyName ~= "" then
+        return preyName, difficulty
+    end
+
+    preyName = title:match("^%s*[Pp]rey:%s*(.-)%s*$")
+    if preyName and preyName ~= "" then
+        return preyName, nil
+    end
+
+    return nil, nil
+end
+
+local function IsAmbushSystemMessage(message, sender)
+    if type(message) ~= "string" or message == "" then
+        return false
+    end
+
+    local lowered = string.lower(message)
+    if string.find(lowered, "ambush", 1, true) then
+        return true
+    end
+
+    local preyName = state and state.preyTargetName
+    if type(preyName) == "string" and preyName ~= "" then
+        local preyLower = string.lower(preyName)
+        local senderLower = type(sender) == "string" and string.lower(sender) or ""
+        if string.find(lowered, preyLower, 1, true) or string.find(senderLower, preyLower, 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function TriggerAmbushAlert(message, source)
+    local now = GetTime and GetTime() or 0
+    state.lastAmbushSystemMessage = message
+
+    if settings.ambushVisualEnabled ~= false then
+        state.ambushAlertUntil = now + AMBUSH_ALERT_DURATION_SECONDS
+    end
+
+    if settings.ambushSoundEnabled ~= false then
+        local ambushPath = ResolveAmbushAlertSoundPath()
+        TryPlaySound(ambushPath)
+    end
+
+    AddDebugLog("Ambush", "Detected from " .. tostring(source) .. ": " .. tostring(message), true)
+    UpdateBarDisplay()
 end
 
 local function IsQuestStillActive(questID)
@@ -368,7 +780,7 @@ local function EnsureDebugDB()
     end
 end
 
-local function AddDebugLog(kind, message, forcePrint)
+AddDebugLog = function(kind, message, forcePrint)
     if not debugDB then
         return
     end
@@ -390,7 +802,7 @@ local function AddDebugLog(kind, message, forcePrint)
     end
 end
 
-local function TryPlaySound(path, ignoreSoundToggle)
+TryPlaySound = function(path, ignoreSoundToggle)
     if not ignoreSoundToggle and settings and settings.soundsEnabled == false then
         AddDebugLog("TryPlaySound", "blocked by soundsEnabled=false | path=" .. tostring(path), false)
         return false
@@ -416,9 +828,10 @@ local function TryPlaySound(path, ignoreSoundToggle)
         return true
     end
 
-    if not warnedMissingSound then
-        warnedMissingSound = true
-        print("Preydator: Could not play custom sound. Check sounds/predator-alert.ogg, predator-ambush.ogg, predator-torment.ogg, predator-kill.ogg, then /reload.")
+    local warnedKey = tostring(path or "")
+    if warnedMissingSoundPaths[warnedKey] ~= true then
+        warnedMissingSoundPaths[warnedKey] = true
+        print("Preydator: Sound failed to play: '" .. warnedKey .. "'. Ensure the .ogg exists in Interface\\AddOns\\Preydator\\sounds\\ and is listed in Custom Sound Files.")
     end
 
     return false
@@ -457,7 +870,7 @@ local function ResolveStageSoundPath(stage)
     return nil
 end
 
-local function TryPlayStageSound(stage, ignoreSoundToggle)
+TryPlayStageSound = function(stage, ignoreSoundToggle)
     local path = ResolveStageSoundPath(stage)
     if not path then
         AddDebugLog("TryPlayStageSound", "stage=" .. tostring(stage) .. " | no resolved path", true)
@@ -562,53 +975,68 @@ local function ApplyBarSettings()
         barText:SetDrawLayer("OVERLAY", 7)
     end
 
+    local tickPercents = GetProgressTickPercents()
     for index, tickLabel in ipairs(barTickLabels) do
+        local hasTick = tickPercents[index] ~= nil
         if tickLabel then
             local _, _, flags = tickLabel:GetFont()
             local percentFont = FONT_PRESETS[settings.percentFontKey] or FONT_PRESETS.frizqt
             tickLabel:SetFont(percentFont, math.max(7, Round(((tonumber(settings.fontSize) or DEFAULTS.fontSize) - 4) * frameScale)), flags)
             local percentColor = settings.percentColor or DEFAULTS.percentColor
             tickLabel:SetTextColor(percentColor[1], percentColor[2], percentColor[3], 0.9)
+            tickLabel:SetShown(hasTick and settings.showTicks and settings.percentDisplay == PERCENT_DISPLAY_UNDER_TICKS)
         end
 
         local tickMark = barTickMarks[index]
         if tickMark then
             tickMark:SetColorTexture(1, 1, 1, 0.35)
             tickMark:SetDrawLayer("OVERLAY", 4)
-            tickMark:SetShown(settings.showTicks)
+            tickMark:SetShown(hasTick and settings.showTicks)
         end
     end
 
     local barWidth = scaledWidth
     local barHeight = scaledHeight
     local tickWidth = 1
-    for index, pct in ipairs(BAR_TICK_PCTS) do
-        local x = math.floor((barWidth * (pct / 100)) + 0.5)
-        x = math.floor((x / tickWidth) + 0.5) * tickWidth
+    for index = 1, MAX_TICK_MARKS do
+        local pct = tickPercents[index]
+        local x = nil
+        if pct then
+            x = math.floor((barWidth * (pct / 100)) + 0.5)
+            x = math.floor((x / tickWidth) + 0.5) * tickWidth
+        end
         local tickMark = barTickMarks[index]
         if tickMark then
-            tickMark:ClearAllPoints()
-            if pct == 100 then
-                tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", barWidth - tickWidth, 0)
+            if pct then
+                tickMark:ClearAllPoints()
+                if pct == 100 then
+                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", barWidth - tickWidth, 0)
+                else
+                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", x, 0)
+                end
+                tickMark:SetSize(tickWidth, barHeight)
             else
-                tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", x, 0)
+                tickMark:Hide()
             end
-            tickMark:SetSize(tickWidth, barHeight)
         end
 
         local tickLabel = barTickLabels[index]
         if tickLabel then
-            tickLabel:ClearAllPoints()
-            if pct == 0 then
-                tickLabel:SetPoint("TOPLEFT", barFrame, "BOTTOMLEFT", 0, -1)
-            elseif pct == 100 then
-                tickLabel:SetPoint("TOPRIGHT", barFrame, "BOTTOMRIGHT", 0, -1)
+            if pct then
+                tickLabel:ClearAllPoints()
+                if pct == 0 then
+                    tickLabel:SetPoint("TOPLEFT", barFrame, "BOTTOMLEFT", 0, -1)
+                elseif pct == 100 then
+                    tickLabel:SetPoint("TOPRIGHT", barFrame, "BOTTOMRIGHT", 0, -1)
+                else
+                    tickLabel:SetPoint("TOP", barFrame, "BOTTOMLEFT", x, -1)
+                end
+                tickLabel:SetText(tostring(pct))
+                tickLabel:SetDrawLayer("OVERLAY", 8)
             else
-                tickLabel:SetPoint("TOP", barFrame, "BOTTOMLEFT", x, -1)
+                tickLabel:SetText("")
+                tickLabel:Hide()
             end
-            tickLabel:SetText(tostring(pct))
-            tickLabel:SetDrawLayer("OVERLAY", 8)
-            tickLabel:SetShown(settings.showTicks and settings.percentDisplay == PERCENT_DISPLAY_UNDER_TICKS)
         end
     end
 
@@ -709,7 +1137,8 @@ local function EnsureBar()
     barText:SetDrawLayer("OVERLAY", 9)
     barText:SetText("0%")
 
-    for index, pct in ipairs(BAR_TICK_PCTS) do
+    for index = 1, MAX_TICK_MARKS do
+        local pct = (index * 25)
         local tickMark = barFrame:CreateTexture(nil, "overlay")
         tickMark:SetColorTexture(1, 1, 1, 0.35)
         tickMark:SetDrawLayer("OVERLAY", 4)
@@ -978,17 +1407,18 @@ local function ExtractQuestObjectivePercent(questID)
     return nil
 end
 
-local function UpdateBarDisplay()
+UpdateBarDisplay = function()
     EnsureBar()
 
     local now = GetTime and GetTime() or 0
     local hasActiveQuest = state.activeQuestID ~= nil
     local forceKillStage = now < (state.killStageUntil or 0)
+    local forceAmbushAlert = now < (state.ambushAlertUntil or 0)
     local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
     local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
     local shouldShow = false
 
-    if state.forceShowBar or forceKillStage then
+    if state.forceShowBar or forceKillStage or forceAmbushAlert then
         shouldShow = true
     elseif onlyShowInPreyZone then
         shouldShow = hasActiveQuest and not isOutOfPreyZone
@@ -998,6 +1428,14 @@ local function UpdateBarDisplay()
 
     if not shouldShow then
         barFrame:Hide()
+        RunModuleHook("OnAfterUpdateBarDisplay", {
+            shouldShowBar = false,
+            forceAmbushAlert = forceAmbushAlert,
+            forceKillStage = forceKillStage,
+            hasActiveQuest = hasActiveQuest,
+            displayPercent = 0,
+            stage = state.stage,
+        })
         return
     end
 
@@ -1026,7 +1464,7 @@ local function UpdateBarDisplay()
             local shouldUseStageFallback = (pct == nil) or (stage >= 1 and pct <= 0)
 
             if shouldUseStageFallback then
-                pct = STAGE_PCT[stage] or 0
+                pct = GetStageFallbackPercent(stage)
                 if state.lastPercentSource == "none" then
                     state.lastPercentSource = "stage"
                 end
@@ -1039,7 +1477,7 @@ local function UpdateBarDisplay()
 
     if barFill then
         local width = barWidth * (pct / 100)
-        local shouldHideFill = (pct <= 0) or (not hasActiveQuest and not forceKillStage)
+        local shouldHideFill = (pct <= 0) or (not hasActiveQuest and not forceKillStage and not forceAmbushAlert)
         if shouldHideFill then
             barFill:SetWidth(0)
             barFill:Hide()
@@ -1054,7 +1492,19 @@ local function UpdateBarDisplay()
 
     state.stage = stage
 
-    if isOutOfPreyZone and not forceKillStage then
+    if forceAmbushAlert then
+        local customAmbushText = settings and settings.ambushCustomText
+        if type(customAmbushText) == "string" and customAmbushText ~= "" then
+            stageText:SetText(customAmbushText)
+        else
+            local ambushSuffix = (settings and settings.ambushLabel) or DEFAULT_AMBUSH_LABEL
+            if type(state.preyTargetName) == "string" and state.preyTargetName ~= "" then
+                stageText:SetText(ambushSuffix .. ": " .. state.preyTargetName)
+            else
+                stageText:SetText(ambushSuffix)
+            end
+        end
+    elseif isOutOfPreyZone and not forceKillStage then
         stageText:SetText(settings.outOfZoneLabel or DEFAULT_OUT_OF_ZONE_LABEL)
     elseif not hasActiveQuest and not forceKillStage then
         local zoneName = GetZoneText and GetZoneText() or "Unknown Zone"
@@ -1064,6 +1514,15 @@ local function UpdateBarDisplay()
     end
 
     barText:SetText(string.format("%d%%", pct))
+
+    RunModuleHook("OnAfterUpdateBarDisplay", {
+        shouldShowBar = true,
+        forceAmbushAlert = forceAmbushAlert,
+        forceKillStage = forceKillStage,
+        hasActiveQuest = hasActiveQuest,
+        displayPercent = pct,
+        stage = stage,
+    })
 end
 
 local function OpenOptionsPanel()
@@ -1099,6 +1558,10 @@ local function ClearPreyStateAndDisplay()
     state.lastWidgetSeenAt = 0
     state.stageSoundPlayed = {}
     state.lastStateDebugSnapshot = nil
+    state.preyTargetName = nil
+    state.preyTargetDifficulty = nil
+    state.ambushAlertUntil = 0
+    state.lastAmbushSystemMessage = nil
 
     if barFill then
         barFill:SetWidth(0)
@@ -1193,6 +1656,46 @@ local function TrimText(value, maxLen)
 end
 
 local function NormalizeSoundSettings()
+    if type(settings.soundFileNames) ~= "table" then
+        settings.soundFileNames = {}
+    end
+
+    local mergedNames = {}
+    local seen = {}
+
+    local function pushFileName(fileName)
+        local normalized = NormalizeSoundFileName(fileName)
+        if not normalized or seen[normalized] then
+            return
+        end
+        seen[normalized] = true
+        table.insert(mergedNames, normalized)
+    end
+
+    for _, defaultName in ipairs(DEFAULT_SOUND_FILENAMES) do
+        pushFileName(defaultName)
+    end
+
+    for _, configuredName in ipairs(settings.soundFileNames) do
+        pushFileName(configuredName)
+    end
+
+    for stage = 1, MAX_STAGE do
+        local existingPath = settings.stageSounds and settings.stageSounds[stage]
+        pushFileName(ExtractAddonSoundFileName(existingPath))
+    end
+
+    pushFileName(ExtractAddonSoundFileName(settings.ambushSoundPath))
+    settings.soundFileNames = mergedNames
+
+    local allowedPathLower = {}
+    for _, fileName in ipairs(settings.soundFileNames) do
+        local fullPath = BuildAddonSoundPath(fileName)
+        if type(fullPath) == "string" and fullPath ~= "" then
+            allowedPathLower[string.lower(fullPath)] = true
+        end
+    end
+
     if type(settings.stageSounds) ~= "table" then
         settings.stageSounds = {}
     end
@@ -1214,7 +1717,15 @@ local function NormalizeSoundSettings()
             configuredPath = GetDefaultStageSoundPath(stage)
         end
 
+        if type(configuredPath) ~= "string" or not allowedPathLower[string.lower(configuredPath)] then
+            configuredPath = GetDefaultStageSoundPath(stage)
+        end
+
         settings.stageSounds[stage] = configuredPath
+    end
+
+    if type(settings.ambushSoundPath) ~= "string" or not allowedPathLower[string.lower(settings.ambushSoundPath)] then
+        settings.ambushSoundPath = KILL_SOUND_PATH
     end
 
     settings.stageSounds[5] = nil
@@ -1229,6 +1740,8 @@ local function ResetAllSettings()
     NormalizeLabelSettings()
     NormalizeColorSettings()
     NormalizeDisplaySettings()
+    NormalizeProgressSettings()
+    NormalizeAmbushSettings()
     NormalizeSoundSettings()
 
     state.forceShowBar = settings.forceShowBar
@@ -1272,6 +1785,7 @@ local function PrintInspectState()
     print("- time=" .. string.format("%.3f", now) .. " | zone=" .. tostring(GetZoneText and GetZoneText() or "?") .. " | playerMapID=" .. tostring(playerMapID) .. " | playerMap=" .. tostring(playerMapName))
     print("- quest live=" .. tostring(liveQuestID) .. " | hasActive=" .. tostring(hasActiveQuest) .. " | isOnQuest=" .. tostring(questOnLog) .. " | completed=" .. tostring(questCompleted))
     print("- quest tracked=" .. tostring(state.activeQuestID) .. " | progressState=" .. tostring(state.progressState) .. " | progressPercent=" .. tostring(state.progressPercent) .. " | stage=" .. tostring(state.stage) .. " (" .. tostring(GetStageLabel(state.stage)) .. ")")
+    print("- prey target=" .. tostring(state.preyTargetName) .. " | difficulty=" .. tostring(state.preyTargetDifficulty) .. " | ambushAlertRemaining=" .. string.format("%.2f", math.max(0, (state.ambushAlertUntil or 0) - now)))
     print("- preyZone mapID=" .. tostring(state.preyZoneMapID) .. " | preyZoneName=" .. tostring(state.preyZoneName) .. " | inPreyZone=" .. tostring(state.inPreyZone))
     print("- killStageRemaining=" .. string.format("%.2f", math.max(0, (state.killStageUntil or 0) - now)) .. " | lastWidgetAge=" .. string.format("%.2f", math.max(0, now - (state.lastWidgetSeenAt or 0))))
     print("- sounds enabled=" .. tostring(settings and settings.soundsEnabled) .. " | channel=" .. tostring(settings and settings.soundChannel) .. " | stagePlayed={" .. BuildStageSoundPlayedSummary() .. "}")
@@ -1453,6 +1967,9 @@ local function ResetStateForNewQuest(questID)
         state.preyZoneName, state.preyZoneMapID = GetPreyZoneInfo(questID)
         state.inPreyZone = IsPlayerInPreyZone(state.preyZoneMapID)
         state.preyTooltipText = nil
+        state.preyTargetName, state.preyTargetDifficulty = ExtractPreyTargetFromQuestTitle(questID)
+        state.ambushAlertUntil = 0
+        state.lastAmbushSystemMessage = nil
     end
 end
 
@@ -1549,12 +2066,15 @@ local function OnAddonLoaded()
     settings = _G.PreydatorDB
     ApplyDefaults(settings, DEFAULTS)
     EnsureDebugDB()
+    settings.debugSounds = false
     debugDB.enabled = settings.debugSounds and true or false
 
     NormalizeSoundSettings()
     NormalizeLabelSettings()
     NormalizeColorSettings()
     NormalizeDisplaySettings()
+    NormalizeProgressSettings()
+    NormalizeAmbushSettings()
     AddDebugLog("OnAddonLoaded", "debug=" .. tostring(debugDB.enabled) .. " | stage" .. tostring(MAX_STAGE) .. "=" .. tostring(settings.stageSounds[MAX_STAGE]), true)
 
     state.forceShowBar = settings.forceShowBar
@@ -1564,9 +2084,16 @@ local function OnAddonLoaded()
     frame:RegisterEvent("UPDATE_ALL_UI_WIDGETS")
     frame:RegisterEvent("UPDATE_UI_WIDGET")
     frame:RegisterEvent("QUEST_TURNED_IN")
+    frame:RegisterEvent("CHAT_MSG_SYSTEM")
+    frame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+    frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
+    frame:RegisterEvent("CHAT_MSG_MONSTER_EMOTE")
+    frame:RegisterEvent("RAID_BOSS_EMOTE")
     frame:RegisterEvent("ZONE_CHANGED")
     frame:RegisterEvent("ZONE_CHANGED_INDOORS")
     frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+
+    RunModuleHook("OnAddonLoaded")
 end
 
 local function AddCheckbox(parent, label, x, y, getter, setter)
@@ -1605,22 +2132,40 @@ local function AddDropdown(parent, label, x, y, width, options, getter, setter)
     local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
     dropdown:SetPoint("TOPLEFT", title, "BOTTOMLEFT", -16, -4)
 
+    local function GetOptions()
+        if type(options) == "function" then
+            return options() or {}
+        end
+        return options or {}
+    end
+
     local function RefreshText()
         local key = getter()
-        local entry = options[key]
+        local entry = GetOptions()[key]
         UIDropDownMenu_SetText(dropdown, entry and entry.text or "Select")
     end
 
     UIDropDownMenu_SetWidth(dropdown, width)
     UIDropDownMenu_Initialize(dropdown, function(_, _, _)
-        for key, entry in pairs(options) do
+        local optionList = {}
+        for key, entry in pairs(GetOptions()) do
+            table.insert(optionList, { key = key, entry = entry })
+        end
+
+        table.sort(optionList, function(a, b)
+            local left = tostring(a.entry and a.entry.text or "")
+            local right = tostring(b.entry and b.entry.text or "")
+            return left < right
+        end)
+
+        for _, item in ipairs(optionList) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = entry.text
+            info.text = item.entry.text
             info.func = function()
-                setter(key)
+                setter(item.key)
                 RefreshText()
             end
-            info.checked = getter() == key
+            info.checked = getter() == item.key
             UIDropDownMenu_AddButton(info)
         end
     end)
@@ -1793,6 +2338,19 @@ EnsureOptionsPanel = function()
 
     local panel = CreateFrame("Frame", "PreydatorOptionsPanel")
     panel.name = "Preydator"
+    local panelRoot = panel
+
+    local scrollFrame = CreateFrame("ScrollFrame", "PreydatorOptionsScrollFrame", panelRoot, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", panelRoot, "TOPLEFT", 8, -8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", panelRoot, "BOTTOMRIGHT", -30, 8)
+
+    local content = CreateFrame("Frame", "PreydatorOptionsContent", scrollFrame)
+    content:SetSize(760, 900)
+    scrollFrame:SetScrollChild(content)
+
+    optionsScrollFrame = scrollFrame
+    optionsContentFrame = content
+    panel = content
 
     NormalizeLabelSettings()
 
@@ -1807,54 +2365,54 @@ EnsureOptionsPanel = function()
     subtitle:SetJustifyH("LEFT")
     subtitle:SetWordWrap(true)
 
-    local lockCheckbox = AddCheckbox(panel, "Lock Bar", 20, -50, function() return settings.locked end, function(value)
+    local lockCheckbox = AddCheckbox(panel, "Lock Bar", 20, -55, function() return settings.locked end, function(value)
         settings.locked = value
         ApplyBarSettings()
     end)
 
-    local onlyShowInPreyZoneCheckbox = AddCheckbox(panel, "Only show in prey zone", 20, -80, function() return settings.onlyShowInPreyZone end, function(value)
+    local onlyShowInPreyZoneCheckbox = AddCheckbox(panel, "Only show in prey zone", 20, -83, function() return settings.onlyShowInPreyZone end, function(value)
         settings.onlyShowInPreyZone = value
         UpdateBarDisplay()
     end)
 
-    local scaleSlider = AddSlider(panel, "Scale", 20, -130, 0.5, 2, 0.05, function() return settings.scale end, function(value)
+    local scaleSlider = AddSlider(panel, "Scale", 20, -407, 0.5, 2, 0.05, function() return settings.scale end, function(value)
         settings.scale = Clamp(value, 0.5, 2)
         ApplyBarSettings()
     end)
 
-    local widthSlider = AddSlider(panel, "Width", 20, -190, 160, 500, 1, function() return settings.width end, function(value)
+    local widthSlider = AddSlider(panel, "Width", 20, -442, 160, 500, 1, function() return settings.width end, function(value)
         settings.width = Clamp(math.floor(value + 0.5), 160, 500)
         ApplyBarSettings()
         UpdateBarDisplay()
     end)
 
-    local heightSlider = AddSlider(panel, "Height", 20, -250, 10, 40, 1, function() return settings.height end, function(value)
+    local heightSlider = AddSlider(panel, "Height", 20, -477, 10, 40, 1, function() return settings.height end, function(value)
         settings.height = Clamp(math.floor(value + 0.5), 10, 40)
         ApplyBarSettings()
         UpdateBarDisplay()
     end)
 
-    local fontSizeSlider = AddSlider(panel, "Font Size", 20, -310, 8, 24, 1, function() return settings.fontSize end, function(value)
+    local fontSizeSlider = AddSlider(panel, "Font Size", 20, -512, 8, 24, 1, function() return settings.fontSize end, function(value)
         settings.fontSize = Clamp(math.floor(value + 0.5), 8, 24)
         ApplyBarSettings()
     end)
 
     local stageNamesTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    stageNamesTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -360)
+    stageNamesTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -407)
     stageNamesTitle:SetText("Stage Names")
 
     local stageNameEdits = {}
-    for stageIndex = 1, MAX_STAGE do
-        local rowY = -360 - (stageIndex * 26)
+    for stageIndex = 1, (MAX_STAGE - 1) do
+        local rowY = -442 - ((stageIndex - 1) * 35)
         local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        label:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, rowY)
+        label:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, rowY)
         label:SetText(tostring(stageIndex) .. ":")
 
         local edit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
         edit:SetSize(180, 20)
         edit:SetAutoFocus(false)
         edit:SetTextInsets(6, 6, 0, 0)
-        edit:SetPoint("TOPLEFT", panel, "TOPLEFT", 40, rowY + 3)
+        edit:SetPoint("TOPLEFT", panel, "TOPLEFT", 350, -441 - ((stageIndex - 1) * 35))
         edit:SetText(GetStageLabel(stageIndex))
         edit:SetScript("OnEnterPressed", function(self)
             settings.stageLabels[stageIndex] = self:GetText()
@@ -1872,16 +2430,16 @@ EnsureOptionsPanel = function()
         stageNameEdits[stageIndex] = edit
     end
 
-    local outZoneRowY = -360 - ((MAX_STAGE + 1) * 26)
+    local outZoneRowY = -547
     local outZoneLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    outZoneLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, outZoneRowY)
-    outZoneLabel:SetText("Out:")
+    outZoneLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, outZoneRowY)
+    outZoneLabel:SetText("Zone:")
 
     local outZoneEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
     outZoneEdit:SetSize(156, 20)
     outZoneEdit:SetAutoFocus(false)
     outZoneEdit:SetTextInsets(6, 6, 0, 0)
-    outZoneEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 64, outZoneRowY + 3)
+    outZoneEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 365, -546)
     outZoneEdit:SetText(settings.outOfZoneLabel or DEFAULT_OUT_OF_ZONE_LABEL)
     outZoneEdit:SetScript("OnEnterPressed", function(self)
         settings.outOfZoneLabel = self:GetText()
@@ -1897,23 +2455,74 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
+    local ambushLabelText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    ambushLabelText:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -575)
+    ambushLabelText:SetText("Ambush:")
+
+    local ambushLabelEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    ambushLabelEdit:SetSize(156, 20)
+    ambushLabelEdit:SetAutoFocus(false)
+    ambushLabelEdit:SetTextInsets(6, 6, 0, 0)
+    ambushLabelEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 380, -574)
+    ambushLabelEdit:SetText(settings.ambushCustomText or "")
+    ambushLabelEdit:SetScript("OnEnterPressed", function(self)
+        settings.ambushCustomText = self:GetText()
+        NormalizeLabelSettings()
+        self:SetText(settings.ambushCustomText)
+        self:ClearFocus()
+        UpdateBarDisplay()
+    end)
+    ambushLabelEdit:SetScript("OnEditFocusLost", function(self)
+        settings.ambushCustomText = self:GetText()
+        NormalizeLabelSettings()
+        self:SetText(settings.ambushCustomText)
+        UpdateBarDisplay()
+    end)
+
     local restoreNamesButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     restoreNamesButton:SetSize(180, 24)
-    restoreNamesButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 40, -522)
+    restoreNamesButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -764)
     restoreNamesButton:SetText("Restore Default Names")
     restoreNamesButton:SetScript("OnClick", function()
-        for stageIndex = 1, MAX_STAGE do
+        for stageIndex = 1, (MAX_STAGE - 1) do
             settings.stageLabels[stageIndex] = DEFAULT_STAGE_LABELS[stageIndex]
             stageNameEdits[stageIndex]:SetText(DEFAULT_STAGE_LABELS[stageIndex])
         end
         settings.outOfZoneLabel = DEFAULT_OUT_OF_ZONE_LABEL
+        settings.ambushCustomText = ""
         outZoneEdit:SetText(DEFAULT_OUT_OF_ZONE_LABEL)
+        ambushLabelEdit:SetText("")
         UpdateBarDisplay()
+    end)
+
+    local restoreSoundsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    restoreSoundsButton:SetSize(180, 24)
+    restoreSoundsButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -793)
+    restoreSoundsButton:SetText("Restore Default Sounds")
+    restoreSoundsButton:SetScript("OnClick", function()
+        settings.soundsEnabled = DEFAULTS.soundsEnabled
+        settings.soundChannel = DEFAULTS.soundChannel
+        settings.soundEnhance = DEFAULTS.soundEnhance
+        settings.ambushSoundEnabled = DEFAULTS.ambushSoundEnabled
+        settings.ambushVisualEnabled = DEFAULTS.ambushVisualEnabled
+        settings.ambushSoundPath = DEFAULTS.ambushSoundPath
+        settings.soundFileNames = {}
+        for _, fileName in ipairs(DEFAULT_SOUND_FILENAMES) do
+            table.insert(settings.soundFileNames, fileName)
+        end
+        for stageIndex = 1, MAX_STAGE do
+            settings.stageSounds[stageIndex] = DEFAULTS.stageSounds[stageIndex]
+        end
+        NormalizeSoundSettings()
+        NormalizeAmbushSettings()
+        if panel.PreydatorRefreshControls then
+            panel.PreydatorRefreshControls()
+        end
     end)
 
     local resetAllButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     resetAllButton:SetSize(180, 24)
-    resetAllButton:SetPoint("TOPLEFT", restoreNamesButton, "BOTTOMLEFT", 0, -6)
+    resetAllButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -821)
     resetAllButton:SetText("Reset All Defaults")
     resetAllButton:SetScript("OnClick", function()
         ResetAllSettings()
@@ -1922,10 +2531,61 @@ EnsureOptionsPanel = function()
         end
     end)
 
-    panel:SetScript("OnShow", function()
-        NormalizeLabelSettings()
+    local customSoundTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    customSoundTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -631)
+    customSoundTitle:SetText("Custom Sound Files: No Spaces")
+
+    local customSoundPathLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    customSoundPathLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -659)
+    customSoundPathLabel:SetText("Interface\\AddOns\\Preydator\\sounds\\")
+
+    local customSoundEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    customSoundEdit:SetSize(210, 20)
+    customSoundEdit:SetAutoFocus(false)
+    customSoundEdit:SetTextInsets(6, 6, 0, 0)
+    customSoundEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -687)
+    customSoundEdit:SetText("")
+
+    local addCustomSoundButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    addCustomSoundButton:SetSize(100, 22)
+    addCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -715)
+    addCustomSoundButton:SetText("Add File")
+    addCustomSoundButton:SetScript("OnClick", function()
+        local ok, message = AddSoundFileName(customSoundEdit:GetText())
+        if not ok then
+            print("Preydator: " .. tostring(message))
+            return
+        end
+
+        customSoundEdit:SetText("")
         if panel.PreydatorRefreshControls then
             panel.PreydatorRefreshControls()
+        end
+        print("Preydator: Added sound file '" .. tostring(message) .. "'.")
+    end)
+
+    local removeCustomSoundButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    removeCustomSoundButton:SetSize(110, 22)
+    removeCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 130, -715)
+    removeCustomSoundButton:SetText("Remove File")
+    removeCustomSoundButton:SetScript("OnClick", function()
+        local ok, message = RemoveSoundFileName(customSoundEdit:GetText())
+        if not ok then
+            print("Preydator: " .. tostring(message))
+            return
+        end
+
+        customSoundEdit:SetText("")
+        if panel.PreydatorRefreshControls then
+            panel.PreydatorRefreshControls()
+        end
+        print("Preydator: Removed sound file '" .. tostring(message) .. "'.")
+    end)
+
+    panelRoot:SetScript("OnShow", function()
+        NormalizeLabelSettings()
+        if panelRoot.PreydatorRefreshControls then
+            panelRoot.PreydatorRefreshControls()
         end
     end)
 
@@ -1957,26 +2617,31 @@ EnsureOptionsPanel = function()
         [PERCENT_DISPLAY_OFF] = { text = "Off" },
     }
 
-    local textureDropdown = AddDropdown(panel, "Texture", 320, -130, 170, textureOptions, function()
+    local progressSegmentOptions = {
+        [PROGRESS_SEGMENTS_QUARTERS] = { text = "Quarters (25/50/75/100)" },
+        [PROGRESS_SEGMENTS_THIRDS] = { text = "Thirds (33/66/100)" },
+    }
+
+    local textureDropdown = AddDropdown(panel, "Texture", 20, -243, 170, textureOptions, function()
         return settings.textureKey
     end, function(key)
         settings.textureKey = key
         ApplyBarSettings()
     end)
-    local fillColorSwatch = AddColorSwatch(panel, 530, -150, function()
+    local fillColorSwatch = AddColorSwatch(panel, 230, -263, function()
         return settings.fillColor
     end, function(color)
         settings.fillColor = { color[1], color[2], color[3], color[4] }
         ApplyBarSettings()
     end, true)
 
-    local titleFontDropdown = AddDropdown(panel, "Title Font", 320, -185, 170, fontOptions, function()
+    local titleFontDropdown = AddDropdown(panel, "Title Font", 20, -295, 170, fontOptions, function()
         return settings.titleFontKey
     end, function(key)
         settings.titleFontKey = key
         ApplyBarSettings()
     end)
-    local titleColorSwatch = AddColorSwatch(panel, 530, -203, function()
+    local titleColorSwatch = AddColorSwatch(panel, 230, -315, function()
         return settings.titleColor
     end, function(color)
         settings.titleColor = { color[1], color[2], color[3], color[4] }
@@ -1984,13 +2649,13 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end, true)
 
-    local percentFontDropdown = AddDropdown(panel, "Percent Font", 320, -232, 170, fontOptions, function()
+    local percentFontDropdown = AddDropdown(panel, "Percent Font", 20, -347, 170, fontOptions, function()
         return settings.percentFontKey
     end, function(key)
         settings.percentFontKey = key
         ApplyBarSettings()
     end)
-    local percentColorSwatch = AddColorSwatch(panel, 530, -253, function()
+    local percentColorSwatch = AddColorSwatch(panel, 230, -367, function()
         return settings.percentColor
     end, function(color)
         settings.percentColor = { color[1], color[2], color[3], color[4] }
@@ -1998,29 +2663,77 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end, true)
 
-    local soundsCheckbox = AddCheckbox(panel, "Enable sounds", 320, -360, function() return settings.soundsEnabled end, function(value)
+    local soundsCheckbox = AddCheckbox(panel, "Enable sounds", 20, -111, function() return settings.soundsEnabled end, function(value)
         settings.soundsEnabled = value
     end)
 
-    local soundChannelDropdown = AddDropdown(panel, "Sound Channel", 320, -295, 170, channelOptions, function()
+    local ambushSoundCheckbox = AddCheckbox(panel, "Ambush sound alert", 320, -55, function() return settings.ambushSoundEnabled ~= false end, function(value)
+        settings.ambushSoundEnabled = value
+    end)
+
+    local ambushVisualCheckbox = AddCheckbox(panel, "Ambush visual alert", 320, -83, function() return settings.ambushVisualEnabled ~= false end, function(value)
+        settings.ambushVisualEnabled = value
+        if not value then
+            state.ambushAlertUntil = 0
+            UpdateBarDisplay()
+        end
+    end)
+
+    local stage1SoundDropdown = AddDropdown(panel, "Stage 1 Sound", 320, -191, 170, BuildSoundDropdownOptions, function()
+        return settings.stageSounds[1]
+    end, function(key)
+        settings.stageSounds[1] = key
+        NormalizeSoundSettings()
+    end)
+
+    local stage2SoundDropdown = AddDropdown(panel, "Stage 2 Sound", 320, -243, 170, BuildSoundDropdownOptions, function()
+        return settings.stageSounds[2]
+    end, function(key)
+        settings.stageSounds[2] = key
+        NormalizeSoundSettings()
+    end)
+
+    local stage3SoundDropdown = AddDropdown(panel, "Stage 3 Sound", 320, -295, 170, BuildSoundDropdownOptions, function()
+        return settings.stageSounds[3]
+    end, function(key)
+        settings.stageSounds[3] = key
+        NormalizeSoundSettings()
+    end)
+
+    local ambushSoundDropdown = AddDropdown(panel, "Ambush Sound", 320, -347, 170, BuildSoundDropdownOptions, function()
+        return settings.ambushSoundPath
+    end, function(key)
+        settings.ambushSoundPath = key
+        NormalizeAmbushSettings()
+    end)
+
+    local testAmbushAlertButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    testAmbushAlertButton:SetSize(170, 24)
+    testAmbushAlertButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -715)
+    testAmbushAlertButton:SetText("Test Ambush")
+    testAmbushAlertButton:SetScript("OnClick", function()
+        TriggerAmbushAlert("Manual test", "options")
+    end)
+
+    local soundChannelDropdown = AddDropdown(panel, "Sound Channel", 320, -139, 170, channelOptions, function()
         return settings.soundChannel
     end, function(key)
         settings.soundChannel = key
     end)
 
-    local enhanceSlider = AddSlider(panel, "Enhance Sounds", 320, -400, 0, 100, 5, function()
+    local enhanceSlider = AddSlider(panel, "Enhance Sounds", 20, -547, 0, 100, 5, function()
         return settings.soundEnhance or 0
     end, function(value)
         settings.soundEnhance = Clamp(math.floor(value + 0.5), 0, 100)
     end)
 
-    local showTicksCheckbox = AddCheckbox(panel, "Show tick marks", 320, -50, function() return settings.showTicks end, function(value)
+    local showTicksCheckbox = AddCheckbox(panel, "Show tick marks", 320, -111, function() return settings.showTicks end, function(value)
         settings.showTicks = value
         ApplyBarSettings()
         UpdateBarDisplay()
     end)
 
-    local percentDisplayDropdown = AddDropdown(panel, "Percent Display", 320, -80, 170, percentDisplayOptions, function()
+    local percentDisplayDropdown = AddDropdown(panel, "Percent Display", 20, -191, 170, percentDisplayOptions, function()
         return settings.percentDisplay
     end, function(key)
         settings.percentDisplay = key
@@ -2029,10 +2742,21 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
+    local progressSegmentsDropdown = AddDropdown(panel, "Progress Segments", 20, -139, 170, progressSegmentOptions, function()
+        return settings.progressSegments
+    end, function(key)
+        settings.progressSegments = key
+        NormalizeProgressSettings()
+        ApplyBarSettings()
+        UpdateBarDisplay()
+    end)
+
     local function RefreshOptionsControls()
         if lockCheckbox then lockCheckbox:SetChecked(settings.locked) end
         if onlyShowInPreyZoneCheckbox then onlyShowInPreyZoneCheckbox:SetChecked(settings.onlyShowInPreyZone) end
         if soundsCheckbox then soundsCheckbox:SetChecked(settings.soundsEnabled) end
+        if ambushSoundCheckbox then ambushSoundCheckbox:SetChecked(settings.ambushSoundEnabled ~= false) end
+        if ambushVisualCheckbox then ambushVisualCheckbox:SetChecked(settings.ambushVisualEnabled ~= false) end
         if showTicksCheckbox then showTicksCheckbox:SetChecked(settings.showTicks) end
 
         if scaleSlider then scaleSlider:SetValue(settings.scale) end
@@ -2046,18 +2770,24 @@ EnsureOptionsPanel = function()
         if percentFontDropdown and percentFontDropdown.PreydatorRefreshText then percentFontDropdown.PreydatorRefreshText() end
         if soundChannelDropdown and soundChannelDropdown.PreydatorRefreshText then soundChannelDropdown.PreydatorRefreshText() end
         if percentDisplayDropdown and percentDisplayDropdown.PreydatorRefreshText then percentDisplayDropdown.PreydatorRefreshText() end
+        if progressSegmentsDropdown and progressSegmentsDropdown.PreydatorRefreshText then progressSegmentsDropdown.PreydatorRefreshText() end
+        if ambushSoundDropdown and ambushSoundDropdown.PreydatorRefreshText then ambushSoundDropdown.PreydatorRefreshText() end
+        if stage1SoundDropdown and stage1SoundDropdown.PreydatorRefreshText then stage1SoundDropdown.PreydatorRefreshText() end
+        if stage2SoundDropdown and stage2SoundDropdown.PreydatorRefreshText then stage2SoundDropdown.PreydatorRefreshText() end
+        if stage3SoundDropdown and stage3SoundDropdown.PreydatorRefreshText then stage3SoundDropdown.PreydatorRefreshText() end
 
         if fillColorSwatch and fillColorSwatch.PreydatorRefresh then fillColorSwatch.PreydatorRefresh() end
         if titleColorSwatch and titleColorSwatch.PreydatorRefresh then titleColorSwatch.PreydatorRefresh() end
         if percentColorSwatch and percentColorSwatch.PreydatorRefresh then percentColorSwatch.PreydatorRefresh() end
 
-        for stageIndex = 1, MAX_STAGE do
+        for stageIndex = 1, (MAX_STAGE - 1) do
             stageNameEdits[stageIndex]:SetText(settings.stageLabels[stageIndex])
         end
         outZoneEdit:SetText(settings.outOfZoneLabel)
+        ambushLabelEdit:SetText(settings.ambushCustomText)
     end
 
-    panel.PreydatorRefreshControls = RefreshOptionsControls
+    panelRoot.PreydatorRefreshControls = RefreshOptionsControls
 
     local function AddSoundTestButton(text, x, y, stageIndex)
         local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -2066,41 +2796,41 @@ EnsureOptionsPanel = function()
         button:SetText(text)
         button:SetScript("OnClick", function()
             state.stageSoundPlayed[stageIndex] = nil
-            if not ResolveStageSoundPath(stageIndex) then
+            local path = ResolveStageSoundPath(stageIndex)
+            if not path then
                 print("Preydator: No stage " .. stageIndex .. " sound configured.")
                 return
             end
 
             if not TryPlayStageSound(stageIndex, true) then
-                print("Preydator: Stage " .. stageIndex .. " sound failed to play. Check file path and channel volume.")
+                print("Preydator: Stage " .. stageIndex .. " sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
             end
         end)
     end
 
-    AddSoundTestButton("Test 25%", 320, -430, 1)
-    AddSoundTestButton("Test 50%", 320, -460, 2)
-    AddSoundTestButton("Test 75%", 320, -492, 3)
-    AddSoundTestButton("Test 100%", 320, -522, 4)
+    AddSoundTestButton("Test Stage 1", 320, -631, 1)
+    AddSoundTestButton("Test Stage 2", 320, -659, 2)
+    AddSoundTestButton("Test Stage 3", 320, -687, 3)
 
     local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    note:SetPoint("TOPLEFT", panel, "TOPLEFT", 320, -552)
-    note:SetWidth(280)
+    note:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -575)
+    note:SetWidth(260)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
     note:SetText("Enhance Sounds layers extra plays for perceived loudness. WoW does not expose true per-addon file volume.")
 
     if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(panel, "Preydator", "Preydator")
+        local category = Settings.RegisterCanvasLayoutCategory(panelRoot, "Preydator", "Preydator")
         Settings.RegisterAddOnCategory(category)
         if type(category) == "table" then
             optionsCategoryID = category.ID or (category.GetID and category:GetID())
-            panel.categoryID = optionsCategoryID
+            panelRoot.categoryID = optionsCategoryID
         end
     elseif _G.InterfaceOptions_AddCategory then
-        _G.InterfaceOptions_AddCategory(panel)
+        _G.InterfaceOptions_AddCategory(panelRoot)
     end
 
-    optionsPanel = panel
+    optionsPanel = panelRoot
 end
 
 local function HandleSlashCommand(message)
@@ -2193,7 +2923,7 @@ local function HandleSlashCommand(message)
     print("Preydator commands: options | inspect | show | hide | toggle | mem | debug <on|off|show|clear>")
 end
 
-frame:SetScript("OnEvent", function(_, event, arg1)
+frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnAddonLoaded()
         EnsureOptionsPanel()
@@ -2205,10 +2935,19 @@ frame:SetScript("OnEvent", function(_, event, arg1)
         return
     end
 
+    RunModuleHook("OnEvent", event, arg1, arg2)
+
     if event == "PLAYER_LOGIN" then
         EnsureBar()
         ApplyBarSettings()
         UpdateBarDisplay()
+        return
+    end
+
+    if event == "CHAT_MSG_SYSTEM" or event == "CHAT_MSG_MONSTER_SAY" or event == "CHAT_MSG_MONSTER_YELL" or event == "CHAT_MSG_MONSTER_EMOTE" or event == "RAID_BOSS_EMOTE" then
+        if IsAmbushSystemMessage(arg1, arg2) then
+            TriggerAmbushAlert(arg1, event)
+        end
         return
     end
 
