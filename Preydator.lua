@@ -16,6 +16,7 @@ local GetQuestProgressBarPercent = _G.GetQuestProgressBarPercent
 local UIParent = _G.UIParent
 local GetTime = _G.GetTime
 local GetZoneText = _G.GetZoneText
+local IsInInstance = _G.IsInInstance
 local SlashCmdList = _G["SlashCmdList"]
 local Settings = _G["Settings"]
 local collectgarbage = _G.collectgarbage
@@ -104,6 +105,11 @@ local FONT_PRESETS = {
     skurri = "Fonts\\SKURRI.TTF",
     morpheus = "Fonts\\MORPHEUS.TTF",
 }
+
+-- Forward declaration for helpers used before their implementation block.
+local NormalizeSoundSettings
+local GetSoundPathForKey
+local IsValidQuestID
 
 local DEFAULTS = {
     point = { anchor = "CENTER", relativePoint = "CENTER", x = 0, y = -200 },
@@ -600,7 +606,7 @@ local function RemoveSoundFileName(fileName)
     return true, normalized
 end
 
-local function GetSoundPathForKey(soundKey, fallbackPath)
+GetSoundPathForKey = function(soundKey, fallbackPath)
     if soundKey == AMBUSH_SOUND_ALERT then
         return ALERT_SOUND_PATH
     end
@@ -714,26 +720,57 @@ local function ExtractPreyTargetFromQuestTitle(questID)
     return nil, nil
 end
 
-local function IsAmbushSystemMessage(message, sender)
-    if type(message) ~= "string" or message == "" then
+local function StringContainsInsensitiveSafe(haystack, needle)
+    if type(haystack) ~= "string" or type(needle) ~= "string" or needle == "" then
         return false
     end
 
-    local lowered = string.lower(message)
-    if string.find(lowered, "ambush", 1, true) then
+    local ok, found = pcall(function()
+        local haystackLower = string.lower(haystack)
+        local needleLower = string.lower(needle)
+        return string.find(haystackLower, needleLower, 1, true) ~= nil
+    end)
+
+    return ok and found or false
+end
+
+local function IsAmbushSystemMessage(message, sender)
+    if type(message) ~= "string" then
+        return false
+    end
+
+    if StringContainsInsensitiveSafe(message, "ambush") then
         return true
     end
 
     local preyName = state and state.preyTargetName
     if type(preyName) == "string" and preyName ~= "" then
-        local preyLower = string.lower(preyName)
-        local senderLower = type(sender) == "string" and string.lower(sender) or ""
-        if string.find(lowered, preyLower, 1, true) or string.find(senderLower, preyLower, 1, true) then
+        if StringContainsInsensitiveSafe(message, preyName) or StringContainsInsensitiveSafe(sender, preyName) then
             return true
         end
     end
 
     return false
+end
+
+local function ShouldScanAmbushChat()
+    if not state or not IsValidQuestID(state.activeQuestID) then
+        return false
+    end
+
+    if not IsInInstance then
+        return true
+    end
+
+    local ok, inInstance, instanceType = pcall(IsInInstance)
+    if not ok or not inInstance then
+        return true
+    end
+
+    return instanceType ~= "party"
+        and instanceType ~= "raid"
+        and instanceType ~= "scenario"
+        and instanceType ~= "delve"
 end
 
 local function TriggerAmbushAlert(message, source)
@@ -765,7 +802,7 @@ local function IsQuestStillActive(questID)
     return true
 end
 
-local function IsValidQuestID(questID)
+IsValidQuestID = function(questID)
     return type(questID) == "number" and questID > 0
 end
 
@@ -1655,7 +1692,7 @@ local function TrimText(value, maxLen)
     return string.sub(value, 1, maxLen - 3) .. "..."
 end
 
-local function NormalizeSoundSettings()
+NormalizeSoundSettings = function()
     if type(settings.soundFileNames) ~= "table" then
         settings.soundFileNames = {}
     end
@@ -2945,7 +2982,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     end
 
     if event == "CHAT_MSG_SYSTEM" or event == "CHAT_MSG_MONSTER_SAY" or event == "CHAT_MSG_MONSTER_YELL" or event == "CHAT_MSG_MONSTER_EMOTE" or event == "RAID_BOSS_EMOTE" then
-        if IsAmbushSystemMessage(arg1, arg2) then
+        if ShouldScanAmbushChat() and IsAmbushSystemMessage(arg1, arg2) then
             TriggerAmbushAlert(arg1, event)
         end
         return

@@ -2,7 +2,7 @@
 
 Preydator is a World of Warcraft addon that tracks your active Prey Hunt stage, displays a customizable progress bar, and plays stage-based audio cues.
 
-Current release: `v1.1.0`
+Current release: `v1.1.1`
 
 ## Quick start
 
@@ -44,14 +44,14 @@ Optional behavior:
    `Interface/AddOns/Preydator/sounds/`
 2. Open options: `/pd options`
 3. In **Custom Sound Files**:
-   - Type the filename (examples: `my alert`, `my alert.ogg`, or full path)
+   - Type the filename (examples: `my-alert`, `my_alert.ogg`, or full path)
    - Click **Add File**
 4. Select the file in stage/ambush dropdowns.
 
 Input behavior:
 
 - `.ogg` is optional when typing; it is appended automatically.
-- Names with spaces are supported.
+- Names with spaces are not supported.
 - Full prefix path is accepted: `Interface\\AddOns\\Preydator\\sounds\\...`
 - Default files are protected and cannot be removed.
 
@@ -92,13 +92,3 @@ Sound defaults:
 - `/preydator debug <on|off|show|clear>` - debug logging controls
 
 Note: debug logging is off by default on load.
-
-## Packaging ZIP Reminder
-
-When creating a release ZIP, include addon runtime files only.
-
-Exclude:
-
-- `.git/`
-- `issues/`
-- `Modules/`

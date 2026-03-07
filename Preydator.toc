@@ -2,7 +2,7 @@
 ## Title: Preydator
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
-## Version: 1.1.0
+## Version: 1.1.1
 ## SavedVariables: PreydatorDB, PreydatorDebugDB
 
 Preydator.lua

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 - 2026-03-06
+
+### Fixed
+- Resolved startup/runtime Lua error from calling `NormalizeSoundSettings` before local function initialization.
+- Resolved a second ordering regression where `GetSoundPathForKey` could be called before local function initialization.
+- Added explicit forward declarations for both helpers to prevent nil global-call failures during early settings normalization paths.
+- Hardened ambush chat detection against tainted/secret chat strings to avoid `attempt to compare local 'message'` runtime errors.
+- Disabled ambush chat scanning while in `party`, `raid`, `scenario`, or `delve` instances where Blizzard restricts actionable chat payloads.
+- Disabled ambush chat scanning when no active prey quest is tracked.
+
 ## 1.1.0 - 2026-03-05
 
 ### Added
