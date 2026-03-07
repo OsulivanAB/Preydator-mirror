@@ -1,6 +1,27 @@
 # Changelog
 
+## 1.1.2 - 2026-03-06
+
+### Changed
+- Release polish pass for stage-4 prey encounter behavior and map-open fallback interactions.
+- Core slash help now only lists user-facing commands.
+- Encounter suppression gating tightened to active prey hunt flow only (`active quest` + `in zone` + `stage > 1`).
+
+### Fixed
+- Stage-4 bar click fallback no longer depends on waypoint availability; map opening proceeds even when quest coordinates are unavailable.
+- Prevented duplicate map toggles from mouse down/up double execution in stage-4 fallback mode.
+- Hardened widget suppression paths against restricted/forbidden table access and animation-group API misuse.
+
+### Dev / Internal
+- Debug inspect slash handling moved out of core command flow and delegated to optional modules.
+- Added optional debug module: `Modules/DebugInspect.lua` (not loaded by default in `Preydator.toc`).
+
 ## 1.1.1 - 2026-03-06
+
+### Added
+- New settings checkbox: **Disable Default Prey Icon**.
+- Stage 4 quick-navigation: click the default prey encounter icon to open the world map and set a waypoint for the active prey quest.
+- Stage 4 fallback when icon is hidden: click the locked Preydator bar to open the world map and set prey quest waypoint.
 
 ### Fixed
 - Resolved startup/runtime Lua error from calling `NormalizeSoundSettings` before local function initialization.
@@ -9,6 +30,8 @@
 - Hardened ambush chat detection against tainted/secret chat strings to avoid `attempt to compare local 'message'` runtime errors.
 - Disabled ambush chat scanning while in `party`, `raid`, `scenario`, or `delve` instances where Blizzard restricts actionable chat payloads.
 - Disabled ambush chat scanning when no active prey quest is tracked.
+- Improved default prey icon toggle behavior by scanning prey widget frame regions so icon hide/show applies more reliably across widget containers.
+- Default prey encounter suppression now only applies during active prey hunt stages (in-zone or while progress data is active).
 
 ## 1.1.0 - 2026-03-05
 

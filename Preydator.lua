@@ -12,13 +12,20 @@ local C_QuestLog = _G["C_QuestLog"]
 local C_UIWidgetManager = _G["C_UIWidgetManager"]
 local C_TaskQuest = _G["C_TaskQuest"]
 local C_Map = _G["C_Map"]
+local C_SuperTrack = _G["C_SuperTrack"]
 local GetQuestProgressBarPercent = _G.GetQuestProgressBarPercent
 local UIParent = _G.UIParent
+local UiMapPoint = _G.UiMapPoint
 local GetTime = _G.GetTime
 local GetZoneText = _G.GetZoneText
 local IsInInstance = _G.IsInInstance
 local SlashCmdList = _G["SlashCmdList"]
 local Settings = _G["Settings"]
+local geterrorhandler = _G.geterrorhandler
+local EnumerateFrames = _G.EnumerateFrames
+local OpenQuestMap = _G.OpenQuestMap
+local ToggleWorldMap = _G.ToggleWorldMap
+local QuestMapFrame_OpenToQuestDetails = _G.QuestMapFrame_OpenToQuestDetails
 local collectgarbage = _G.collectgarbage
 local UIDropDownMenu_Initialize = _G.UIDropDownMenu_Initialize
 local UIDropDownMenu_CreateInfo = _G.UIDropDownMenu_CreateInfo
@@ -110,6 +117,7 @@ local FONT_PRESETS = {
 local NormalizeSoundSettings
 local GetSoundPathForKey
 local IsValidQuestID
+local ShouldSuppressDefaultPreyEncounter
 
 local DEFAULTS = {
     point = { anchor = "CENTER", relativePoint = "CENTER", x = 0, y = -200 },
@@ -120,6 +128,7 @@ local DEFAULTS = {
     locked = true,
     forceShowBar = false,
     onlyShowInPreyZone = false,
+    disableDefaultPreyIcon = false,
     fillColor = { 0.85, 0.2, 0.2, 0.95 },
     bgColor = { 0, 0, 0, 0.6 },
     titleColor = { 1, 0.82, 0, 1 },
@@ -192,12 +201,15 @@ local optionsScrollFrame
 local optionsContentFrame
 local EnsureOptionsPanel
 local candidateWidgetSetIDs = {}
+local targetedWidgetGlobalFrameCache = {}
 local ExtractWidgetQuestID
 local colorPickerSessionCounter = 0
 local AddDebugLog
 local TryPlaySound
 local TryPlayStageSound
 local UpdateBarDisplay
+local ApplyDefaultPreyIconVisibility
+local TryOpenPreyQuestOnMap
 
 local function RunModuleHook(hookName, ...)
     for _, module in pairs(Preydator.modules) do
@@ -1094,7 +1106,6 @@ local function ApplyBarSettings()
     end
 
     barFrame:SetMovable(true)
-    barFrame:EnableMouse(not settings.locked)
 end
 
 local function EnsureBar()
@@ -1114,27 +1125,58 @@ local function EnsureBar()
     barFrame = createdBar
 
     barFrame:SetScript("OnMouseDown", function(self, button)
+        self.PreydatorWasDragging = false
+        self.PreydatorHandledMapClick = false
+        local allowStageFourMapClickFallback = settings
+            and settings.disableDefaultPreyIcon == true
+            and state
+            and state.stage == MAX_STAGE
+        if allowStageFourMapClickFallback and button == "LeftButton" then
+            self.PreydatorHandledMapClick = true
+            TryOpenPreyQuestOnMap()
+            return
+        end
+
         if button == "LeftButton" and settings and not settings.locked then
+            self.PreydatorWasDragging = true
             self:StartMoving()
         end
     end)
 
-    barFrame:SetScript("OnMouseUp", function(self)
-        self:StopMovingOrSizing()
-        settings.point.anchor = "CENTER"
-        settings.point.relativePoint = "CENTER"
-
-        local frameCenterX, frameCenterY = self:GetCenter()
-        local parentCenterX, parentCenterY = UIParent:GetCenter()
-        if frameCenterX and frameCenterY and parentCenterX and parentCenterY then
-            settings.point.x = Round(frameCenterX - parentCenterX)
-            settings.point.y = Round(frameCenterY - parentCenterY)
+    barFrame:SetScript("OnMouseUp", function(self, button)
+        if self.PreydatorHandledMapClick then
+            self.PreydatorHandledMapClick = false
             return
         end
 
-        local _, _, _, x, y = self:GetPoint(1)
-        settings.point.x = Round(tonumber(x) or DEFAULTS.point.x)
-        settings.point.y = Round(tonumber(y) or DEFAULTS.point.y)
+        if self.PreydatorWasDragging then
+            self:StopMovingOrSizing()
+            self.PreydatorWasDragging = false
+            settings.point.anchor = "CENTER"
+            settings.point.relativePoint = "CENTER"
+
+            local frameCenterX, frameCenterY = self:GetCenter()
+            local parentCenterX, parentCenterY = UIParent:GetCenter()
+            if frameCenterX and frameCenterY and parentCenterX and parentCenterY then
+                settings.point.x = Round(frameCenterX - parentCenterX)
+                settings.point.y = Round(frameCenterY - parentCenterY)
+                return
+            end
+
+            local _, _, _, x, y = self:GetPoint(1)
+            settings.point.x = Round(tonumber(x) or DEFAULTS.point.x)
+            settings.point.y = Round(tonumber(y) or DEFAULTS.point.y)
+            return
+        end
+
+        if button == "LeftButton"
+            and settings
+            and settings.disableDefaultPreyIcon == true
+            and state
+            and state.stage == MAX_STAGE
+        then
+            TryOpenPreyQuestOnMap()
+        end
     end)
 
     local bg = barFrame:CreateTexture(nil, "background")
@@ -1446,6 +1488,7 @@ end
 
 UpdateBarDisplay = function()
     EnsureBar()
+    ApplyDefaultPreyIconVisibility()
 
     local now = GetTime and GetTime() or 0
     local hasActiveQuest = state.activeQuestID ~= nil
@@ -1528,6 +1571,14 @@ UpdateBarDisplay = function()
     state.lastDisplayReason = displayReason
 
     state.stage = stage
+
+    local allowBarDrag = settings and not settings.locked
+    local allowStageFourMapClickFallback = settings
+        and settings.disableDefaultPreyIcon == true
+        and stage == MAX_STAGE
+    if barFrame and barFrame.EnableMouse then
+        barFrame:EnableMouse((allowBarDrag and true or false) or (allowStageFourMapClickFallback and true or false))
+    end
 
     if forceAmbushAlert then
         local customAmbushText = settings and settings.ambushCustomText
@@ -1651,6 +1702,648 @@ local function GetCandidateWidgetSetIDs()
     end
 
     return candidateWidgetSetIDs
+end
+
+local function IsLikelyIconName(value)
+    if type(value) ~= "string" then
+        return false
+    end
+
+    return string.find(string.lower(value), "icon", 1, true) ~= nil
+end
+
+local function SetRegionShown(region, shouldShow)
+    if not region then
+        return false
+    end
+
+    if region.SetShown then
+        region:SetShown(shouldShow)
+        return true
+    end
+
+    if shouldShow and region.Show then
+        region:Show()
+        return true
+    end
+
+    if (not shouldShow) and region.Hide then
+        region:Hide()
+        return true
+    end
+
+    return false
+end
+
+local function ApplyWidgetFrameSuppression(frameRef, suppress)
+    if not frameRef then
+        return
+    end
+
+    local visited = {}
+    local function shouldHardSuppress(target)
+        if not target then
+            return false
+        end
+
+        local objectType = target.GetObjectType and target:GetObjectType() or nil
+        if objectType == "ModelScene" or objectType == "PlayerModel" or objectType == "Model" then
+            return true
+        end
+
+        local name = target.GetName and target:GetName() or ""
+        local lowered = string.lower(tostring(name or ""))
+        return string.find(lowered, "modelscene", 1, true) ~= nil
+            or string.find(lowered, "scriptedanimation", 1, true) ~= nil
+            or string.find(lowered, "anim", 1, true) ~= nil
+            or string.find(lowered, "glow", 1, true) ~= nil
+    end
+
+    local function applyHardVisibilitySuppression(target)
+        if not target or not target.Hide then
+            return
+        end
+
+        if not shouldHardSuppress(target) then
+            return
+        end
+
+        if suppress then
+            if target.PreydatorWasShown == nil and target.IsShown then
+                target.PreydatorWasShown = target:IsShown() and true or false
+            end
+            pcall(target.Hide, target)
+            return
+        end
+
+        if target.PreydatorWasShown then
+            target.PreydatorWasShown = nil
+            if target.Show then
+                pcall(target.Show, target)
+            end
+        elseif target.PreydatorWasShown ~= nil then
+            target.PreydatorWasShown = nil
+        end
+    end
+
+    local function applyAnimationSuppression(target)
+        if not target or not target.GetAnimationGroups then
+            return
+        end
+
+        local okGroups, groups = pcall(function()
+            return { target:GetAnimationGroups() }
+        end)
+        if not okGroups or type(groups) ~= "table" then
+            return
+        end
+
+        for _, group in ipairs(groups) do
+            if group then
+                if suppress then
+                    local isPlaying = false
+                    if group.IsPlaying then
+                        local okPlaying, playing = pcall(group.IsPlaying, group)
+                        isPlaying = okPlaying and playing and true or false
+                    end
+                    group.PreydatorWasPlaying = isPlaying and true or false
+                    if group.Stop then
+                        pcall(group.Stop, group)
+                    end
+                elseif group.PreydatorWasPlaying then
+                    group.PreydatorWasPlaying = nil
+                    if group.Play then
+                        pcall(group.Play, group)
+                    end
+                end
+            end
+        end
+    end
+
+    local function applyToFrameTree(node, depth)
+        if not node or visited[node] or depth > 8 then
+            return
+        end
+
+        visited[node] = true
+        applyAnimationSuppression(node)
+        applyHardVisibilitySuppression(node)
+
+        if node.SetAlpha then
+            if suppress then
+                if node.PreydatorOriginalAlpha == nil and node.GetAlpha then
+                    node.PreydatorOriginalAlpha = node:GetAlpha()
+                end
+                node:SetAlpha(0)
+            elseif node.PreydatorOriginalAlpha ~= nil then
+                node:SetAlpha(node.PreydatorOriginalAlpha)
+            end
+        end
+
+        if node.GetRegions then
+            local regions = { node:GetRegions() }
+            for _, region in ipairs(regions) do
+                applyAnimationSuppression(region)
+                applyHardVisibilitySuppression(region)
+                if region and region.SetAlpha then
+                    if suppress then
+                        if region.PreydatorOriginalAlpha == nil and region.GetAlpha then
+                            region.PreydatorOriginalAlpha = region:GetAlpha()
+                        end
+                        region:SetAlpha(0)
+                    elseif region.PreydatorOriginalAlpha ~= nil then
+                        region:SetAlpha(region.PreydatorOriginalAlpha)
+                    end
+                end
+            end
+        end
+
+        if node.GetChildren then
+            local children = { node:GetChildren() }
+            for _, child in ipairs(children) do
+                applyToFrameTree(child, depth + 1)
+            end
+        end
+    end
+
+    applyToFrameTree(frameRef, 0)
+
+    if frameRef.EnableMouse then
+        frameRef:EnableMouse(not suppress)
+    end
+end
+
+local function ApplySuppressionToImmediateWidgetParent(frameRef, containerFrame, suppress)
+    if not frameRef or not frameRef.GetParent then
+        return
+    end
+
+    local okParent, parent = pcall(frameRef.GetParent, frameRef)
+    if not okParent or not parent or parent == UIParent then
+        return
+    end
+
+    local parentName = parent.GetName and parent:GetName() or ""
+    local containerName = containerFrame and containerFrame.GetName and containerFrame:GetName() or ""
+    local loweredParent = string.lower(tostring(parentName))
+    local loweredContainer = string.lower(tostring(containerName))
+
+    local safeParent = parent == containerFrame
+        or (loweredParent ~= "" and string.find(loweredParent, "uiwidget", 1, true) ~= nil)
+        or (loweredContainer ~= "" and loweredParent ~= "" and string.find(loweredParent, loweredContainer, 1, true) ~= nil)
+
+    if safeParent then
+        ApplyWidgetFrameSuppression(parent, suppress)
+    end
+end
+
+local function ShouldSuppressEncounterNow()
+    return settings
+        and settings.disableDefaultPreyIcon == true
+        and ShouldSuppressDefaultPreyEncounter()
+end
+
+local function EnsureWidgetSuppressionHook(frameRef)
+    if not frameRef or frameRef.PreydatorSuppressionHooked or not frameRef.HookScript then
+        return
+    end
+
+    frameRef.PreydatorSuppressionHooked = true
+    frameRef:HookScript("OnShow", function(self)
+        local ok = pcall(function()
+            if ShouldSuppressEncounterNow() then
+                ApplyWidgetFrameSuppression(self, true)
+            end
+        end)
+
+        if not ok then
+            -- Keep gameplay stable even if Blizzard updates widget internals.
+        end
+    end)
+end
+
+ShouldSuppressDefaultPreyEncounter = function()
+    local hasActiveQuest = IsValidQuestID(state and state.activeQuestID)
+    if not hasActiveQuest then
+        return false
+    end
+
+    -- Keep encounter suppression tightly scoped to active prey hunt flow only:
+    -- active quest + in prey zone + stage above opening state.
+    local inPreyZone = state and state.inPreyZone == true
+    local currentStage = GetStageFromState(state and state.progressState)
+    local isActiveHuntStage = currentStage > 1
+
+    return inPreyZone and isActiveHuntStage
+end
+
+local function TryGetPreyQuestWaypoint(questID)
+    if not IsValidQuestID(questID) then
+        return nil, nil, nil
+    end
+
+    if C_QuestLog and C_QuestLog.GetNextWaypoint then
+        local waypoint = C_QuestLog.GetNextWaypoint(questID)
+        if type(waypoint) == "table" then
+            local waypointMapID = tonumber(waypoint.uiMapID or waypoint.mapID)
+            local waypointX = tonumber((waypoint.position and waypoint.position.x) or waypoint.x)
+            local waypointY = tonumber((waypoint.position and waypoint.position.y) or waypoint.y)
+            if waypointMapID and waypointX and waypointY then
+                return waypointMapID, waypointX, waypointY
+            end
+        end
+    end
+
+    local mapCandidates = {}
+    local seenMapIDs = {}
+
+    local function addMapCandidate(mapID)
+        mapID = tonumber(mapID)
+        if mapID and mapID > 0 and not seenMapIDs[mapID] then
+            seenMapIDs[mapID] = true
+            mapCandidates[#mapCandidates + 1] = mapID
+        end
+    end
+
+    addMapCandidate(state and state.preyZoneMapID)
+    if C_Map and C_Map.GetBestMapForUnit then
+        addMapCandidate(C_Map.GetBestMapForUnit("player"))
+    end
+
+    if C_TaskQuest and C_TaskQuest.GetQuestLocation then
+        for _, mapID in ipairs(mapCandidates) do
+            local x, y = C_TaskQuest.GetQuestLocation(questID, mapID)
+            if x and y then
+                return mapID, x, y
+            end
+        end
+    end
+
+    if C_QuestLog and C_QuestLog.GetQuestsOnMap then
+        for _, mapID in ipairs(mapCandidates) do
+            local questsOnMap = C_QuestLog.GetQuestsOnMap(mapID)
+            if type(questsOnMap) == "table" then
+                for _, questInfo in ipairs(questsOnMap) do
+                    if questInfo and questInfo.questID == questID and questInfo.x and questInfo.y then
+                        return mapID, questInfo.x, questInfo.y
+                    end
+                end
+            end
+        end
+    end
+
+    return nil, nil, nil
+end
+
+TryOpenPreyQuestOnMap = function()
+    if not IsValidQuestID(state and state.activeQuestID) then
+        return false
+    end
+
+    local questID = state.activeQuestID
+
+    if OpenQuestMap then
+        pcall(OpenQuestMap)
+    elseif ToggleWorldMap then
+        ToggleWorldMap()
+    elseif _G.WorldMapFrame and _G.WorldMapFrame.Show then
+        _G.WorldMapFrame:Show()
+    end
+
+    if QuestMapFrame_OpenToQuestDetails then
+        pcall(QuestMapFrame_OpenToQuestDetails, questID)
+    end
+
+    local mapID, x, y = TryGetPreyQuestWaypoint(questID)
+    if mapID and x and y and C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates then
+        local waypointPoint = UiMapPoint.CreateFromCoordinates(mapID, x, y)
+        if waypointPoint then
+            C_Map.SetUserWaypoint(waypointPoint)
+            if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+            end
+        end
+    end
+
+    return true
+end
+
+local function TryGetWidgetFrameByID(container, widgetID)
+    if type(container) ~= "table" and type(container) ~= "userdata" then
+        return nil
+    end
+
+    if container.GetWidgetFrame then
+        local ok, frameRef = pcall(container.GetWidgetFrame, container, widgetID)
+        if ok and frameRef then
+            return frameRef
+        end
+    end
+
+    local possibleFrameTables = {
+        container.widgetFrames,
+        container.WidgetFrames,
+        container.activeWidgets,
+        container.ActiveWidgets,
+    }
+
+    for _, frameTable in ipairs(possibleFrameTables) do
+        if type(frameTable) == "table" and frameTable[widgetID] then
+            return frameTable[widgetID]
+        end
+    end
+
+    return nil
+end
+
+local function AttachStageFourMapClick(frameRef)
+    if not frameRef or frameRef.PreydatorStageFourClickHooked then
+        return
+    end
+
+    frameRef.PreydatorStageFourClickHooked = true
+    if frameRef.RegisterForDrag then
+        frameRef:RegisterForDrag()
+    end
+    if frameRef.EnableMouse then
+        frameRef:EnableMouse(true)
+    end
+
+    if frameRef.HookScript then
+        frameRef:HookScript("OnMouseUp", function(_, button)
+            if button ~= "LeftButton" then
+                return
+            end
+
+            if settings and settings.disableDefaultPreyIcon == true then
+                return
+            end
+
+            if state and state.stage == MAX_STAGE then
+                TryOpenPreyQuestOnMap()
+            end
+        end)
+    end
+end
+
+local function SetFrameIconVisible(targetFrame, shouldShow)
+    if not targetFrame then
+        return false
+    end
+
+    local didUpdate = false
+    local visited = {}
+    local iconFieldNames = {
+        "Icon",
+        "icon",
+        "IconTexture",
+        "iconTexture",
+        "LeftIcon",
+        "leftIcon",
+        "SpellIcon",
+        "spellIcon",
+    }
+
+    local function ScanFrame(frameRef, depth)
+        if not frameRef or visited[frameRef] or depth > 3 then
+            return
+        end
+
+        visited[frameRef] = true
+
+        local frameName = frameRef.GetName and frameRef:GetName() or nil
+        if IsLikelyIconName(frameName) and SetRegionShown(frameRef, shouldShow) then
+            didUpdate = true
+        end
+
+        if frameRef.GetRegions then
+            local regions = { frameRef:GetRegions() }
+            for _, region in ipairs(regions) do
+                local regionType = region and region.GetObjectType and region:GetObjectType() or nil
+                if regionType == "Texture" then
+                    local regionName = region.GetName and region:GetName() or nil
+                    if IsLikelyIconName(regionName) and SetRegionShown(region, shouldShow) then
+                        didUpdate = true
+                    end
+                end
+            end
+        end
+
+        if frameRef.GetChildren then
+            local children = { frameRef:GetChildren() }
+            for _, child in ipairs(children) do
+                ScanFrame(child, depth + 1)
+            end
+        end
+    end
+
+    for _, fieldName in ipairs(iconFieldNames) do
+        local region = targetFrame[fieldName]
+        if SetRegionShown(region, shouldShow) then
+            didUpdate = true
+        end
+    end
+
+    ScanFrame(targetFrame, 0)
+
+    return didUpdate
+end
+
+local function ApplySuppressionToParentChain(frameRef, suppress, maxDepth)
+    -- Emergency safety: parent-chain suppression can cascade into major UI roots.
+    -- Keep this disabled unless we can guarantee strict frame whitelisting.
+    return
+end
+
+local function FindGlobalFramesForWidgetID(widgetID, forceRefresh)
+    widgetID = tonumber(widgetID)
+    if not widgetID then
+        return {}
+    end
+
+    if not forceRefresh and type(targetedWidgetGlobalFrameCache[widgetID]) == "table" then
+        return targetedWidgetGlobalFrameCache[widgetID]
+    end
+
+    local matches = {}
+    local widgetText = tostring(widgetID)
+    local maxMatches = 30
+    local seen = {}
+
+    local function pushMatch(keyText, frameRef)
+        if #matches >= maxMatches or not frameRef then
+            return
+        end
+
+        if seen[frameRef] then
+            return
+        end
+
+        seen[frameRef] = true
+        local name = nil
+        if frameRef.GetName then
+            local okName, resolvedName = pcall(frameRef.GetName, frameRef)
+            if okName then
+                name = resolvedName
+            end
+        end
+
+        matches[#matches + 1] = {
+            key = tostring(keyText or "?"),
+            name = name,
+            frame = frameRef,
+        }
+    end
+
+    local knownNames = {
+        "UIWidgetTopCenterContainerFrameWidget" .. widgetText,
+        "UIWidgetObjectiveTrackerContainerFrameWidget" .. widgetText,
+        "UIWidgetBelowMinimapContainerFrameWidget" .. widgetText,
+        "UIWidgetPowerBarContainerFrameWidget" .. widgetText,
+    }
+
+    for _, keyText in ipairs(knownNames) do
+        local frameRef = _G[keyText]
+        if frameRef then
+            pushMatch(keyText, frameRef)
+        end
+    end
+
+    local containerNames = {
+        "UIWidgetTopCenterContainerFrame",
+        "UIWidgetObjectiveTrackerContainerFrame",
+        "UIWidgetBelowMinimapContainerFrame",
+        "UIWidgetPowerBarContainerFrame",
+    }
+
+    local function scanContainerForWidgetID(root, rootKey)
+        if not root or not root.GetChildren then
+            return
+        end
+
+        local visited = {}
+        local function scan(node, depth)
+            if not node or visited[node] or depth > 6 or #matches >= maxMatches then
+                return
+            end
+
+            visited[node] = true
+            local nodeName = nil
+            if node.GetName then
+                local okName, resolvedName = pcall(node.GetName, node)
+                if okName then
+                    nodeName = resolvedName
+                end
+            end
+
+            if type(nodeName) == "string" and string.find(nodeName, widgetText, 1, true) ~= nil then
+                pushMatch((rootKey or "container") .. ":" .. nodeName, node)
+            end
+
+            if node.GetChildren then
+                local okChildren, children = pcall(function()
+                    return { node:GetChildren() }
+                end)
+                if okChildren and type(children) == "table" then
+                    for _, child in ipairs(children) do
+                        scan(child, depth + 1)
+                        if #matches >= maxMatches then
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        scan(root, 0)
+    end
+
+    for _, containerKey in ipairs(containerNames) do
+        local container = _G[containerKey]
+        scanContainerForWidgetID(container, containerKey)
+    end
+
+    targetedWidgetGlobalFrameCache[widgetID] = matches
+    return matches
+end
+
+ApplyDefaultPreyIconVisibility = function()
+    if not settings then
+        return
+    end
+
+    if not (C_UIWidgetManager and C_UIWidgetManager.GetAllWidgetsBySetID) then
+        return
+    end
+
+    local preyWidgetType = GetWidgetTypePreyHuntProgress()
+    local suppressEncounter = settings.disableDefaultPreyIcon == true and ShouldSuppressDefaultPreyEncounter()
+
+    local containerGlobals = {
+        "UIWidgetTopCenterContainerFrame",
+        "UIWidgetObjectiveTrackerContainerFrame",
+        "UIWidgetBelowMinimapContainerFrame",
+        "UIWidgetPowerBarContainerFrame",
+    }
+
+    local function ApplySuppressionToContainerFallback(container, widgetID)
+        if not container or not container.GetChildren then
+            return
+        end
+
+        local widgetIDText = tostring(widgetID or "")
+        local visited = {}
+        local function scan(node, depth)
+            if not node or visited[node] or depth > 6 then
+                return
+            end
+
+            visited[node] = true
+            local name = node.GetName and node:GetName() or ""
+            local lowered = string.lower(tostring(name))
+            local isRelated = (widgetIDText ~= "" and string.find(name, widgetIDText, 1, true) ~= nil)
+                or string.find(lowered, "prey", 1, true) ~= nil
+                or string.find(lowered, "hunt", 1, true) ~= nil
+
+            if isRelated then
+                ApplyWidgetFrameSuppression(node, suppressEncounter)
+            end
+
+            if node.GetChildren then
+                local children = { node:GetChildren() }
+                for _, child in ipairs(children) do
+                    scan(child, depth + 1)
+                end
+            end
+        end
+
+        scan(container, 0)
+    end
+
+    for _, setID in ipairs(GetCandidateWidgetSetIDs()) do
+        local widgets = C_UIWidgetManager.GetAllWidgetsBySetID(setID)
+        if widgets then
+            for _, widget in ipairs(widgets) do
+                if widget and widget.widgetType == preyWidgetType and widget.widgetID then
+                    for _, globalName in ipairs(containerGlobals) do
+                        local container = _G[globalName]
+                        local widgetFrame = TryGetWidgetFrameByID(container, widget.widgetID)
+                        AttachStageFourMapClick(widgetFrame)
+                        EnsureWidgetSuppressionHook(widgetFrame)
+                        ApplyWidgetFrameSuppression(widgetFrame, suppressEncounter)
+                        ApplySuppressionToImmediateWidgetParent(widgetFrame, container, suppressEncounter)
+
+                        local namedFrame = _G[globalName .. "Widget" .. tostring(widget.widgetID)]
+                        AttachStageFourMapClick(namedFrame)
+                        EnsureWidgetSuppressionHook(namedFrame)
+                        ApplyWidgetFrameSuppression(namedFrame, suppressEncounter)
+                        ApplySuppressionToImmediateWidgetParent(namedFrame, container, suppressEncounter)
+                        ApplySuppressionToContainerFallback(container, widget.widgetID)
+                    end
+                end
+            end
+        end
+    end
 end
 
 local function FormatMemoryKB(value)
@@ -1792,9 +2485,400 @@ local function ResetAllSettings()
     end
 end
 
-local function PrintInspectState()
+local function FrameHasScriptSafe(frameRef, scriptName)
+    if not frameRef or type(scriptName) ~= "string" or not frameRef.HasScript then
+        return false
+    end
+
+    local ok, hasScript = pcall(frameRef.HasScript, frameRef, scriptName)
+    if not ok then
+        return false
+    end
+
+    return hasScript and true or false
+end
+
+local function CollectVisualHintNames(frameRef, maxHints)
+    if not frameRef then
+        return ""
+    end
+
+    maxHints = tonumber(maxHints) or 8
+    local hints = {}
+    local seenHints = {}
+    local visited = {}
+
+    local function maybeAddName(name)
+        if type(name) ~= "string" or name == "" then
+            return
+        end
+
+        local lowered = string.lower(name)
+        if string.find(lowered, "anim", 1, true)
+            or string.find(lowered, "glow", 1, true)
+            or string.find(lowered, "pulse", 1, true)
+            or string.find(lowered, "spark", 1, true)
+            or string.find(lowered, "flare", 1, true)
+            or string.find(lowered, "shine", 1, true)
+        then
+            if not seenHints[name] then
+                seenHints[name] = true
+                hints[#hints + 1] = name
+            end
+        end
+    end
+
+    local function scan(node, depth)
+        if not node or visited[node] or depth > 4 or #hints >= maxHints then
+            return
+        end
+
+        visited[node] = true
+        if node.GetName then
+            maybeAddName(node:GetName())
+        end
+
+        if node.GetRegions then
+            local regions = { node:GetRegions() }
+            for _, region in ipairs(regions) do
+                if region and region.GetName then
+                    maybeAddName(region:GetName())
+                    if #hints >= maxHints then
+                        return
+                    end
+                end
+            end
+        end
+
+        if node.GetChildren then
+            local children = { node:GetChildren() }
+            for _, child in ipairs(children) do
+                scan(child, depth + 1)
+                if #hints >= maxHints then
+                    return
+                end
+            end
+        end
+    end
+
+    scan(frameRef, 0)
+    return table.concat(hints, ", ")
+end
+
+local function CollectFramesNearPoint(pointX, pointY, radius, maxMatches)
+    local entries = {}
+    local scanned = 0
+
+    if type(pointX) ~= "number" or type(pointY) ~= "number" or type(EnumerateFrames) ~= "function" then
+        return entries, scanned
+    end
+
+    radius = math.max(1, tonumber(radius) or 80)
+    maxMatches = math.max(1, tonumber(maxMatches) or 20)
+    local limit = 4000
+    local frameRef = EnumerateFrames()
+
+    while frameRef and scanned < limit and #entries < maxMatches do
+        scanned = scanned + 1
+
+        local isShown = false
+        if frameRef.IsShown then
+            local okShown, shownValue = pcall(frameRef.IsShown, frameRef)
+            isShown = okShown and shownValue and true or false
+        end
+
+        if isShown then
+            local left, right, top, bottom = nil, nil, nil, nil
+            if frameRef.GetRect then
+                local okRect, l, b, w, h = pcall(frameRef.GetRect, frameRef)
+                if okRect and l and b and w and h then
+                    left = l
+                    right = l + w
+                    bottom = b
+                    top = b + h
+                end
+            end
+
+            local overlapsProbe = false
+            if left and right and top and bottom then
+                overlapsProbe = (right >= (pointX - radius))
+                    and (left <= (pointX + radius))
+                    and (top >= (pointY - radius))
+                    and (bottom <= (pointY + radius))
+            end
+
+            if overlapsProbe then
+                local name = "<unnamed>"
+                if frameRef.GetName then
+                    local okName, resolvedName = pcall(frameRef.GetName, frameRef)
+                    if okName and type(resolvedName) == "string" and resolvedName ~= "" then
+                        name = resolvedName
+                    end
+                end
+
+                local centerX, centerY = nil, nil
+                if frameRef.GetCenter then
+                    local okCenter, cx, cy = pcall(frameRef.GetCenter, frameRef)
+                    if okCenter then
+                        centerX = cx
+                        centerY = cy
+                    end
+                end
+
+                local dx = (type(centerX) == "number") and (centerX - pointX) or nil
+                local dy = (type(centerY) == "number") and (centerY - pointY) or nil
+
+                local strata = "?"
+                if frameRef.GetFrameStrata then
+                    local okStrata, strataValue = pcall(frameRef.GetFrameStrata, frameRef)
+                    if okStrata and strataValue ~= nil then
+                        strata = tostring(strataValue)
+                    end
+                end
+
+                local level = "?"
+                if frameRef.GetFrameLevel then
+                    local okLevel, levelValue = pcall(frameRef.GetFrameLevel, frameRef)
+                    if okLevel and levelValue ~= nil then
+                        level = tostring(levelValue)
+                    end
+                end
+
+                local alpha = "?"
+                if frameRef.GetAlpha then
+                    local okAlpha, alphaValue = pcall(frameRef.GetAlpha, frameRef)
+                    if okAlpha and alphaValue ~= nil then
+                        alpha = tostring(alphaValue)
+                    end
+                end
+
+                local mouseEnabled = false
+                if frameRef.IsMouseEnabled then
+                    local okMouse, mouseValue = pcall(frameRef.IsMouseEnabled, frameRef)
+                    mouseEnabled = okMouse and mouseValue and true or false
+                end
+
+                local movable = false
+                if frameRef.IsMovable then
+                    local okMovable, movableValue = pcall(frameRef.IsMovable, frameRef)
+                    movable = okMovable and movableValue and true or false
+                end
+
+                entries[#entries + 1] = {
+                    name = name,
+                    strata = strata,
+                    level = level,
+                    alpha = alpha,
+                    mouse = mouseEnabled,
+                    movable = movable,
+                    dx = dx,
+                    dy = dy,
+                }
+            end
+        end
+
+        frameRef = EnumerateFrames(frameRef)
+    end
+
+    table.sort(entries, function(a, b)
+        local adx = type(a.dx) == "number" and math.abs(a.dx) or 999999
+        local ady = type(a.dy) == "number" and math.abs(a.dy) or 999999
+        local bdx = type(b.dx) == "number" and math.abs(b.dx) or 999999
+        local bdy = type(b.dy) == "number" and math.abs(b.dy) or 999999
+        return (adx + ady) < (bdx + bdy)
+    end)
+
+    return entries, scanned
+end
+
+local function CollectWidgetTreeSnapshot(rootFrame, maxEntries)
+    local rows = {}
+    if not rootFrame then
+        return rows
+    end
+
+    maxEntries = math.max(1, tonumber(maxEntries) or 18)
+    local visited = {}
+
+    local function safeGetName(node)
+        if node and node.GetName then
+            local ok, value = pcall(node.GetName, node)
+            if ok and type(value) == "string" and value ~= "" then
+                return value
+            end
+        end
+        return "<unnamed>"
+    end
+
+    local function safeGetObjectType(node)
+        if node and node.GetObjectType then
+            local ok, value = pcall(node.GetObjectType, node)
+            if ok and value then
+                return tostring(value)
+            end
+        end
+        return "?"
+    end
+
+    local function safeGetAlpha(node)
+        if node and node.GetAlpha then
+            local ok, value = pcall(node.GetAlpha, node)
+            if ok and value ~= nil then
+                return tostring(value)
+            end
+        end
+        return "?"
+    end
+
+    local function safeIsShown(node)
+        if node and node.IsShown then
+            local ok, value = pcall(node.IsShown, node)
+            return ok and value and true or false
+        end
+        return false
+    end
+
+    local function animSummary(node)
+        if not node or not node.GetAnimationGroups then
+            return "none"
+        end
+
+        local ok, groups = pcall(function()
+            return { node:GetAnimationGroups() }
+        end)
+        if not ok or type(groups) ~= "table" or #groups == 0 then
+            return "none"
+        end
+
+        local playing = 0
+        for _, group in ipairs(groups) do
+            if group and group.IsPlaying then
+                local okPlaying, isPlaying = pcall(group.IsPlaying, group)
+                if okPlaying and isPlaying then
+                    playing = playing + 1
+                end
+            end
+        end
+
+        return tostring(#groups) .. " groups, playing=" .. tostring(playing)
+    end
+
+    local function scan(node, depth)
+        if not node or visited[node] or #rows >= maxEntries or depth > 5 then
+            return
+        end
+
+        visited[node] = true
+        local name = safeGetName(node)
+        local objectType = safeGetObjectType(node)
+        local lowered = string.lower(name)
+        local isInteresting = depth <= 1
+            or string.find(lowered, "anim", 1, true) ~= nil
+            or string.find(lowered, "glow", 1, true) ~= nil
+            or string.find(lowered, "model", 1, true) ~= nil
+            or objectType == "ModelScene"
+            or objectType == "Model"
+            or objectType == "PlayerModel"
+
+        if isInteresting then
+            rows[#rows + 1] = string.format(
+                "depth=%d name=%s type=%s shown=%s alpha=%s anim=%s",
+                depth,
+                name,
+                objectType,
+                tostring(safeIsShown(node)),
+                safeGetAlpha(node),
+                animSummary(node)
+            )
+        end
+
+        if node.GetRegions and #rows < maxEntries then
+            local okRegions, regions = pcall(function()
+                return { node:GetRegions() }
+            end)
+            if okRegions and type(regions) == "table" then
+                for _, region in ipairs(regions) do
+                    if #rows >= maxEntries then
+                        break
+                    end
+                    scan(region, depth + 1)
+                end
+            end
+        end
+
+        if node.GetChildren and #rows < maxEntries then
+            local okChildren, children = pcall(function()
+                return { node:GetChildren() }
+            end)
+            if okChildren and type(children) == "table" then
+                for _, child in ipairs(children) do
+                    if #rows >= maxEntries then
+                        break
+                    end
+                    scan(child, depth + 1)
+                end
+            end
+        end
+    end
+
+    scan(rootFrame, 0)
+    return rows
+end
+
+local function SendInspectReportToErrorHandler(reportText)
+    local function SafeToString(value)
+        local ok, converted = pcall(tostring, value)
+        if ok then
+            return converted
+        end
+
+        return "<tostring failed>"
+    end
+
+    if type(reportText) ~= "string" or reportText == "" then
+        return false, "empty report"
+    end
+
+    if type(geterrorhandler) ~= "function" then
+        return false, "geterrorhandler unavailable"
+    end
+
+    local okGetHandler, handler = pcall(geterrorhandler)
+    if not okGetHandler or handler == nil then
+        return false, "error handler unavailable"
+    end
+
+    local header = "Preydator Inspect Report"
+    local chunkSize = 1800
+    local length = #reportText
+    local chunks = math.max(1, math.ceil(length / chunkSize))
+    for index = 1, chunks do
+        local startPos = ((index - 1) * chunkSize) + 1
+        local endPos = math.min(index * chunkSize, length)
+        local chunk = string.sub(reportText, startPos, endPos)
+        local payload = string.format("%s [%d/%d]\n%s", header, index, chunks, chunk)
+
+        local okSend, sendErr = pcall(function()
+            handler(payload)
+        end)
+
+        if not okSend then
+            return false, "handler failed on chunk " .. SafeToString(index) .. ": " .. SafeToString(sendErr)
+        end
+    end
+
+    return true, "sent"
+end
+
+local function PrintInspectState(outputMode)
+    outputMode = string.lower(tostring(outputMode or "chat"))
     EnsureBar()
     UpdateBarDisplay()
+
+    local lines = {}
+    local function add(line)
+        lines[#lines + 1] = tostring(line or "")
+    end
 
     local now = GetTime and GetTime() or 0
     local liveQuestID = GetCurrentActivePreyQuest()
@@ -1817,27 +2901,40 @@ local function PrintInspectState()
     local objectives = (hasActiveQuest and C_QuestLog and C_QuestLog.GetQuestObjectives) and C_QuestLog.GetQuestObjectives(liveQuestID) or nil
     local preyWidgetType = GetWidgetTypePreyHuntProgress()
     local shownStateShown = GetShownStateShown()
+    local suppressEncounter = settings and settings.disableDefaultPreyIcon == true and ShouldSuppressDefaultPreyEncounter()
+    local inspectSuppressionStage = GetStageFromState(state and state.progressState)
+    local allowStageFourMapClickFallback = settings
+        and settings.disableDefaultPreyIcon == true
+        and state
+        and state.stage == MAX_STAGE
+    local barMouseEnabled = barFrame and barFrame.IsMouseEnabled and barFrame:IsMouseEnabled() or false
+    local waypointMapID, waypointX, waypointY = TryGetPreyQuestWaypoint(liveQuestID)
+    local canResolveWaypoint = waypointMapID and waypointX and waypointY
 
-    print("Preydator Inspect (" .. INSPECT_VERSION .. ")")
-    print("- time=" .. string.format("%.3f", now) .. " | zone=" .. tostring(GetZoneText and GetZoneText() or "?") .. " | playerMapID=" .. tostring(playerMapID) .. " | playerMap=" .. tostring(playerMapName))
-    print("- quest live=" .. tostring(liveQuestID) .. " | hasActive=" .. tostring(hasActiveQuest) .. " | isOnQuest=" .. tostring(questOnLog) .. " | completed=" .. tostring(questCompleted))
-    print("- quest tracked=" .. tostring(state.activeQuestID) .. " | progressState=" .. tostring(state.progressState) .. " | progressPercent=" .. tostring(state.progressPercent) .. " | stage=" .. tostring(state.stage) .. " (" .. tostring(GetStageLabel(state.stage)) .. ")")
-    print("- prey target=" .. tostring(state.preyTargetName) .. " | difficulty=" .. tostring(state.preyTargetDifficulty) .. " | ambushAlertRemaining=" .. string.format("%.2f", math.max(0, (state.ambushAlertUntil or 0) - now)))
-    print("- preyZone mapID=" .. tostring(state.preyZoneMapID) .. " | preyZoneName=" .. tostring(state.preyZoneName) .. " | inPreyZone=" .. tostring(state.inPreyZone))
-    print("- killStageRemaining=" .. string.format("%.2f", math.max(0, (state.killStageUntil or 0) - now)) .. " | lastWidgetAge=" .. string.format("%.2f", math.max(0, now - (state.lastWidgetSeenAt or 0))))
-    print("- sounds enabled=" .. tostring(settings and settings.soundsEnabled) .. " | channel=" .. tostring(settings and settings.soundChannel) .. " | stagePlayed={" .. BuildStageSoundPlayedSummary() .. "}")
-    print("- percent source=" .. tostring(state.lastPercentSource) .. " | fallbackMode=" .. tostring(settings and settings.percentFallbackMode) .. " | objectivePct=" .. tostring(objectivePct))
+    add("Preydator Inspect (" .. INSPECT_VERSION .. ")")
+    add("- time=" .. string.format("%.3f", now) .. " | zone=" .. tostring(GetZoneText and GetZoneText() or "?") .. " | playerMapID=" .. tostring(playerMapID) .. " | playerMap=" .. tostring(playerMapName))
+    add("- quest live=" .. tostring(liveQuestID) .. " | hasActive=" .. tostring(hasActiveQuest) .. " | isOnQuest=" .. tostring(questOnLog) .. " | completed=" .. tostring(questCompleted))
+    add("- quest tracked=" .. tostring(state.activeQuestID) .. " | progressState=" .. tostring(state.progressState) .. " | progressPercent=" .. tostring(state.progressPercent) .. " | stage=" .. tostring(state.stage) .. " (" .. tostring(GetStageLabel(state.stage)) .. ")")
+    add("- prey target=" .. tostring(state.preyTargetName) .. " | difficulty=" .. tostring(state.preyTargetDifficulty) .. " | ambushAlertRemaining=" .. string.format("%.2f", math.max(0, (state.ambushAlertUntil or 0) - now)))
+    add("- preyZone mapID=" .. tostring(state.preyZoneMapID) .. " | preyZoneName=" .. tostring(state.preyZoneName) .. " | inPreyZone=" .. tostring(state.inPreyZone))
+    add("- killStageRemaining=" .. string.format("%.2f", math.max(0, (state.killStageUntil or 0) - now)) .. " | lastWidgetAge=" .. string.format("%.2f", math.max(0, now - (state.lastWidgetSeenAt or 0))))
+    add("- sounds enabled=" .. tostring(settings and settings.soundsEnabled) .. " | channel=" .. tostring(settings and settings.soundChannel) .. " | stagePlayed={" .. BuildStageSoundPlayedSummary() .. "}")
+    add("- percent source=" .. tostring(state.lastPercentSource) .. " | fallbackMode=" .. tostring(settings and settings.percentFallbackMode) .. " | objectivePct=" .. tostring(objectivePct))
+    add("- map waypoint found=" .. tostring(canResolveWaypoint and true or false)
+        .. " | mapID=" .. tostring(waypointMapID)
+        .. " | x=" .. tostring(waypointX)
+        .. " | y=" .. tostring(waypointY))
     if type(objectives) == "table" and #objectives > 0 then
         local shown = 0
         for index, objective in ipairs(objectives) do
             if type(objective) == "table" then
                 shown = shown + 1
                 if shown > 4 then
-                    print("  objective ... (" .. tostring(#objectives - 4) .. " more)")
+                    add("  objective ... (" .. tostring(#objectives - 4) .. " more)")
                     break
                 end
 
-                print("  objective " .. tostring(index)
+                add("  objective " .. tostring(index)
                     .. " fulfilled=" .. tostring(objective.numFulfilled or objective.fulfilled)
                     .. " required=" .. tostring(objective.numRequired or objective.required)
                     .. " finished=" .. tostring(objective.finished)
@@ -1845,24 +2942,37 @@ local function PrintInspectState()
             end
         end
     else
-        print("  objective none")
+        add("  objective none")
     end
-    print("- bar shown=" .. tostring(barFrame and barFrame:IsShown() or false)
+    add("- bar shown=" .. tostring(barFrame and barFrame:IsShown() or false)
         .. " | forceShow=" .. tostring(state.forceShowBar)
         .. " | onlyShowInPreyZone=" .. tostring(settings and settings.onlyShowInPreyZone))
+    add("- icon hide setting=" .. tostring(settings and settings.disableDefaultPreyIcon)
+        .. " | suppressEncounterNow=" .. tostring(suppressEncounter)
+        .. " | suppressStage=" .. tostring(inspectSuppressionStage)
+        .. " | suppressInZone=" .. tostring(state and state.inPreyZone == true)
+        .. " | stage4MapFallback=" .. tostring(allowStageFourMapClickFallback)
+        .. " | barMouseEnabled=" .. tostring(barMouseEnabled))
+    add("- bar scripts onMouseDown=" .. tostring(FrameHasScriptSafe(barFrame, "OnMouseDown"))
+        .. " | onMouseUp=" .. tostring(FrameHasScriptSafe(barFrame, "OnMouseUp")))
+    add("- map APIs openQuestMap=" .. tostring(OpenQuestMap ~= nil)
+        .. " | toggleWorldMap=" .. tostring(ToggleWorldMap ~= nil)
+        .. " | openQuestDetails=" .. tostring(QuestMapFrame_OpenToQuestDetails ~= nil)
+        .. " | setUserWaypoint=" .. tostring(C_Map and C_Map.SetUserWaypoint ~= nil)
+        .. " | superTrack=" .. tostring(C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint ~= nil))
     local frameWidth = barFrame and barFrame:GetWidth() or 0
     local fillWidth = barFill and barFill:GetWidth() or 0
     local fillPct = 0
     if frameWidth and frameWidth > 0 then
         fillPct = (fillWidth / frameWidth) * 100
     end
-    print("- display pct=" .. tostring(state.lastDisplayPct) .. " | reason=" .. tostring(state.lastDisplayReason)
+    add("- display pct=" .. tostring(state.lastDisplayPct) .. " | reason=" .. tostring(state.lastDisplayReason)
         .. " | frameWidth=" .. string.format("%.2f", frameWidth)
         .. " | fillWidth=" .. string.format("%.2f", fillWidth)
         .. " | fillPct=" .. string.format("%.2f", fillPct))
 
     local savedPoint = settings and settings.point or {}
-    print("- point saved="
+    add("- point saved="
         .. " anchor=" .. tostring(savedPoint.anchor)
         .. " rel=" .. tostring(savedPoint.relativePoint)
         .. " x=" .. tostring(savedPoint.x)
@@ -1878,7 +2988,7 @@ local function PrintInspectState()
     elseif liveRelativeTo ~= nil then
         liveRelativeName = tostring(liveRelativeTo)
     end
-    print("- point live="
+    add("- point live="
         .. " anchor=" .. tostring(livePoint)
         .. " relTo=" .. tostring(liveRelativeName)
         .. " rel=" .. tostring(liveRelativePoint)
@@ -1893,12 +3003,40 @@ local function PrintInspectState()
     local parentCenterY = UIParent and UIParent.GetCenter and select(2, UIParent:GetCenter()) or nil
     local centerDX = (frameCenterX and parentCenterX) and (frameCenterX - parentCenterX) or nil
     local centerDY = (frameCenterY and parentCenterY) and (frameCenterY - parentCenterY) or nil
-    print("- frame scale=" .. tostring(frameScale)
+    add("- frame scale=" .. tostring(frameScale)
         .. " | effectiveScale=" .. tostring(frameEffectiveScale)
         .. " | centerDX=" .. tostring(centerDX)
         .. " | centerDY=" .. tostring(centerDY))
 
-    print("- frame local=" .. tostring(barFrame) .. " | frame global=" .. tostring(_G.PreydatorProgressBar)
+    local probePointX = frameCenterX
+    local probePointY = frameCenterY
+    if type(probePointX) ~= "number" and type(parentCenterX) == "number" and type(savedPoint.x) == "number" then
+        probePointX = parentCenterX + savedPoint.x
+    end
+    if type(probePointY) ~= "number" and type(parentCenterY) == "number" and type(savedPoint.y) == "number" then
+        probePointY = parentCenterY + savedPoint.y
+    end
+
+    local nearbyFrames, nearbyScanned = CollectFramesNearPoint(probePointX, probePointY, 80, 18)
+    add("- nearby frame probe="
+        .. " x=" .. tostring(probePointX)
+        .. " y=" .. tostring(probePointY)
+        .. " radius=80"
+        .. " | scanned=" .. tostring(nearbyScanned)
+        .. " | matched=" .. tostring(#nearbyFrames))
+    for index, entry in ipairs(nearbyFrames) do
+        add("  nearby " .. tostring(index)
+            .. " name=" .. tostring(entry.name)
+            .. " strata=" .. tostring(entry.strata)
+            .. " level=" .. tostring(entry.level)
+            .. " alpha=" .. tostring(entry.alpha)
+            .. " mouse=" .. tostring(entry.mouse)
+            .. " movable=" .. tostring(entry.movable)
+            .. " dx=" .. tostring(entry.dx)
+            .. " dy=" .. tostring(entry.dy))
+    end
+
+    add("- frame local=" .. tostring(barFrame) .. " | frame global=" .. tostring(_G.PreydatorProgressBar)
         .. " | same=" .. tostring(barFrame ~= nil and _G.PreydatorProgressBar ~= nil and barFrame == _G.PreydatorProgressBar))
 
     if C_UIWidgetManager and C_UIWidgetManager.GetAllWidgetsBySetID and C_UIWidgetManager.GetPreyHuntProgressWidgetVisualizationInfo then
@@ -1912,12 +3050,111 @@ local function PrintInspectState()
                             shownWidgets = shownWidgets + 1
                             local pct = ExtractProgressPercent(info, info.tooltip)
                             local widgetQuestID = ExtractWidgetQuestID(info)
-                            print("  widget set=" .. tostring(setID) .. " widgetID=" .. tostring(widget.widgetID)
+                            local frameStateParts = {}
+                            local resolvedContainerParts = {}
+                            local framePrefixes = {
+                                "UIWidgetTopCenterContainerFrameWidget",
+                                "UIWidgetObjectiveTrackerContainerFrameWidget",
+                                "UIWidgetBelowMinimapContainerFrameWidget",
+                                "UIWidgetPowerBarContainerFrameWidget",
+                            }
+                            for _, prefix in ipairs(framePrefixes) do
+                                local frameName = prefix .. tostring(widget.widgetID)
+                                local frameRef = _G[frameName]
+                                if frameRef then
+                                    frameStateParts[#frameStateParts + 1] = frameName
+                                        .. "(shown=" .. tostring(frameRef.IsShown and frameRef:IsShown() or false)
+                                        .. ",alpha=" .. tostring(frameRef.GetAlpha and frameRef:GetAlpha() or "?")
+                                        .. ",mouse=" .. tostring(frameRef.IsMouseEnabled and frameRef:IsMouseEnabled() or false)
+                                        .. ",onMouseUp=" .. tostring(FrameHasScriptSafe(frameRef, "OnMouseUp"))
+                                        .. ",drag=" .. tostring(frameRef.IsMovable and frameRef:IsMovable() or false)
+                                        .. ")"
+                                end
+                            end
+
+                            local containerNames = {
+                                "UIWidgetTopCenterContainerFrame",
+                                "UIWidgetObjectiveTrackerContainerFrame",
+                                "UIWidgetBelowMinimapContainerFrame",
+                                "UIWidgetPowerBarContainerFrame",
+                            }
+                            for _, containerName in ipairs(containerNames) do
+                                local container = _G[containerName]
+                                local resolvedFrame = TryGetWidgetFrameByID(container, widget.widgetID)
+                                if resolvedFrame then
+                                    local resolvedName = resolvedFrame.GetName and resolvedFrame:GetName() or "<unnamed>"
+                                    local parentName = "<nil>"
+                                    if resolvedFrame.GetParent then
+                                        local okParent, parent = pcall(resolvedFrame.GetParent, resolvedFrame)
+                                        if okParent and parent then
+                                            parentName = parent.GetName and (parent:GetName() or "<unnamed>") or tostring(parent)
+                                        end
+                                    end
+                                    resolvedContainerParts[#resolvedContainerParts + 1] = containerName
+                                        .. "=>name=" .. tostring(resolvedName)
+                                        .. ",shown=" .. tostring(resolvedFrame.IsShown and resolvedFrame:IsShown() or false)
+                                        .. ",alpha=" .. tostring(resolvedFrame.GetAlpha and resolvedFrame:GetAlpha() or "?")
+                                        .. ",parent=" .. tostring(parentName)
+                                end
+                            end
+                            add("  widget set=" .. tostring(setID) .. " widgetID=" .. tostring(widget.widgetID)
                                 .. " questID=" .. tostring(widgetQuestID)
                                 .. " state=" .. tostring(info.progressState)
                                 .. " pct=" .. tostring(pct)
                                 .. " tooltip='" .. TrimText(info.tooltip, 90) .. "'")
-                            print("    fields: " .. TrimText(SummarizeInfoFields(info), 200))
+                            add("    fields: " .. TrimText(SummarizeInfoFields(info), 200))
+                            if #frameStateParts > 0 then
+                                add("    frames: " .. table.concat(frameStateParts, " | "))
+                            end
+                            if #resolvedContainerParts > 0 then
+                                add("    resolvedContainerFrames: " .. table.concat(resolvedContainerParts, " | "))
+                            else
+                                add("    resolvedContainerFrames: none")
+                            end
+
+                            local firstPrefix = "UIWidgetTopCenterContainerFrameWidget" .. tostring(widget.widgetID)
+                            local firstFrameRef = _G[firstPrefix]
+                            if not firstFrameRef then
+                                firstPrefix = "UIWidgetObjectiveTrackerContainerFrameWidget" .. tostring(widget.widgetID)
+                                firstFrameRef = _G[firstPrefix]
+                            end
+                            if not firstFrameRef then
+                                firstPrefix = "UIWidgetBelowMinimapContainerFrameWidget" .. tostring(widget.widgetID)
+                                firstFrameRef = _G[firstPrefix]
+                            end
+                            if not firstFrameRef then
+                                firstPrefix = "UIWidgetPowerBarContainerFrameWidget" .. tostring(widget.widgetID)
+                                firstFrameRef = _G[firstPrefix]
+                            end
+
+                            if firstFrameRef then
+                                local visualHints = CollectVisualHintNames(firstFrameRef, 8)
+                                if visualHints ~= "" then
+                                    add("    visualHints: " .. visualHints)
+                                end
+
+                                local treeSnapshot = CollectWidgetTreeSnapshot(firstFrameRef, 20)
+                                if #treeSnapshot > 0 then
+                                    add("    treeSnapshot=" .. tostring(#treeSnapshot) .. " entries")
+                                    for _, row in ipairs(treeSnapshot) do
+                                        add("      " .. row)
+                                    end
+                                end
+                            end
+
+                            local globalMatches = FindGlobalFramesForWidgetID(widget.widgetID, true)
+                            if #globalMatches > 0 then
+                                local maxPrint = math.min(#globalMatches, 10)
+                                add("    globalWidgetFrames=" .. tostring(#globalMatches) .. " (showing " .. tostring(maxPrint) .. ")")
+                                for i = 1, maxPrint do
+                                    local entry = globalMatches[i]
+                                    local frameName = (entry and entry.name) or "<unnamed>"
+                                    local globalKey = (entry and entry.key) or "?"
+                                    add("      match " .. tostring(i) .. " key=" .. tostring(globalKey) .. " name=" .. tostring(frameName))
+                                end
+                            else
+                                add("    globalWidgetFrames=0")
+                            end
                         end
                     end
                 end
@@ -1926,8 +3163,29 @@ local function PrintInspectState()
     end
 
     if shownWidgets == 0 then
-        print("  widget none shown")
+        add("  widget none shown")
     end
+
+    local reportText = table.concat(lines, "\n")
+    Preydator.lastInspectReport = reportText
+    _G.PreydatorLastInspectReport = reportText
+
+    if outputMode == "chat" or outputMode == "both" then
+        for _, line in ipairs(lines) do
+            print(line)
+        end
+    end
+
+    if outputMode == "bugsack" or outputMode == "both" then
+        local sent, reason = SendInspectReportToErrorHandler(reportText)
+        if sent then
+            print("Preydator: Inspect report sent to BugSack via error handler. This is intentional diagnostic output, not a runtime addon bug.")
+        else
+            print("Preydator: Could not send inspect report to BugSack: " .. tostring(reason))
+        end
+    end
+
+    print("Preydator: Inspect report cached in PreydatorLastInspectReport (" .. tostring(#lines) .. " lines).")
 end
 
 ExtractWidgetQuestID = function(info)
@@ -2032,6 +3290,7 @@ local function UpdatePreyState()
     if (not hasActiveQuest and not ((state.killStageUntil or 0) > now)) or questCompleted or (hasActiveQuest and not questStillActive and not hasWidgetData) then
         DebugLogPreyState("clear", questID, hasWidgetData, state.progressState, state.progressPercent, state.inPreyZone)
         ClearPreyStateAndDisplay()
+        ApplyDefaultPreyIconVisibility()
         UpdateBarDisplay()
         return
     end
@@ -2084,17 +3343,20 @@ local function UpdatePreyState()
     end
 
     if newProgressState ~= PREY_PROGRESS_FINAL or oldProgressState == PREY_PROGRESS_FINAL then
+        ApplyDefaultPreyIconVisibility()
         UpdateBarDisplay()
         return
     end
 
     if state.stageSoundPlayed[MAX_STAGE] then
+        ApplyDefaultPreyIconVisibility()
         UpdateBarDisplay()
         return
     end
 
     TryPlayStageSound(MAX_STAGE)
 
+    ApplyDefaultPreyIconVisibility()
     UpdateBarDisplay()
 end
 
@@ -2112,6 +3374,7 @@ local function OnAddonLoaded()
     NormalizeDisplaySettings()
     NormalizeProgressSettings()
     NormalizeAmbushSettings()
+    ApplyDefaultPreyIconVisibility()
     AddDebugLog("OnAddonLoaded", "debug=" .. tostring(debugDB.enabled) .. " | stage" .. tostring(MAX_STAGE) .. "=" .. tostring(settings.stageSounds[MAX_STAGE]), true)
 
     state.forceShowBar = settings.forceShowBar
@@ -2412,24 +3675,29 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
-    local scaleSlider = AddSlider(panel, "Scale", 20, -407, 0.5, 2, 0.05, function() return settings.scale end, function(value)
+    local disableDefaultPreyIconCheckbox = AddCheckbox(panel, "Disable Default Prey Icon", 20, -139, function() return settings.disableDefaultPreyIcon == true end, function(value)
+        settings.disableDefaultPreyIcon = value
+        ApplyDefaultPreyIconVisibility()
+    end)
+
+    local scaleSlider = AddSlider(panel, "Scale", 20, -435, 0.5, 2, 0.05, function() return settings.scale end, function(value)
         settings.scale = Clamp(value, 0.5, 2)
         ApplyBarSettings()
     end)
 
-    local widthSlider = AddSlider(panel, "Width", 20, -442, 160, 500, 1, function() return settings.width end, function(value)
+    local widthSlider = AddSlider(panel, "Width", 20, -470, 160, 500, 1, function() return settings.width end, function(value)
         settings.width = Clamp(math.floor(value + 0.5), 160, 500)
         ApplyBarSettings()
         UpdateBarDisplay()
     end)
 
-    local heightSlider = AddSlider(panel, "Height", 20, -477, 10, 40, 1, function() return settings.height end, function(value)
+    local heightSlider = AddSlider(panel, "Height", 20, -505, 10, 40, 1, function() return settings.height end, function(value)
         settings.height = Clamp(math.floor(value + 0.5), 10, 40)
         ApplyBarSettings()
         UpdateBarDisplay()
     end)
 
-    local fontSizeSlider = AddSlider(panel, "Font Size", 20, -512, 8, 24, 1, function() return settings.fontSize end, function(value)
+    local fontSizeSlider = AddSlider(panel, "Font Size", 20, -540, 8, 24, 1, function() return settings.fontSize end, function(value)
         settings.fontSize = Clamp(math.floor(value + 0.5), 8, 24)
         ApplyBarSettings()
     end)
@@ -2569,23 +3837,23 @@ EnsureOptionsPanel = function()
     end)
 
     local customSoundTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    customSoundTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -631)
+    customSoundTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -659)
     customSoundTitle:SetText("Custom Sound Files: No Spaces")
 
     local customSoundPathLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    customSoundPathLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -659)
+    customSoundPathLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -687)
     customSoundPathLabel:SetText("Interface\\AddOns\\Preydator\\sounds\\")
 
     local customSoundEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
     customSoundEdit:SetSize(210, 20)
     customSoundEdit:SetAutoFocus(false)
     customSoundEdit:SetTextInsets(6, 6, 0, 0)
-    customSoundEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -687)
+    customSoundEdit:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -715)
     customSoundEdit:SetText("")
 
     local addCustomSoundButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     addCustomSoundButton:SetSize(100, 22)
-    addCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -715)
+    addCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -743)
     addCustomSoundButton:SetText("Add File")
     addCustomSoundButton:SetScript("OnClick", function()
         local ok, message = AddSoundFileName(customSoundEdit:GetText())
@@ -2603,7 +3871,7 @@ EnsureOptionsPanel = function()
 
     local removeCustomSoundButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     removeCustomSoundButton:SetSize(110, 22)
-    removeCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 130, -715)
+    removeCustomSoundButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 130, -743)
     removeCustomSoundButton:SetText("Remove File")
     removeCustomSoundButton:SetScript("OnClick", function()
         local ok, message = RemoveSoundFileName(customSoundEdit:GetText())
@@ -2659,26 +3927,26 @@ EnsureOptionsPanel = function()
         [PROGRESS_SEGMENTS_THIRDS] = { text = "Thirds (33/66/100)" },
     }
 
-    local textureDropdown = AddDropdown(panel, "Texture", 20, -243, 170, textureOptions, function()
+    local textureDropdown = AddDropdown(panel, "Texture", 20, -271, 170, textureOptions, function()
         return settings.textureKey
     end, function(key)
         settings.textureKey = key
         ApplyBarSettings()
     end)
-    local fillColorSwatch = AddColorSwatch(panel, 230, -263, function()
+    local fillColorSwatch = AddColorSwatch(panel, 230, -291, function()
         return settings.fillColor
     end, function(color)
         settings.fillColor = { color[1], color[2], color[3], color[4] }
         ApplyBarSettings()
     end, true)
 
-    local titleFontDropdown = AddDropdown(panel, "Title Font", 20, -295, 170, fontOptions, function()
+    local titleFontDropdown = AddDropdown(panel, "Title Font", 20, -323, 170, fontOptions, function()
         return settings.titleFontKey
     end, function(key)
         settings.titleFontKey = key
         ApplyBarSettings()
     end)
-    local titleColorSwatch = AddColorSwatch(panel, 230, -315, function()
+    local titleColorSwatch = AddColorSwatch(panel, 230, -343, function()
         return settings.titleColor
     end, function(color)
         settings.titleColor = { color[1], color[2], color[3], color[4] }
@@ -2686,13 +3954,13 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end, true)
 
-    local percentFontDropdown = AddDropdown(panel, "Percent Font", 20, -347, 170, fontOptions, function()
+    local percentFontDropdown = AddDropdown(panel, "Percent Font", 20, -375, 170, fontOptions, function()
         return settings.percentFontKey
     end, function(key)
         settings.percentFontKey = key
         ApplyBarSettings()
     end)
-    local percentColorSwatch = AddColorSwatch(panel, 230, -367, function()
+    local percentColorSwatch = AddColorSwatch(panel, 230, -395, function()
         return settings.percentColor
     end, function(color)
         settings.percentColor = { color[1], color[2], color[3], color[4] }
@@ -2758,7 +4026,7 @@ EnsureOptionsPanel = function()
         settings.soundChannel = key
     end)
 
-    local enhanceSlider = AddSlider(panel, "Enhance Sounds", 20, -547, 0, 100, 5, function()
+    local enhanceSlider = AddSlider(panel, "Enhance Sounds", 20, -575, 0, 100, 5, function()
         return settings.soundEnhance or 0
     end, function(value)
         settings.soundEnhance = Clamp(math.floor(value + 0.5), 0, 100)
@@ -2770,7 +4038,7 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
-    local percentDisplayDropdown = AddDropdown(panel, "Percent Display", 20, -191, 170, percentDisplayOptions, function()
+    local percentDisplayDropdown = AddDropdown(panel, "Percent Display", 20, -219, 170, percentDisplayOptions, function()
         return settings.percentDisplay
     end, function(key)
         settings.percentDisplay = key
@@ -2779,7 +4047,7 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
-    local progressSegmentsDropdown = AddDropdown(panel, "Progress Segments", 20, -139, 170, progressSegmentOptions, function()
+    local progressSegmentsDropdown = AddDropdown(panel, "Progress Segments", 20, -167, 170, progressSegmentOptions, function()
         return settings.progressSegments
     end, function(key)
         settings.progressSegments = key
@@ -2791,6 +4059,7 @@ EnsureOptionsPanel = function()
     local function RefreshOptionsControls()
         if lockCheckbox then lockCheckbox:SetChecked(settings.locked) end
         if onlyShowInPreyZoneCheckbox then onlyShowInPreyZoneCheckbox:SetChecked(settings.onlyShowInPreyZone) end
+        if disableDefaultPreyIconCheckbox then disableDefaultPreyIconCheckbox:SetChecked(settings.disableDefaultPreyIcon == true) end
         if soundsCheckbox then soundsCheckbox:SetChecked(settings.soundsEnabled) end
         if ambushSoundCheckbox then ambushSoundCheckbox:SetChecked(settings.ambushSoundEnabled ~= false) end
         if ambushVisualCheckbox then ambushVisualCheckbox:SetChecked(settings.ambushVisualEnabled ~= false) end
@@ -2850,7 +4119,7 @@ EnsureOptionsPanel = function()
     AddSoundTestButton("Test Stage 3", 320, -687, 3)
 
     local note = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    note:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -575)
+    note:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -603)
     note:SetWidth(260)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
@@ -2918,11 +4187,6 @@ local function HandleSlashCommand(message)
         return
     end
 
-    if text == "inspect" then
-        PrintInspectState()
-        return
-    end
-
     if text == "show" then
         state.forceShowBar = true
         settings.forceShowBar = true
@@ -2957,7 +4221,23 @@ local function HandleSlashCommand(message)
         return
     end
 
-    print("Preydator commands: options | inspect | show | hide | toggle | mem | debug <on|off|show|clear>")
+    local moduleHandled = false
+    for _, module in pairs(Preydator.modules or {}) do
+        local hook = module and module.OnSlashCommand
+        if type(hook) == "function" then
+            local ok, handled = pcall(hook, module, text, rest, trimmed)
+            if ok and handled == true then
+                moduleHandled = true
+                break
+            end
+        end
+    end
+
+    if moduleHandled then
+        return
+    end
+
+    print("Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>")
 end
 
 frame:SetScript("OnEvent", function(_, event, arg1, arg2)
