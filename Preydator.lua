@@ -56,10 +56,13 @@ local BAR_TICK_PCTS_BY_SEGMENT = {
     [PROGRESS_SEGMENTS_THIRDS] = { 33, 66 },
 }
 local PERCENT_DISPLAY_INSIDE = "inside"
+local PERCENT_DISPLAY_INSIDE_BELOW = "inside_below"
 local PERCENT_DISPLAY_BELOW_BAR = "below_bar"
 local PERCENT_DISPLAY_UNDER_TICKS = "under_ticks"
 local PERCENT_DISPLAY_OFF = "off"
 local PERCENT_FALLBACK_STAGE = "stage"
+local LAYER_MODE_ABOVE = "above"
+local LAYER_MODE_BELOW = "below"
 local AMBUSH_ALERT_DURATION_SECONDS = 6
 local AMBUSH_SOUND_ALERT = "alert"
 local AMBUSH_SOUND_AMBUSH = "ambush"
@@ -129,6 +132,7 @@ local DEFAULTS = {
     forceShowBar = false,
     onlyShowInPreyZone = false,
     disableDefaultPreyIcon = false,
+    showInEditMode = true,
     fillColor = { 0.85, 0.2, 0.2, 0.95 },
     bgColor = { 0, 0, 0, 0.6 },
     titleColor = { 1, 0.82, 0, 1 },
@@ -165,6 +169,7 @@ local DEFAULTS = {
     ambushVisualEnabled = true,
     ambushSoundPath = KILL_SOUND_PATH,
     showTicks = true,
+    tickLayerMode = LAYER_MODE_ABOVE,
     progressSegments = PROGRESS_SEGMENTS_QUARTERS,
     percentDisplay = PERCENT_DISPLAY_INSIDE,
     percentFallbackMode = PERCENT_FALLBACK_STAGE,
@@ -350,20 +355,53 @@ end
 
 local function NormalizeDisplaySettings()
     settings.showTicks = settings.showTicks ~= false
+    settings.showInEditMode = settings.showInEditMode ~= false
 
     local mode = settings.percentDisplay
     if mode == "below" then
         mode = PERCENT_DISPLAY_BELOW_BAR
     end
 
-    if mode ~= PERCENT_DISPLAY_INSIDE and mode ~= PERCENT_DISPLAY_BELOW_BAR and mode ~= PERCENT_DISPLAY_UNDER_TICKS and mode ~= PERCENT_DISPLAY_OFF then
+    if mode ~= PERCENT_DISPLAY_INSIDE
+        and mode ~= PERCENT_DISPLAY_INSIDE_BELOW
+        and mode ~= PERCENT_DISPLAY_BELOW_BAR
+        and mode ~= PERCENT_DISPLAY_UNDER_TICKS
+        and mode ~= PERCENT_DISPLAY_OFF
+    then
         settings.percentDisplay = PERCENT_DISPLAY_INSIDE
-        return
+    else
+        settings.percentDisplay = mode
     end
 
-    settings.percentDisplay = mode
+    local tickLayerMode = settings.tickLayerMode
+    if tickLayerMode ~= LAYER_MODE_ABOVE and tickLayerMode ~= LAYER_MODE_BELOW then
+        settings.tickLayerMode = LAYER_MODE_ABOVE
+    else
+        settings.tickLayerMode = tickLayerMode
+    end
 
     settings.percentFallbackMode = PERCENT_FALLBACK_STAGE
+end
+
+local function IsEditModePreviewActive()
+    local editModeFrame = _G.EditModeManagerFrame
+    return editModeFrame and editModeFrame.IsShown and editModeFrame:IsShown()
+end
+
+local function GetTickLayerSettings()
+    if settings and settings.tickLayerMode == LAYER_MODE_BELOW then
+        return "BACKGROUND", 2
+    end
+
+    return "OVERLAY", 4
+end
+
+local function GetPercentTextLayerSettings()
+    if settings and settings.percentDisplay == PERCENT_DISPLAY_INSIDE_BELOW then
+        return "BACKGROUND", 3
+    end
+
+    return "OVERLAY", 7
 end
 
 local function NormalizeProgressSettings()
@@ -1021,7 +1059,8 @@ local function ApplyBarSettings()
         barText:SetFont(percentFont, math.max(8, Round(((tonumber(settings.fontSize) or DEFAULTS.fontSize) - 1) * frameScale)), flags)
         local percentColor = settings.percentColor or DEFAULTS.percentColor
         barText:SetTextColor(percentColor[1], percentColor[2], percentColor[3], percentColor[4] or 1)
-        barText:SetDrawLayer("OVERLAY", 7)
+        local percentLayer, percentSubLevel = GetPercentTextLayerSettings()
+        barText:SetDrawLayer(percentLayer, percentSubLevel)
     end
 
     local tickPercents = GetProgressTickPercents()
@@ -1039,7 +1078,8 @@ local function ApplyBarSettings()
         local tickMark = barTickMarks[index]
         if tickMark then
             tickMark:SetColorTexture(1, 1, 1, 0.35)
-            tickMark:SetDrawLayer("OVERLAY", 4)
+            local tickLayer, tickSubLevel = GetTickLayerSettings()
+            tickMark:SetDrawLayer(tickLayer, tickSubLevel)
             tickMark:SetShown(hasTick and settings.showTicks)
         end
     end
@@ -1496,9 +1536,10 @@ UpdateBarDisplay = function()
     local forceAmbushAlert = now < (state.ambushAlertUntil or 0)
     local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
     local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
+    local editModePreview = settings.showInEditMode == true and IsEditModePreviewActive()
     local shouldShow = false
 
-    if state.forceShowBar or forceKillStage or forceAmbushAlert then
+    if state.forceShowBar or forceKillStage or forceAmbushAlert or editModePreview then
         shouldShow = true
     elseif onlyShowInPreyZone then
         shouldShow = hasActiveQuest and not isOutOfPreyZone
@@ -1527,6 +1568,9 @@ UpdateBarDisplay = function()
     if forceKillStage then
         pct = 100
         displayReason = "killStage"
+    elseif editModePreview and not hasActiveQuest then
+        pct = 0
+        displayReason = "editModePreview"
     elseif not hasActiveQuest then
         pct = 0
         displayReason = "noActiveQuest"
@@ -1594,6 +1638,8 @@ UpdateBarDisplay = function()
         end
     elseif isOutOfPreyZone and not forceKillStage then
         stageText:SetText(settings.outOfZoneLabel or DEFAULT_OUT_OF_ZONE_LABEL)
+    elseif editModePreview and not hasActiveQuest and not forceKillStage then
+        stageText:SetText("Preydator (Edit Mode Preview)")
     elseif not hasActiveQuest and not forceKillStage then
         local zoneName = GetZoneText and GetZoneText() or "Unknown Zone"
         stageText:SetText(zoneName)
@@ -3675,6 +3721,12 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
+    local showInEditModeCheckbox = AddCheckbox(panel, "Show in Edit Mode preview", 20, -195, function() return settings.showInEditMode ~= false end, function(value)
+        settings.showInEditMode = value
+        NormalizeDisplaySettings()
+        UpdateBarDisplay()
+    end)
+
     local disableDefaultPreyIconCheckbox = AddCheckbox(panel, "Disable Default Prey Icon", 20, -139, function() return settings.disableDefaultPreyIcon == true end, function(value)
         settings.disableDefaultPreyIcon = value
         ApplyDefaultPreyIconVisibility()
@@ -3916,10 +3968,16 @@ EnsureOptionsPanel = function()
     }
 
     local percentDisplayOptions = {
-        [PERCENT_DISPLAY_INSIDE] = { text = "In Bar" },
+        [PERCENT_DISPLAY_INSIDE] = { text = "In Bar (Above Fill)" },
+        [PERCENT_DISPLAY_INSIDE_BELOW] = { text = "In Bar (Below Fill)" },
         [PERCENT_DISPLAY_UNDER_TICKS] = { text = "Under Ticks" },
         [PERCENT_DISPLAY_BELOW_BAR] = { text = "Below Bar" },
         [PERCENT_DISPLAY_OFF] = { text = "Off" },
+    }
+
+    local layerModeOptions = {
+        [LAYER_MODE_ABOVE] = { text = "Above Fill" },
+        [LAYER_MODE_BELOW] = { text = "Below Fill" },
     }
 
     local progressSegmentOptions = {
@@ -4038,6 +4096,15 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
+    local tickLayerDropdown = AddDropdown(panel, "Tick Mark Layer", 510, -111, 140, layerModeOptions, function()
+        return settings.tickLayerMode
+    end, function(key)
+        settings.tickLayerMode = key
+        NormalizeDisplaySettings()
+        ApplyBarSettings()
+        UpdateBarDisplay()
+    end)
+
     local percentDisplayDropdown = AddDropdown(panel, "Percent Display", 20, -219, 170, percentDisplayOptions, function()
         return settings.percentDisplay
     end, function(key)
@@ -4059,6 +4126,7 @@ EnsureOptionsPanel = function()
     local function RefreshOptionsControls()
         if lockCheckbox then lockCheckbox:SetChecked(settings.locked) end
         if onlyShowInPreyZoneCheckbox then onlyShowInPreyZoneCheckbox:SetChecked(settings.onlyShowInPreyZone) end
+        if showInEditModeCheckbox then showInEditModeCheckbox:SetChecked(settings.showInEditMode ~= false) end
         if disableDefaultPreyIconCheckbox then disableDefaultPreyIconCheckbox:SetChecked(settings.disableDefaultPreyIcon == true) end
         if soundsCheckbox then soundsCheckbox:SetChecked(settings.soundsEnabled) end
         if ambushSoundCheckbox then ambushSoundCheckbox:SetChecked(settings.ambushSoundEnabled ~= false) end
@@ -4076,6 +4144,7 @@ EnsureOptionsPanel = function()
         if percentFontDropdown and percentFontDropdown.PreydatorRefreshText then percentFontDropdown.PreydatorRefreshText() end
         if soundChannelDropdown and soundChannelDropdown.PreydatorRefreshText then soundChannelDropdown.PreydatorRefreshText() end
         if percentDisplayDropdown and percentDisplayDropdown.PreydatorRefreshText then percentDisplayDropdown.PreydatorRefreshText() end
+        if tickLayerDropdown and tickLayerDropdown.PreydatorRefreshText then tickLayerDropdown.PreydatorRefreshText() end
         if progressSegmentsDropdown and progressSegmentsDropdown.PreydatorRefreshText then progressSegmentsDropdown.PreydatorRefreshText() end
         if ambushSoundDropdown and ambushSoundDropdown.PreydatorRefreshText then ambushSoundDropdown.PreydatorRefreshText() end
         if stage1SoundDropdown and stage1SoundDropdown.PreydatorRefreshText then stage1SoundDropdown.PreydatorRefreshText() end

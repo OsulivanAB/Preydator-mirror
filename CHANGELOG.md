@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.3 - 2026-03-13
+
+### Added
+- New settings checkbox: **Show in Edit Mode preview** so the Preydator bar remains visible while Blizzard Edit Mode is open (improves layout workflow compatibility, including Luxthos-style presets).
+- New setting: **Tick Mark Layer** with `Above Fill` or `Below Fill` modes.
+- Expanded **Percent Display** modes with explicit in-bar layering: `In Bar (Above Fill)` and `In Bar (Below Fill)`.
+
+### Changed
+- Layering behavior for in-bar percent text is now driven directly by the selected percent display mode.
+
 ## 1.1.2 - 2026-03-06
 
 ### Changed
