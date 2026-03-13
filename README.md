@@ -1,104 +1,135 @@
 # Preydator
 
-Preydator is a World of Warcraft addon that tracks your active Prey Hunt stage, displays a customizable progress bar, and plays stage-based audio cues.
+Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
 Current release: `v1.5.0`
 
-## Quick start
+## What Preydator tracks
 
-1. Install the addon in:
+- Active prey quest and stage transitions in real time
+- Out-of-zone state and fallback labels
+- Stage-based progress display using Blizzard's exposed stage model
 
-   `Interface/AddOns/Preydator/`
+Important: Blizzard does not expose a true percent completion for Prey Hunts. Preydator uses stage transitions and fallback stage percentages.
 
-2. Optional: add your own sound files in:
+- `Quarters`: `25 / 50 / 75 / 100`
+- `Thirds`: `33 / 66 / 100` (default for new installs)
 
-   `Interface/AddOns/Preydator/sounds/`
+## Stage flow
 
-3. Reload your UI with `/reload`.
+1. **Scent in the Wind**
+2. **Blood in the Shadows**
+3. **Echoes of the Kill**
+4. **Feast of the Fang**
 
-4. Open settings with `/pd options` (or `/preydator options`).
-5. Open Blizzard Edit Mode to use the compact Preydator quick-settings window while positioning the bar.
+## UI and layout features (1.5.0)
 
-## Stage flow shown by the bar
+- Modular tabbed settings panel: `General`, `Display`, `Text`, `Audio`, `Advanced`
+- Compact Edit Mode quick-settings window
+- Edit Mode click-to-open behavior on the Preydator element
+- Outside-click dismiss behavior while Edit Mode quick-settings is open
+- Lock/unlock positioning and persistent center-relative coordinates
+- Display controls: width, height, scale, font size
 
-Preydator follows this hunt progression:
+## Display customization
 
-1. Scent in the Wind
-2. Blood in the Shadows
-3. Echoes of the Kill
-4. Feast of the Fang
+- Texture presets
+- Color controls:
+	- Fill color
+	- Background color
+	- Title color
+	- Percent color
+	- Tick mark color
+	- Border color (optional linked-to-fill behavior)
+- Percent display modes:
+	- In Bar (Above Fill)
+	- In Bar (Below Fill)
+	- Under Ticks
+	- Below Bar
+	- Off
+- Tick mark layer mode: `Above Fill` or `Below Fill`
+- `Display Spark Line` toggle (default: off)
+- Fill and tick rendering inset so visuals stay inside the border at all scales
 
-Behavior flow:
+## Text and label system
 
-- No active prey -> normal hidden/idle behavior depending on your settings
-- Active prey but wrong zone -> out-of-zone label
-- Stage 1 -> Stage 2 -> Stage 3 -> Stage 4
-- Stage 4 always displays as `100%`
+- Full stage label editing for all 4 stages
+- Prefix + suffix label system
+- Dedicated `Out of Zone Prefix` and `Ambush Prefix`
+- Ambush custom override text
+- Label modes:
+	- Centered
+	- Left (Prefix only)
+	- Left (Suffix only)
+	- Right (Suffix only)
+	- Right (Prefix only)
+	- Separate (Prefix + Suffix)
+	- No Text
 
-Optional behavior:
+## Audio features
 
-- Enable **Only show in prey zone** to hide the bar until you enter the correct prey zone.
-- Enable **Show in Edit Mode preview** to keep the bar visible while Blizzard Edit Mode is open so you can position it more reliably with custom UI layouts.
+- Stage 1-4 sound selection
+- Ambush sound selection
+- Sound channel selection
+- Sound enhancement control
+- Stage sound test buttons (1-4) and Ambush test button
+- Custom sound file add/remove in settings UI
+- Protected default sound files cannot be removed
 
-## Using custom audio files
-
-1. Put your `.ogg` files in:
-   `Interface/AddOns/Preydator/sounds/`
-2. Open options: `/pd options`
-3. In **Custom Sound Files**:
-   - Type the filename (examples: `my-alert`, `my_alert.ogg`, or full path)
-   - Click **Add File**
-4. Select the file in stage/ambush dropdowns.
-
-Input behavior:
-
-- `.ogg` is optional when typing; it is appended automatically.
-- Names with spaces are not supported.
-- Full prefix path is accepted: `Interface\\AddOns\\Preydator\\sounds\\...`
-- Default files are protected and cannot be removed.
-
-Default bundled files:
+Bundled default files:
 
 - `predator-alert.ogg`
 - `predator-ambush.ogg`
 - `predator-torment.ogg`
 - `predator-kill.ogg`
 
-## What you can customize in settings
+## Visibility and icon behavior
 
-- Bar lock/unlock and on-screen position
-- Only show in prey zone
-- Show in Edit Mode preview
-- Compact Edit Mode quick settings for common layout adjustments
-- Scale, width, height, font size
-- Texture preset and colors (bar, title, percent text)
-- Stage names and out-of-zone label
-- Ambush custom text (full override of ambush display text)
-- Percent display style, in-bar percent layering, and tick mark layering
-- Sound enable/disable, channel, and sound enhancement
-- Stage 1/2/3 sound selection and ambush sound selection
-- Custom sound file add/remove controls in options
-- Test buttons for each stage sound
-- Reset all settings to defaults
+- `Only show in prey zone`
+- `Show in Edit Mode preview`
+- `Disable Default Prey Icon`
+- Stage 4 map-open fallback behavior when icon is disabled
 
-## Settings layout
+## Diagnostics and debug
 
-- The main settings panel is organized into tabs to reduce clutter.
-- Slider controls show the current value and allow direct typed entry in addition to dragging.
-- Existing installs keep their saved values during settings UI migrations.
-
-Sound defaults:
-
-- Ambush default sound is `predator-kill.ogg`.
+- `/pd inspect` live diagnostic output
+- `/pd mem` memory snapshot
+- Debug system defaults to off
+- Advanced tab `Enable Debug` toggle
+- Slash debug controls remain available:
+	- `/pd debug on`
+	- `/pd debug off`
+	- `/pd debug show`
+	- `/pd debug clear`
 
 ## Slash commands
 
-- `/preydator options` or `/pd options` - open addon settings
-- `/preydator inspect` or `/pd inspect` - print live diagnostic state
-- `/preydator show` - force show bar
-- `/preydator hide` - return to auto visibility
-- `/preydator toggle` - toggle force show
-- `/preydator mem` - print memory usage snapshot
-- `/preydator debug <on|off|show|clear>` - debug logging controls
+- `/pd options` or `/preydator options` - open settings
+- `/pd inspect` - print live diagnostics
+- `/pd show` - force show bar
+- `/pd hide` - return to auto visibility
+- `/pd toggle` - toggle force show
+- `/pd mem` - print memory usage snapshot
+- `/pd debug <on|off|show|clear>` - debug logging tools
 
-Note: debug logging is off by default on load.
+## Optional custom audio
+
+Place your own `.ogg` files in:
+
+```text
+Interface/AddOns/Preydator/sounds/
+```
+
+Then add/select them in settings and run `/reload` if needed.
+
+Accepted input formats in the custom file field:
+
+- bare name (example: `my-alert`)
+- explicit `.ogg` filename (example: `my-alert.ogg`)
+- full path starting with `Interface\AddOns\Preydator\sounds\`
+
+## Issues and feedback
+
+Please report bugs, feature requests, or visual/audio issues at:
+
+**[https://github.com/RagingAltoholic/Preydator/issues](https://github.com/RagingAltoholic/Preydator/issues)**

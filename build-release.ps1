@@ -33,6 +33,7 @@ New-Item -ItemType Directory -Path $stagingAddonDir | Out-Null
 Get-ChildItem -LiteralPath $addonRoot -Force | Where-Object {
     $_.Name -ne ".release-staging" -and
     $_.Name -ne "issues" -and
+    $_.Name -ne "CURSEFORGE_DESCRIPTION.md" -and
     $_.Name -ne ".gitattributes" -and
     $_.Name -ne ".git" -and
     $_.Name -ne ".vscode" -and
