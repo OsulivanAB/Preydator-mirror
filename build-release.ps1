@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.1.2",
+    [string]$Version = "1.5.0",
     [string]$OutputDirectory
 )
 
@@ -33,9 +33,9 @@ New-Item -ItemType Directory -Path $stagingAddonDir | Out-Null
 Get-ChildItem -LiteralPath $addonRoot -Force | Where-Object {
     $_.Name -ne ".release-staging" -and
     $_.Name -ne "issues" -and
-    $_.Name -ne "Modules" -and
     $_.Name -ne ".gitattributes" -and
     $_.Name -ne ".git" -and
+    $_.Name -ne ".vscode" -and
     $_.Name -ne "build-release.ps1"
 } | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $stagingAddonDir -Recurse -Force

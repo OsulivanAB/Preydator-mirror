@@ -1,14 +1,32 @@
 # Changelog
 
-## 1.1.3 - 2026-03-13
+## 1.5.0 - 2026-03-13
 
 ### Added
-- New settings checkbox: **Show in Edit Mode preview** so the Preydator bar remains visible while Blizzard Edit Mode is open (improves layout workflow compatibility, including Luxthos-style presets).
+- New settings checkbox: **Show in Edit Mode preview** so the Preydator bar remains visible while Blizzard Edit Mode is open.
 - New setting: **Tick Mark Layer** with `Above Fill` or `Below Fill` modes.
 - Expanded **Percent Display** modes with explicit in-bar layering: `In Bar (Above Fill)` and `In Bar (Below Fill)`.
+- New modular **tabbed settings UI** that replaces the old single long-form options layout.
+- New compact **Edit Mode quick settings** window for common layout controls while Blizzard Edit Mode is open.
+- Sliders now include a live value field that can also be typed into directly.
+- **Label Mode** dropdown with centered, left-only, right-only, separate prefix/suffix, and no-text layouts.
+- Prefix and suffix label support for all four stages, plus dedicated out-of-zone and ambush prefix fields.
+- **Border Color** picker with optional link-to-fill behavior.
+- **Tick Mark Color** picker in Display settings.
+- Static spark line at the right edge of the fill bar for clearer fill-end visibility.
 
 ### Changed
 - Layering behavior for in-bar percent text is now driven directly by the selected percent display mode.
+- Options layout now stays within a strict two-column structure across tabs instead of expanding into an overlong stacked panel.
+- Default bar size updated to match the preferred in-game look: **Width 160, Height 29, Scale 0.9**. Existing installs keep their saved values.
+- Default **Progress Segments** changed from Quarters to **Thirds**. Existing installs keep their saved value.
+- Fill bar and tick marks are inset inside the border so scaling, texture changes, and color changes do not bleed outside the frame.
+
+### Compatibility
+- Existing installs keep current saved values; new settings defaults are only applied when a key is missing in `PreydatorDB`.
+
+### Note for users reporting "bar shows 25% at stage start"
+This is expected behavior. Blizzard only exposes a stage number (1–4), not a true percent. Stage 1 = entered prey zone = 25% (or 33% in Thirds mode) is the first meaningful progress state the addon can report. Stage 4 = prey visible on map = 100%.
 
 ## 1.1.2 - 2026-03-06
 

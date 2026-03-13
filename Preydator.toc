@@ -2,7 +2,11 @@
 ## Title: Preydator
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
-## Version: 1.1.2
+## Version: 1.5.0
 ## SavedVariables: PreydatorDB, PreydatorDebugDB
+## OptionalDeps: Blizzard_Settings
 
 Preydator.lua
+Modules\Settings.lua
+Modules\EditMode.lua
+Modules\DebugInspect.lua

@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "&": true,
+        "Set-ExecutionPolicy": true,
+        ".\\build-release.ps1": true,
+        "Add-Type": true,
+        "ForEach-Object": true
+    }
+}

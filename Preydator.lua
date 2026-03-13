@@ -17,6 +17,7 @@ local GetQuestProgressBarPercent = _G.GetQuestProgressBarPercent
 local UIParent = _G.UIParent
 local UiMapPoint = _G.UiMapPoint
 local GetTime = _G.GetTime
+local GetCursorPosition = _G.GetCursorPosition
 local GetZoneText = _G.GetZoneText
 local IsInInstance = _G.IsInInstance
 local SlashCmdList = _G["SlashCmdList"]
@@ -63,6 +64,14 @@ local PERCENT_DISPLAY_OFF = "off"
 local PERCENT_FALLBACK_STAGE = "stage"
 local LAYER_MODE_ABOVE = "above"
 local LAYER_MODE_BELOW = "below"
+local LABEL_MODE_CENTER = "center"
+local LABEL_MODE_LEFT = "left"
+local LABEL_MODE_LEFT_SUFFIX = "left_suffix"
+local LABEL_MODE_RIGHT = "right"
+local LABEL_MODE_RIGHT_PREFIX = "right_prefix"
+local LABEL_MODE_SEPARATE = "separate"
+local LABEL_MODE_NONE = "none"
+local FILL_INSET = 3
 local AMBUSH_ALERT_DURATION_SECONDS = 6
 local AMBUSH_SOUND_ALERT = "alert"
 local AMBUSH_SOUND_AMBUSH = "ambush"
@@ -124,9 +133,9 @@ local ShouldSuppressDefaultPreyEncounter
 
 local DEFAULTS = {
     point = { anchor = "CENTER", relativePoint = "CENTER", x = 0, y = -200 },
-    width = 260,
-    height = 18,
-    scale = 1,
+    width = 160,
+    height = 29,
+    scale = 0.9,
     fontSize = 12,
     locked = true,
     forceShowBar = false,
@@ -137,11 +146,15 @@ local DEFAULTS = {
     bgColor = { 0, 0, 0, 0.6 },
     titleColor = { 1, 0.82, 0, 1 },
     percentColor = { 1, 1, 1, 1 },
+    tickColor = { 1, 1, 1, 0.35 },
+    sparkColor = { 1, 0.95, 0.75, 0.9 },
     textureKey = "default",
     titleFontKey = "frizqt",
     percentFontKey = "frizqt",
     outOfZoneLabel = DEFAULT_OUT_OF_ZONE_LABEL,
+    outOfZonePrefix = "",
     ambushLabel = DEFAULT_AMBUSH_LABEL,
+    ambushPrefix = "",
     ambushCustomText = "",
     stageLabels = {
         [1] = DEFAULT_STAGE_LABELS[1],
@@ -169,8 +182,18 @@ local DEFAULTS = {
     ambushVisualEnabled = true,
     ambushSoundPath = KILL_SOUND_PATH,
     showTicks = true,
+    showSparkLine = false,
     tickLayerMode = LAYER_MODE_ABOVE,
-    progressSegments = PROGRESS_SEGMENTS_QUARTERS,
+    progressSegments = PROGRESS_SEGMENTS_THIRDS,
+    stageLabelMode = LABEL_MODE_CENTER,
+    stageSuffixLabels = {
+        [1] = "",
+        [2] = "",
+        [3] = "",
+        [4] = "",
+    },
+    borderColorLinked = true,
+    borderColor = { 0.8, 0.2, 0.2, 0.85 },
     percentDisplay = PERCENT_DISPLAY_INSIDE,
     percentFallbackMode = PERCENT_FALLBACK_STAGE,
 }
@@ -190,13 +213,23 @@ function Preydator:RegisterModule(name, module)
     self.modules[name] = module
 end
 
+function Preydator:GetModule(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    return self.modules and self.modules[name] or nil
+end
+
 local frame = CreateFrame("Frame")
 local warnedMissingSoundPaths = {}
 local barFrame
 local barFillContainer
 local barFill
+local barSpark
 local barText
 local stageText
+local stageSuffixText
 local barBorder
 local barTickMarks = {}
 local barTickLabels = {}
@@ -205,6 +238,7 @@ local optionsCategoryID
 local optionsScrollFrame
 local optionsContentFrame
 local EnsureOptionsPanel
+local OpenOptionsPanel
 local candidateWidgetSetIDs = {}
 local targetedWidgetGlobalFrameCache = {}
 local ExtractWidgetQuestID
@@ -310,15 +344,15 @@ local function NormalizeLabelSettings()
 
     for stage = 1, MAX_STAGE do
         local label = settings.stageLabels[stage]
-        if type(label) ~= "string" or label == "" then
+        if type(label) ~= "string" then
             local legacy = settings.stageLabels[tostring(stage)]
-            if type(legacy) == "string" and legacy ~= "" then
+            if type(legacy) == "string" then
                 label = legacy
             end
         end
 
-        if type(label) ~= "string" or label == "" then
-            label = DEFAULT_STAGE_LABELS[stage]
+        if type(label) ~= "string" then
+            label = DEFAULT_STAGE_LABELS[stage] or ""
         end
 
         settings.stageLabels[stage] = label
@@ -328,8 +362,16 @@ local function NormalizeLabelSettings()
         settings.outOfZoneLabel = DEFAULT_OUT_OF_ZONE_LABEL
     end
 
+    if type(settings.outOfZonePrefix) ~= "string" then
+        settings.outOfZonePrefix = ""
+    end
+
     if type(settings.ambushLabel) ~= "string" or settings.ambushLabel == "" then
         settings.ambushLabel = DEFAULT_AMBUSH_LABEL
+    end
+
+    if type(settings.ambushPrefix) ~= "string" then
+        settings.ambushPrefix = ""
     end
 
     if type(settings.ambushCustomText) ~= "string" then
@@ -351,10 +393,17 @@ local function NormalizeColorSettings()
     settings.bgColor = normalizeColor(settings.bgColor, DEFAULTS.bgColor)
     settings.titleColor = normalizeColor(settings.titleColor, DEFAULTS.titleColor)
     settings.percentColor = normalizeColor(settings.percentColor, DEFAULTS.percentColor)
+    settings.tickColor = normalizeColor(settings.tickColor, DEFAULTS.tickColor)
+    settings.sparkColor = normalizeColor(settings.sparkColor, DEFAULTS.sparkColor)
+    settings.borderColor = normalizeColor(settings.borderColor, DEFAULTS.borderColor)
+    if settings.borderColorLinked == nil then
+        settings.borderColorLinked = true
+    end
 end
 
 local function NormalizeDisplaySettings()
     settings.showTicks = settings.showTicks ~= false
+    settings.showSparkLine = settings.showSparkLine == true
     settings.showInEditMode = settings.showInEditMode ~= false
 
     local mode = settings.percentDisplay
@@ -381,6 +430,27 @@ local function NormalizeDisplaySettings()
     end
 
     settings.percentFallbackMode = PERCENT_FALLBACK_STAGE
+
+    local labelMode = settings.stageLabelMode
+    if labelMode ~= LABEL_MODE_CENTER
+        and labelMode ~= LABEL_MODE_LEFT
+        and labelMode ~= LABEL_MODE_LEFT_SUFFIX
+        and labelMode ~= LABEL_MODE_RIGHT
+        and labelMode ~= LABEL_MODE_RIGHT_PREFIX
+        and labelMode ~= LABEL_MODE_SEPARATE
+        and labelMode ~= LABEL_MODE_NONE
+    then
+        settings.stageLabelMode = LABEL_MODE_CENTER
+    end
+
+    if type(settings.stageSuffixLabels) ~= "table" then
+        settings.stageSuffixLabels = {}
+    end
+    for i = 1, MAX_STAGE do
+        if type(settings.stageSuffixLabels[i]) ~= "string" then
+            settings.stageSuffixLabels[i] = ""
+        end
+    end
 end
 
 local function IsEditModePreviewActive()
@@ -1029,14 +1099,29 @@ local function ApplyBarSettings()
     if barFill then
         local fill = settings.fillColor
         barFill:ClearAllPoints()
-        barFill:SetPoint("left", barFrame, "left", 0, 0)
-        barFill:SetSize(0, scaledHeight)
+        barFill:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", FILL_INSET, FILL_INSET)
+        barFill:SetSize(0, math.max(1, scaledHeight - 2 * FILL_INSET))
         barFill:SetTexture(TEXTURE_PRESETS[settings.textureKey] or TEXTURE_PRESETS.default)
         barFill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
         barFill:SetDrawLayer("ARTWORK", 0)
 
         if barBorder and barBorder.SetBackdropBorderColor then
-            barBorder:SetBackdropBorderColor(fill[1], fill[2], fill[3], math.max(0.65, fill[4] or 0.85))
+            if settings.borderColorLinked == false and settings.borderColor then
+                local bc = settings.borderColor
+                barBorder:SetBackdropBorderColor(bc[1], bc[2], bc[3], bc[4] or 0.85)
+            else
+                barBorder:SetBackdropBorderColor(fill[1], fill[2], fill[3], math.max(0.65, fill[4] or 0.85))
+            end
+        end
+    end
+
+    if barSpark then
+        local spark = settings.sparkColor or DEFAULTS.sparkColor
+        barSpark:SetColorTexture(spark[1], spark[2], spark[3], spark[4] or 0.9)
+        barSpark:SetSize(2, math.max(1, scaledHeight - 2 * FILL_INSET))
+        barSpark:SetDrawLayer("OVERLAY", 3)
+        if not settings.showSparkLine then
+            barSpark:Hide()
         end
     end
 
@@ -1051,6 +1136,29 @@ local function ApplyBarSettings()
         stageText:SetFont(titleFont, math.max(8, Round((tonumber(settings.fontSize) or DEFAULTS.fontSize) * frameScale)), flags)
         local titleColor = settings.titleColor or DEFAULTS.titleColor
         stageText:SetTextColor(titleColor[1], titleColor[2], titleColor[3], titleColor[4] or 1)
+
+        local lm = settings.stageLabelMode or LABEL_MODE_CENTER
+        stageText:ClearAllPoints()
+        if lm == LABEL_MODE_LEFT or lm == LABEL_MODE_LEFT_SUFFIX or lm == LABEL_MODE_SEPARATE then
+            stageText:SetPoint("BOTTOMLEFT", barFrame, "TOPLEFT", 2, 4)
+            stageText:SetJustifyH("LEFT")
+        elseif lm == LABEL_MODE_NONE then
+            stageText:SetPoint("BOTTOM", barFrame, "TOP", 0, 4)
+        else
+            stageText:SetPoint("BOTTOM", barFrame, "TOP", 0, 4)
+            stageText:SetJustifyH("CENTER")
+        end
+    end
+
+    if stageSuffixText then
+        local _, _, flags = stageSuffixText:GetFont()
+        local titleFont = FONT_PRESETS[settings.titleFontKey] or FONT_PRESETS.frizqt
+        stageSuffixText:SetFont(titleFont, math.max(8, Round((tonumber(settings.fontSize) or DEFAULTS.fontSize) * frameScale)), flags)
+        local titleColor = settings.titleColor or DEFAULTS.titleColor
+        stageSuffixText:SetTextColor(titleColor[1], titleColor[2], titleColor[3], titleColor[4] or 1)
+        stageSuffixText:ClearAllPoints()
+        stageSuffixText:SetPoint("BOTTOMRIGHT", barFrame, "TOPRIGHT", -2, 4)
+        stageSuffixText:SetJustifyH("RIGHT")
     end
 
     if barText then
@@ -1077,7 +1185,8 @@ local function ApplyBarSettings()
 
         local tickMark = barTickMarks[index]
         if tickMark then
-            tickMark:SetColorTexture(1, 1, 1, 0.35)
+            local tickColor = settings.tickColor or DEFAULTS.tickColor
+            tickMark:SetColorTexture(tickColor[1], tickColor[2], tickColor[3], tickColor[4] or 0.35)
             local tickLayer, tickSubLevel = GetTickLayerSettings()
             tickMark:SetDrawLayer(tickLayer, tickSubLevel)
             tickMark:SetShown(hasTick and settings.showTicks)
@@ -1086,12 +1195,14 @@ local function ApplyBarSettings()
 
     local barWidth = scaledWidth
     local barHeight = scaledHeight
+    local innerTickWidth = math.max(0, barWidth - (2 * FILL_INSET))
+    local innerTickHeight = math.max(1, barHeight - (2 * FILL_INSET))
     local tickWidth = 1
     for index = 1, MAX_TICK_MARKS do
         local pct = tickPercents[index]
         local x = nil
         if pct then
-            x = math.floor((barWidth * (pct / 100)) + 0.5)
+            x = FILL_INSET + math.floor((innerTickWidth * (pct / 100)) + 0.5)
             x = math.floor((x / tickWidth) + 0.5) * tickWidth
         end
         local tickMark = barTickMarks[index]
@@ -1099,11 +1210,11 @@ local function ApplyBarSettings()
             if pct then
                 tickMark:ClearAllPoints()
                 if pct == 100 then
-                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", barWidth - tickWidth, 0)
+                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", barWidth - FILL_INSET - tickWidth, FILL_INSET)
                 else
-                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", x, 0)
+                    tickMark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", x, FILL_INSET)
                 end
-                tickMark:SetSize(tickWidth, barHeight)
+                tickMark:SetSize(tickWidth, innerTickHeight)
             else
                 tickMark:Hide()
             end
@@ -1162,25 +1273,70 @@ local function EnsureBar()
     createdBar:SetPoint("CENTER", UIParent, "CENTER", 0, -220)
     createdBar:Hide()
     createdBar:SetClampedToScreen(false)
+    createdBar:RegisterForDrag("LeftButton")
     barFrame = createdBar
+
+    local function SaveBarPosition(self)
+        settings.point.anchor = "CENTER"
+        settings.point.relativePoint = "CENTER"
+
+        local frameCenterX, frameCenterY = self:GetCenter()
+        local parentCenterX, parentCenterY = UIParent:GetCenter()
+        if frameCenterX and frameCenterY and parentCenterX and parentCenterY then
+            settings.point.x = Round(frameCenterX - parentCenterX)
+            settings.point.y = Round(frameCenterY - parentCenterY)
+            return
+        end
+
+        local _, _, _, x, y = self:GetPoint(1)
+        settings.point.x = Round(tonumber(x) or DEFAULTS.point.x)
+        settings.point.y = Round(tonumber(y) or DEFAULTS.point.y)
+    end
 
     barFrame:SetScript("OnMouseDown", function(self, button)
         self.PreydatorWasDragging = false
         self.PreydatorHandledMapClick = false
+        self.PreydatorClickStartX = nil
+        self.PreydatorClickStartY = nil
+        self.PreydatorClickStartTime = nil
+
+        if button ~= "LeftButton" then
+            return
+        end
+
+        local isEditModePreview = IsEditModePreviewActive()
         local allowStageFourMapClickFallback = settings
             and settings.disableDefaultPreyIcon == true
             and state
             and state.stage == MAX_STAGE
-        if allowStageFourMapClickFallback and button == "LeftButton" then
+
+        if allowStageFourMapClickFallback and not isEditModePreview and button == "LeftButton" then
             self.PreydatorHandledMapClick = true
             TryOpenPreyQuestOnMap()
             return
         end
 
-        if button == "LeftButton" and settings and not settings.locked then
+        if isEditModePreview then
+            self.PreydatorClickStartX, self.PreydatorClickStartY = GetCursorPosition()
+            self.PreydatorClickStartTime = GetTime and GetTime() or 0
+        end
+    end)
+
+    barFrame:SetScript("OnDragStart", function(self)
+        if settings and not settings.locked then
             self.PreydatorWasDragging = true
             self:StartMoving()
         end
+    end)
+
+    barFrame:SetScript("OnDragStop", function(self)
+        if not self.PreydatorWasDragging then
+            return
+        end
+
+        self:StopMovingOrSizing()
+        self.PreydatorWasDragging = false
+        SaveBarPosition(self)
     end)
 
     barFrame:SetScript("OnMouseUp", function(self, button)
@@ -1189,23 +1345,29 @@ local function EnsureBar()
             return
         end
 
-        if self.PreydatorWasDragging then
-            self:StopMovingOrSizing()
-            self.PreydatorWasDragging = false
-            settings.point.anchor = "CENTER"
-            settings.point.relativePoint = "CENTER"
+        if button ~= "LeftButton" then
+            return
+        end
 
-            local frameCenterX, frameCenterY = self:GetCenter()
-            local parentCenterX, parentCenterY = UIParent:GetCenter()
-            if frameCenterX and frameCenterY and parentCenterX and parentCenterY then
-                settings.point.x = Round(frameCenterX - parentCenterX)
-                settings.point.y = Round(frameCenterY - parentCenterY)
-                return
+        if IsEditModePreviewActive() then
+            local startX = self.PreydatorClickStartX
+            local startY = self.PreydatorClickStartY
+            local startTime = self.PreydatorClickStartTime or 0
+            local endX, endY = GetCursorPosition()
+            local now = GetTime and GetTime() or 0
+
+            local dx = (startX and endX) and math.abs(endX - startX) or 999
+            local dy = (startY and endY) and math.abs(endY - startY) or 999
+            local dt = now - startTime
+
+            if dx <= 3 and dy <= 3 and dt <= 0.20 then
+                local editModeModule = Preydator.GetModule and Preydator:GetModule("EditMode")
+                if editModeModule and editModeModule.ShowWindow then
+                    editModeModule:ShowWindow()
+                else
+                    OpenOptionsPanel()
+                end
             end
-
-            local _, _, _, x, y = self:GetPoint(1)
-            settings.point.x = Round(tonumber(x) or DEFAULTS.point.x)
-            settings.point.y = Round(tonumber(y) or DEFAULTS.point.y)
             return
         end
 
@@ -1224,17 +1386,20 @@ local function EnsureBar()
     bg:SetColorTexture(0, 0, 0, 0.6)
     barFrame.BackgroundTexture = bg
 
-    barFillContainer = CreateFrame("Frame", nil, barFrame)
-    barFillContainer:SetAllPoints()
-    barFillContainer:SetClipsChildren(true)
-
-    barFill = barFillContainer:CreateTexture(nil, "artwork")
-    barFill:SetPoint("left", barFillContainer, "left", 0, 0)
+    barFill = barFrame:CreateTexture(nil, "artwork")
+    barFill:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", FILL_INSET, FILL_INSET)
     barFill:SetSize(0, 18)
     barFill:SetTexCoord(0, 1, 0, 1)
     barFill:SetHorizTile(false)
     barFill:SetVertTile(false)
     barFill:SetColorTexture(0.85, 0.2, 0.2, 0.95)
+
+    barSpark = barFrame:CreateTexture(nil, "overlay")
+    barSpark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", FILL_INSET, FILL_INSET)
+    barSpark:SetSize(2, 18)
+    barSpark:SetColorTexture(1, 0.95, 0.75, 0.9)
+    barSpark:SetDrawLayer("OVERLAY", 3)
+    barSpark:Hide()
 
     local border = CreateFrame("Frame", nil, barFrame, "BackdropTemplate")
     border:SetAllPoints()
@@ -1250,6 +1415,12 @@ local function EnsureBar()
     stageText:SetPoint("BOTTOM", barFrame, "TOP", 0, 4)
     stageText:SetJustifyH("CENTER")
     stageText:SetText("Preydator")
+
+    stageSuffixText = barFrame:CreateFontString(nil, "overlay", "GameFontNormal")
+    stageSuffixText:SetPoint("BOTTOMRIGHT", barFrame, "TOPRIGHT", -2, 4)
+    stageSuffixText:SetJustifyH("RIGHT")
+    stageSuffixText:SetText("")
+    stageSuffixText:Hide()
 
     barText = barFrame:CreateFontString(nil, "overlay", "GameFontHighlightSmall")
     barText:SetPoint("center", barFrame, "center", 0, 0)
@@ -1598,16 +1769,32 @@ UpdateBarDisplay = function()
     end
     local label = GetStageLabel(stage)
     local barWidth = (barFrame and barFrame.GetWidth and barFrame:GetWidth()) or settings.width
+    local innerFillWidth = math.max(0, barWidth - 2 * FILL_INSET)
 
     if barFill then
-        local width = barWidth * (pct / 100)
+        local width = innerFillWidth * (pct / 100)
         local shouldHideFill = (pct <= 0) or (not hasActiveQuest and not forceKillStage and not forceAmbushAlert)
         if shouldHideFill then
             barFill:SetWidth(0)
             barFill:Hide()
+            if barSpark then
+                barSpark:Hide()
+            end
         else
             barFill:SetWidth(math.max(1, width))
             barFill:Show()
+            if barSpark and settings.showSparkLine then
+                local sparkWidth = 2
+                local sparkX = FILL_INSET + math.max(0, width - sparkWidth)
+                if pct >= 100 then
+                    sparkX = barWidth - FILL_INSET - sparkWidth
+                end
+                barSpark:ClearAllPoints()
+                barSpark:SetPoint("BOTTOMLEFT", barFrame, "BOTTOMLEFT", sparkX, FILL_INSET)
+                barSpark:Show()
+            elseif barSpark then
+                barSpark:Hide()
+            end
         end
     end
 
@@ -1617,34 +1804,85 @@ UpdateBarDisplay = function()
     state.stage = stage
 
     local allowBarDrag = settings and not settings.locked
+    local allowEditModeClickOpen = IsEditModePreviewActive()
     local allowStageFourMapClickFallback = settings
         and settings.disableDefaultPreyIcon == true
         and stage == MAX_STAGE
     if barFrame and barFrame.EnableMouse then
-        barFrame:EnableMouse((allowBarDrag and true or false) or (allowStageFourMapClickFallback and true or false))
+        barFrame:EnableMouse((allowBarDrag and true or false) or (allowStageFourMapClickFallback and true or false) or (allowEditModeClickOpen and true or false))
     end
 
+    local prefixText = ""
+    local suffixText = ""
     if forceAmbushAlert then
+        prefixText = (settings and settings.ambushPrefix) or ""
         local customAmbushText = settings and settings.ambushCustomText
         if type(customAmbushText) == "string" and customAmbushText ~= "" then
-            stageText:SetText(customAmbushText)
+            suffixText = customAmbushText
         else
             local ambushSuffix = (settings and settings.ambushLabel) or DEFAULT_AMBUSH_LABEL
             if type(state.preyTargetName) == "string" and state.preyTargetName ~= "" then
-                stageText:SetText(ambushSuffix .. ": " .. state.preyTargetName)
+                suffixText = ambushSuffix .. ": " .. state.preyTargetName
             else
-                stageText:SetText(ambushSuffix)
+                suffixText = ambushSuffix
             end
         end
     elseif isOutOfPreyZone and not forceKillStage then
-        stageText:SetText(settings.outOfZoneLabel or DEFAULT_OUT_OF_ZONE_LABEL)
+        prefixText = (settings and settings.outOfZonePrefix) or ""
+        suffixText = settings.outOfZoneLabel or DEFAULT_OUT_OF_ZONE_LABEL
     elseif editModePreview and not hasActiveQuest and not forceKillStage then
-        stageText:SetText("Preydator (Edit Mode Preview)")
+        suffixText = "Preydator (Edit Mode Preview)"
     elseif not hasActiveQuest and not forceKillStage then
         local zoneName = GetZoneText and GetZoneText() or "Unknown Zone"
-        stageText:SetText(zoneName)
+        suffixText = zoneName
     else
-        stageText:SetText(label)
+        prefixText = (settings.stageSuffixLabels and settings.stageSuffixLabels[stage]) or ""
+        suffixText = label
+    end
+
+    local centeredText = suffixText
+    if prefixText ~= "" and suffixText ~= "" then
+        centeredText = prefixText .. " " .. suffixText
+    elseif prefixText ~= "" then
+        centeredText = prefixText
+    end
+
+    -- Apply label mode: stageLabels = Suffix (right), stageSuffixLabels = Prefix (left)
+    local lm = settings.stageLabelMode or LABEL_MODE_CENTER
+    if lm == LABEL_MODE_NONE then
+        stageText:SetText("") stageText:Hide()
+        if stageSuffixText then stageSuffixText:SetText("") stageSuffixText:Hide() end
+    elseif lm == LABEL_MODE_SEPARATE then
+        if prefixText ~= "" then stageText:SetText(prefixText) stageText:Show()
+        else stageText:SetText("") stageText:Hide() end
+        if stageSuffixText then
+            if suffixText ~= "" then stageSuffixText:SetText(suffixText) stageSuffixText:Show()
+            else stageSuffixText:SetText("") stageSuffixText:Hide() end
+        end
+    elseif lm == LABEL_MODE_LEFT then
+        if prefixText ~= "" then stageText:SetText(prefixText) stageText:Show()
+        else stageText:SetText("") stageText:Hide() end
+        if stageSuffixText then stageSuffixText:SetText("") stageSuffixText:Hide() end
+    elseif lm == LABEL_MODE_LEFT_SUFFIX then
+        if suffixText ~= "" then stageText:SetText(suffixText) stageText:Show()
+        else stageText:SetText("") stageText:Hide() end
+        if stageSuffixText then stageSuffixText:SetText("") stageSuffixText:Hide() end
+    elseif lm == LABEL_MODE_RIGHT then
+        stageText:SetText("") stageText:Hide()
+        if stageSuffixText then
+            if suffixText ~= "" then stageSuffixText:SetText(suffixText) stageSuffixText:Show()
+            else stageSuffixText:SetText("") stageSuffixText:Hide() end
+        end
+    elseif lm == LABEL_MODE_RIGHT_PREFIX then
+        stageText:SetText("") stageText:Hide()
+        if stageSuffixText then
+            if prefixText ~= "" then stageSuffixText:SetText(prefixText) stageSuffixText:Show()
+            else stageSuffixText:SetText("") stageSuffixText:Hide() end
+        end
+    else
+        if centeredText ~= "" then stageText:SetText(centeredText) stageText:Show()
+        else stageText:SetText("") stageText:Hide() end
+        if stageSuffixText then stageSuffixText:SetText("") stageSuffixText:Hide() end
     end
 
     barText:SetText(string.format("%d%%", pct))
@@ -1659,7 +1897,13 @@ UpdateBarDisplay = function()
     })
 end
 
-local function OpenOptionsPanel()
+OpenOptionsPanel = function()
+    local settingsModule = Preydator.GetModule and Preydator:GetModule("Settings")
+    if settingsModule and settingsModule.OpenOptionsPanel then
+        settingsModule:OpenOptionsPanel()
+        return
+    end
+
     EnsureOptionsPanel()
 
     if Settings and Settings.OpenToCategory then
@@ -3411,7 +3655,6 @@ local function OnAddonLoaded()
     settings = _G.PreydatorDB
     ApplyDefaults(settings, DEFAULTS)
     EnsureDebugDB()
-    settings.debugSounds = false
     debugDB.enabled = settings.debugSounds and true or false
 
     NormalizeSoundSettings()
@@ -3678,6 +3921,18 @@ local function AddColorSwatch(parent, x, y, getter, setter, allowAlpha)
 end
 
 EnsureOptionsPanel = function()
+    local settingsModule = Preydator.GetModule and Preydator:GetModule("Settings")
+    if settingsModule and settingsModule.EnsureOptionsPanel then
+        local panelRef, categoryID = settingsModule:EnsureOptionsPanel()
+        if panelRef then
+            optionsPanel = panelRef
+        end
+        if categoryID ~= nil then
+            optionsCategoryID = categoryID
+        end
+        return
+    end
+
     if optionsPanel then
         return
     end
@@ -4096,7 +4351,7 @@ EnsureOptionsPanel = function()
         UpdateBarDisplay()
     end)
 
-    local tickLayerDropdown = AddDropdown(panel, "Tick Mark Layer", 510, -111, 140, layerModeOptions, function()
+    local tickLayerDropdown = AddDropdown(panel, "Tick Mark Layer", 320, -399, 170, layerModeOptions, function()
         return settings.tickLayerMode
     end, function(key)
         settings.tickLayerMode = key
@@ -4207,6 +4462,102 @@ EnsureOptionsPanel = function()
 
     optionsPanel = panelRoot
 end
+
+Preydator.Constants = {
+    MAX_STAGE = MAX_STAGE,
+    DEFAULT_OUT_OF_ZONE_LABEL = DEFAULT_OUT_OF_ZONE_LABEL,
+    DEFAULT_AMBUSH_LABEL = DEFAULT_AMBUSH_LABEL,
+    DEFAULT_STAGE_LABELS = DEFAULT_STAGE_LABELS,
+    DEFAULT_SOUND_FILENAMES = DEFAULT_SOUND_FILENAMES,
+    PROTECTED_SOUND_FILENAMES = PROTECTED_SOUND_FILENAMES,
+    PROGRESS_SEGMENTS_QUARTERS = PROGRESS_SEGMENTS_QUARTERS,
+    PROGRESS_SEGMENTS_THIRDS = PROGRESS_SEGMENTS_THIRDS,
+    PERCENT_DISPLAY_INSIDE = PERCENT_DISPLAY_INSIDE,
+    PERCENT_DISPLAY_INSIDE_BELOW = PERCENT_DISPLAY_INSIDE_BELOW,
+    PERCENT_DISPLAY_BELOW_BAR = PERCENT_DISPLAY_BELOW_BAR,
+    PERCENT_DISPLAY_UNDER_TICKS = PERCENT_DISPLAY_UNDER_TICKS,
+    PERCENT_DISPLAY_OFF = PERCENT_DISPLAY_OFF,
+    LAYER_MODE_ABOVE = LAYER_MODE_ABOVE,
+    LAYER_MODE_BELOW = LAYER_MODE_BELOW,
+    LABEL_MODE_CENTER = LABEL_MODE_CENTER,
+    LABEL_MODE_LEFT = LABEL_MODE_LEFT,
+    LABEL_MODE_RIGHT = LABEL_MODE_RIGHT,
+    LABEL_MODE_SEPARATE = LABEL_MODE_SEPARATE,
+    LABEL_MODE_LEFT_SUFFIX = LABEL_MODE_LEFT_SUFFIX,
+    LABEL_MODE_RIGHT_PREFIX = LABEL_MODE_RIGHT_PREFIX,
+    LABEL_MODE_NONE = LABEL_MODE_NONE,
+    TEXTURE_PRESETS = TEXTURE_PRESETS,
+    FONT_PRESETS = FONT_PRESETS,
+}
+
+Preydator.API = {
+    GetSettings = function()
+        return settings
+    end,
+    GetDefaults = function()
+        return DEFAULTS
+    end,
+    GetState = function()
+        return state
+    end,
+    ApplyBarSettings = ApplyBarSettings,
+    UpdateBarDisplay = function()
+        UpdateBarDisplay()
+    end,
+    RequestBarRefresh = function()
+        ApplyBarSettings()
+        UpdateBarDisplay()
+    end,
+    NormalizeSoundSettings = function()
+        NormalizeSoundSettings()
+    end,
+    NormalizeLabelSettings = function()
+        NormalizeLabelSettings()
+    end,
+    NormalizeColorSettings = function()
+        NormalizeColorSettings()
+    end,
+    NormalizeDisplaySettings = function()
+        NormalizeDisplaySettings()
+    end,
+    NormalizeProgressSettings = function()
+        NormalizeProgressSettings()
+    end,
+    NormalizeAmbushSettings = function()
+        NormalizeAmbushSettings()
+    end,
+    ApplyDefaultPreyIconVisibility = function()
+        ApplyDefaultPreyIconVisibility()
+    end,
+    ResetAllSettings = function()
+        ResetAllSettings()
+    end,
+    BuildSoundDropdownOptions = BuildSoundDropdownOptions,
+    AddSoundFileName = AddSoundFileName,
+    RemoveSoundFileName = RemoveSoundFileName,
+    ResolveStageSoundPath = ResolveStageSoundPath,
+    TryPlayStageSound = function(stageIndex, force)
+        return TryPlayStageSound(stageIndex, force)
+    end,
+    TriggerAmbushAlert = function(message, source)
+        TriggerAmbushAlert(message, source)
+    end,
+    OpenLegacyOptionsPanel = function()
+        if Settings and Settings.OpenToCategory then
+            if type(optionsCategoryID) == "number" then
+                Settings.OpenToCategory(optionsCategoryID)
+                return true
+            end
+
+            if optionsPanel and type(optionsPanel.categoryID) == "number" then
+                Settings.OpenToCategory(optionsPanel.categoryID)
+                return true
+            end
+        end
+
+        return false
+    end,
+}
 
 local function HandleSlashCommand(message)
     local trimmed = (message or ""):match("^%s*(.-)%s*$")

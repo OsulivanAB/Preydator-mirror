@@ -2,7 +2,7 @@
 
 Preydator is a World of Warcraft addon that tracks your active Prey Hunt stage, displays a customizable progress bar, and plays stage-based audio cues.
 
-Current release: `v1.1.1`
+Current release: `v1.5.0`
 
 ## Quick start
 
@@ -17,6 +17,7 @@ Current release: `v1.1.1`
 3. Reload your UI with `/reload`.
 
 4. Open settings with `/pd options` (or `/preydator options`).
+5. Open Blizzard Edit Mode to use the compact Preydator quick-settings window while positioning the bar.
 
 ## Stage flow shown by the bar
 
@@ -37,6 +38,7 @@ Behavior flow:
 Optional behavior:
 
 - Enable **Only show in prey zone** to hide the bar until you enter the correct prey zone.
+- Enable **Show in Edit Mode preview** to keep the bar visible while Blizzard Edit Mode is open so you can position it more reliably with custom UI layouts.
 
 ## Using custom audio files
 
@@ -66,16 +68,24 @@ Default bundled files:
 
 - Bar lock/unlock and on-screen position
 - Only show in prey zone
+- Show in Edit Mode preview
+- Compact Edit Mode quick settings for common layout adjustments
 - Scale, width, height, font size
 - Texture preset and colors (bar, title, percent text)
 - Stage names and out-of-zone label
 - Ambush custom text (full override of ambush display text)
-- Percent display style and tick marks
+- Percent display style, in-bar percent layering, and tick mark layering
 - Sound enable/disable, channel, and sound enhancement
 - Stage 1/2/3 sound selection and ambush sound selection
 - Custom sound file add/remove controls in options
 - Test buttons for each stage sound
 - Reset all settings to defaults
+
+## Settings layout
+
+- The main settings panel is organized into tabs to reduce clutter.
+- Slider controls show the current value and allow direct typed entry in addition to dragging.
+- Existing installs keep their saved values during settings UI migrations.
 
 Sound defaults:
 

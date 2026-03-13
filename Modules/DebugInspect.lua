@@ -72,11 +72,21 @@ local function BuildInspectReport()
     add("- quest live=" .. tostring(liveQuestID) .. " | hasActive=" .. tostring(hasActiveQuest) .. " | tracked=" .. tostring(state.activeQuestID))
     add("- state stage=" .. tostring(state.stage) .. " | progressState=" .. tostring(state.progressState) .. " | progressPercent=" .. tostring(state.progressPercent))
     add("- inPreyZone=" .. tostring(state.inPreyZone) .. " | disableDefaultPreyIcon=" .. tostring(settings and settings.disableDefaultPreyIcon == true))
+    add("- settings size width=" .. tostring(settings and settings.width)
+        .. " | height=" .. tostring(settings and settings.height)
+        .. " | scale=" .. tostring(settings and settings.scale))
 
     if barFrame then
+        local liveWidth = barFrame.GetWidth and barFrame:GetWidth() or "?"
+        local liveHeight = barFrame.GetHeight and barFrame:GetHeight() or "?"
+        local liveScale = barFrame.GetScale and barFrame:GetScale() or "?"
+        local liveEffectiveScale = barFrame.GetEffectiveScale and barFrame:GetEffectiveScale() or "?"
         add("- bar shown=" .. tostring(barFrame.IsShown and barFrame:IsShown() or false)
             .. " | mouse=" .. tostring(barFrame.IsMouseEnabled and barFrame:IsMouseEnabled() or false)
-            .. " | width=" .. tostring(barFrame.GetWidth and barFrame:GetWidth() or "?"))
+            .. " | width=" .. tostring(liveWidth)
+            .. " | height=" .. tostring(liveHeight)
+            .. " | scale=" .. tostring(liveScale)
+            .. " | effectiveScale=" .. tostring(liveEffectiveScale))
     else
         add("- bar frame unavailable")
     end
