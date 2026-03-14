@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.3 - 2026-03-14
+
+### Added
+- Localization infrastructure: `Locales/Locales.lua` creates the `PreydatorL` global with a metatable fallback so untranslated keys safely return the key itself.
+- `Locales/enUS.lua` — full translator reference guide documenting every key, format-string pattern, and semantic hint key.
+- Stub locale files for deDE, frFR, esES, esMX, ptBR, itIT, ruRU, koKR, zhCN, zhTW — ready for community translation.
+
+### Changed
+- All UI strings in `Preydator.lua`, `Settings.lua`, `CurrencyTracker.lua`, and `EditMode.lua` routed through `L["key"]` lookup.
+- TOC updated to version 1.6.3; all 12 locale files load before `Preydator.lua`.
+
+### Fixed
+- Ambush detection double-trigger: removed English `"ambush"` string check from `IsAmbushSystemMessage`; detection now relies solely on prey name matching, eliminating the duplicate sound that fired from both `CHAT_MSG_SYSTEM` and `CHAT_MSG_MONSTER_SAY`.
+
 ## 1.6.0 - 2026-03-14
 
 ### Added

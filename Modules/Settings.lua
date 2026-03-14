@@ -2,6 +2,7 @@
 
 local _, addonTable = ...
 local Preydator = _G.Preydator or addonTable
+local L = _G.PreydatorL or setmetatable({}, { __index = function(_, k) return k end })
 
 local SettingsModule = {}
 Preydator:RegisterModule("Settings", SettingsModule)
@@ -28,105 +29,105 @@ local PANEL_WIDTH = 760
 local PANEL_HEIGHT = 620
 
 local TEXTURE_OPTIONS = {
-    default = { text = "Default" },
-    flat = { text = "Flat" },
-    raid = { text = "Raid HP Fill" },
-    classic = { text = "Classic Skill Bar" },
+    default = { text = L["Default"] },
+    flat = { text = L["Flat"] },
+    raid = { text = L["Raid HP Fill"] },
+    classic = { text = L["Classic Skill Bar"] },
 }
 
 local FONT_OPTIONS = {
-    frizqt = { text = "Friz Quadrata" },
-    arialn = { text = "Arial Narrow" },
-    skurri = { text = "Skurri" },
-    morpheus = { text = "Morpheus" },
+    frizqt = { text = L["Friz Quadrata"] },
+    arialn = { text = L["Arial Narrow"] },
+    skurri = { text = L["Skurri"] },
+    morpheus = { text = L["Morpheus"] },
 }
 
 local CHANNEL_OPTIONS = {
-    Master = { text = "Master" },
-    SFX = { text = "SFX" },
-    Dialog = { text = "Dialog" },
-    Ambience = { text = "Ambience" },
+    Master = { text = L["Master"] },
+    SFX = { text = L["SFX"] },
+    Dialog = { text = L["Dialog"] },
+    Ambience = { text = L["Ambience"] },
 }
 
 local CURRENCY_THEME_OPTIONS = {
-    light = { text = "Light" },
-    brown = { text = "Brown" },
-    dark = { text = "Dark" },
+    light = { text = L["Light"] },
+    brown = { text = L["Brown"] },
+    dark = { text = L["Dark"] },
 }
 
 local PERCENT_DISPLAY_OPTIONS = {
-    [constants.PERCENT_DISPLAY_INSIDE] = { text = "In Bar" },
-    [constants.PERCENT_DISPLAY_ABOVE_BAR] = { text = "Above Bar" },
-    [constants.PERCENT_DISPLAY_ABOVE_TICKS] = { text = "Above Ticks" },
-    [constants.PERCENT_DISPLAY_UNDER_TICKS] = { text = "Under Ticks" },
-    [constants.PERCENT_DISPLAY_BELOW_BAR] = { text = "Below Bar" },
-    [constants.PERCENT_DISPLAY_OFF] = { text = "Off" },
+    [constants.PERCENT_DISPLAY_INSIDE] = { text = L["In Bar"] },
+    [constants.PERCENT_DISPLAY_ABOVE_BAR] = { text = L["Above Bar"] },
+    [constants.PERCENT_DISPLAY_ABOVE_TICKS] = { text = L["Above Ticks"] },
+    [constants.PERCENT_DISPLAY_UNDER_TICKS] = { text = L["Under Ticks"] },
+    [constants.PERCENT_DISPLAY_BELOW_BAR] = { text = L["Below Bar"] },
+    [constants.PERCENT_DISPLAY_OFF] = { text = L["Off"] },
 }
 
 local VERTICAL_PERCENT_DISPLAY_OPTIONS = {
-    [constants.PERCENT_DISPLAY_OFF]       = { text = "Off" },
-    [constants.PERCENT_DISPLAY_ABOVE_BAR] = { text = "Above" },
-    [constants.PERCENT_DISPLAY_INSIDE]    = { text = "Inside" },
-    [constants.PERCENT_DISPLAY_BELOW_BAR] = { text = "Below" },
+    [constants.PERCENT_DISPLAY_OFF]       = { text = L["Off"] },
+    [constants.PERCENT_DISPLAY_ABOVE_BAR] = { text = L["Above"] },
+    [constants.PERCENT_DISPLAY_INSIDE]    = { text = L["Inside"] },
+    [constants.PERCENT_DISPLAY_BELOW_BAR] = { text = L["Below"] },
 }
 
 local LAYER_MODE_OPTIONS = {
-    [constants.LAYER_MODE_ABOVE] = { text = "Above Fill" },
-    [constants.LAYER_MODE_BELOW] = { text = "Below Fill" },
+    [constants.LAYER_MODE_ABOVE] = { text = L["Above Fill"] },
+    [constants.LAYER_MODE_BELOW] = { text = L["Below Fill"] },
 }
 
 local PROGRESS_SEGMENT_OPTIONS = {
-    [constants.PROGRESS_SEGMENTS_QUARTERS] = { text = "Quarters (25/50/75/100)" },
-    [constants.PROGRESS_SEGMENTS_THIRDS] = { text = "Thirds (33/66/100)" },
+    [constants.PROGRESS_SEGMENTS_QUARTERS] = { text = L["Quarters (25/50/75/100)"] },
+    [constants.PROGRESS_SEGMENTS_THIRDS] = { text = L["Thirds (33/66/100)"] },
 }
 
 local LABEL_MODE_OPTIONS = {
-    [constants.LABEL_MODE_CENTER]       = { text = "Centered" },
-    [constants.LABEL_MODE_LEFT]         = { text = "Left (Prefix only)" },
-    [constants.LABEL_MODE_LEFT_COMBINED] = { text = "Left (Prefix + Suffix)" },
-    [constants.LABEL_MODE_LEFT_SUFFIX]  = { text = "Left (Suffix only)" },
-    [constants.LABEL_MODE_RIGHT]        = { text = "Right (Suffix only)" },
-    [constants.LABEL_MODE_RIGHT_COMBINED] = { text = "Right (Prefix + Suffix)" },
-    [constants.LABEL_MODE_RIGHT_PREFIX] = { text = "Right (Prefix only)" },
-    [constants.LABEL_MODE_SEPARATE]     = { text = "Separate (Prefix + Suffix)" },
-    [constants.LABEL_MODE_NONE]         = { text = "No Text" },
+    [constants.LABEL_MODE_CENTER]       = { text = L["Centered"] },
+    [constants.LABEL_MODE_LEFT]         = { text = L["Left (Prefix only)"] },
+    [constants.LABEL_MODE_LEFT_COMBINED] = { text = L["Left (Prefix + Suffix)"] },
+    [constants.LABEL_MODE_LEFT_SUFFIX]  = { text = L["Left (Suffix only)"] },
+    [constants.LABEL_MODE_RIGHT]        = { text = L["Right (Suffix only)"] },
+    [constants.LABEL_MODE_RIGHT_COMBINED] = { text = L["Right (Prefix + Suffix)"] },
+    [constants.LABEL_MODE_RIGHT_PREFIX] = { text = L["Right (Prefix only)"] },
+    [constants.LABEL_MODE_SEPARATE]     = { text = L["Separate (Prefix + Suffix)"] },
+    [constants.LABEL_MODE_NONE]         = { text = L["No Text"] },
 }
 
 local LABEL_ROW_OPTIONS = {
-    [constants.LABEL_ROW_ABOVE] = { text = "Above Bar" },
-    [constants.LABEL_ROW_BELOW] = { text = "Below Bar" },
+    [constants.LABEL_ROW_ABOVE] = { text = L["Above Bar"] },
+    [constants.LABEL_ROW_BELOW] = { text = L["Below Bar"] },
 }
 
 local ORIENTATION_OPTIONS = {
-    [constants.ORIENTATION_HORIZONTAL] = { text = "Horizontal" },
-    [constants.ORIENTATION_VERTICAL] = { text = "Vertical" },
+    [constants.ORIENTATION_HORIZONTAL] = { text = L["Horizontal"] },
+    [constants.ORIENTATION_VERTICAL] = { text = L["Vertical"] },
 }
 
 local VERTICAL_FILL_DIRECTION_OPTIONS = {
-    [constants.FILL_DIRECTION_UP] = { text = "Fill Up" },
-    [constants.FILL_DIRECTION_DOWN] = { text = "Fill Down" },
+    [constants.FILL_DIRECTION_UP] = { text = L["Fill Up"] },
+    [constants.FILL_DIRECTION_DOWN] = { text = L["Fill Down"] },
 }
 
 local VERTICAL_SIDE_OPTIONS = {
-    left = { text = "Left" },
-    right = { text = "Right" },
+    left = { text = L["Left"] },
+    right = { text = L["Right"] },
 }
 
 local VERTICAL_PERCENT_SIDE_OPTIONS = {
-    left   = { text = "Left" },
-    center = { text = "Center" },
-    right  = { text = "Right" },
+    left   = { text = L["Left"] },
+    center = { text = L["Center"] },
+    right  = { text = L["Right"] },
 }
 
 local VERTICAL_TEXT_ALIGN_OPTIONS = {
-    top = { text = "Top Align" },
-    middle = { text = "Middle Align" },
-    bottom = { text = "Bottom Align" },
-    top_prefix_only = { text = "Top Prefix Only" },
-    top_suffix_only = { text = "Top Suffix Only" },
-    bottom_prefix_only = { text = "Bottom Prefix Only" },
-    bottom_suffix_only = { text = "Bottom Suffix Only" },
-    separate = { text = "Separate Prefix/Suffix" },
+    top = { text = L["Top Align"] },
+    middle = { text = L["Middle Align"] },
+    bottom = { text = L["Bottom Align"] },
+    top_prefix_only = { text = L["Top Prefix Only"] },
+    top_suffix_only = { text = L["Top Suffix Only"] },
+    bottom_prefix_only = { text = L["Bottom Prefix Only"] },
+    bottom_suffix_only = { text = L["Bottom Suffix Only"] },
+    separate = { text = L["Separate Prefix/Suffix"] },
 }
 
 local function Clamp(value, minValue, maxValue)
@@ -509,27 +510,27 @@ end
 
 local function BuildGeneralPage(owner, parent)
     local db = api.GetSettings()
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Visibility")
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -38, "Lock Bar", function() return db.locked end, function(value)
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Visibility"])
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -38, L["Lock Bar"], function() return db.locked end, function(value)
         db.locked = value
         api.ApplyBarSettings()
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -66, "Only show in prey zone", function() return db.onlyShowInPreyZone end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -66, L["Only show in prey zone"], function() return db.onlyShowInPreyZone end, function(value)
         db.onlyShowInPreyZone = value
         api.UpdateBarDisplay()
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -94, "Disable Default Prey Icon", function() return db.disableDefaultPreyIcon == true end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -94, L["Disable Default Prey Icon"], function() return db.disableDefaultPreyIcon == true end, function(value)
         db.disableDefaultPreyIcon = value
         api.ApplyDefaultPreyIconVisibility()
         api.UpdateBarDisplay()
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -122, "Show in Edit Mode preview", function() return db.showInEditMode ~= false end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -122, L["Show in Edit Mode preview"], function() return db.showInEditMode ~= false end, function(value)
         db.showInEditMode = value
         api.NormalizeDisplaySettings()
         api.UpdateBarDisplay()
     end))
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -146, "Currencies")
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -176, "Currency Theme", 170, CURRENCY_THEME_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -146, L["Currencies"])
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -176, L["Currency Theme"], 170, CURRENCY_THEME_OPTIONS, function()
         return db.currencyTheme or "brown"
     end, function(key)
         db.currencyTheme = key
@@ -539,32 +540,32 @@ local function BuildGeneralPage(owner, parent)
         end
     end))
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Behavior")
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -38, "Enable sounds", function() return db.soundsEnabled end, function(value)
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Behavior"])
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -38, L["Enable sounds"], function() return db.soundsEnabled end, function(value)
         db.soundsEnabled = value
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -66, "Ambush sound alert", function() return db.ambushSoundEnabled ~= false end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -66, L["Ambush sound alert"], function() return db.ambushSoundEnabled ~= false end, function(value)
         db.ambushSoundEnabled = value
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -94, "Ambush visual alert", function() return db.ambushVisualEnabled ~= false end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -94, L["Ambush visual alert"], function() return db.ambushVisualEnabled ~= false end, function(value)
         db.ambushVisualEnabled = value
         if not value then
             api.GetState().ambushAlertUntil = 0
             api.UpdateBarDisplay()
         end
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -122, "Show tick marks", function() return db.showTicks end, function(value)
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_RIGHT_X, -122, L["Show tick marks"], function() return db.showTicks end, function(value)
         db.showTicks = value
         api.RequestBarRefresh()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -164, "Progress Segments", 170, PROGRESS_SEGMENT_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -164, L["Progress Segments"], 170, PROGRESS_SEGMENT_OPTIONS, function()
         return db.progressSegments
     end, function(key)
         db.progressSegments = key
         api.NormalizeProgressSettings()
         api.RequestBarRefresh()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -228, "Sound Channel", 170, CHANNEL_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -228, L["Sound Channel"], 170, CHANNEL_OPTIONS, function()
         return db.soundChannel
     end, function(key)
         db.soundChannel = key
@@ -578,26 +579,26 @@ local function BuildDisplayPage(owner, parent)
         return (db.orientation or constants.ORIENTATION_HORIZONTAL) ~= constants.ORIENTATION_VERTICAL
     end
 
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Bar Size")
-    local scaleSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -40, "Scale", 0.5, 2, 0.05, function() return db.scale end, function(value)
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Bar Size"])
+    local scaleSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -40, L["Scale"], 0.5, 2, 0.05, function() return db.scale end, function(value)
         db.scale = value
         api.RequestBarRefresh()
     end, function(value) return string.format("%.2f", value) end))
-    local widthSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -100, "Width", 100, 350, 1, function() return db.horizontalWidth or db.width end, function(value)
+    local widthSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -100, L["Width"], 100, 350, 1, function() return db.horizontalWidth or db.width end, function(value)
         db.horizontalWidth = math.floor(value + 0.5)
         if IsHorizontalMode() then
             db.width = db.horizontalWidth
         end
         api.RequestBarRefresh()
     end, function(value) return tostring(math.floor(value + 0.5)) end))
-    local heightSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -160, "Height", 10, 60, 1, function() return db.horizontalHeight or db.height end, function(value)
+    local heightSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -160, L["Height"], 10, 60, 1, function() return db.horizontalHeight or db.height end, function(value)
         db.horizontalHeight = math.floor(value + 0.5)
         if IsHorizontalMode() then
             db.height = db.horizontalHeight
         end
         api.RequestBarRefresh()
     end, function(value) return tostring(math.floor(value + 0.5)) end))
-    RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -220, "Font Size", 8, 24, 1, function() return db.fontSize end, function(value)
+    RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -220, L["Font Size"], 8, 24, 1, function() return db.fontSize end, function(value)
         db.fontSize = math.floor(value + 0.5)
         api.RequestBarRefresh()
     end, function(value) return tostring(math.floor(value + 0.5)) end))
@@ -626,8 +627,8 @@ local function BuildDisplayPage(owner, parent)
         end
     end
 
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -286, "Progress Display")
-    local percentDisplayDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -316, "Percent Display", 170, PERCENT_DISPLAY_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -286, L["Progress Display"])
+    local percentDisplayDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -316, L["Percent Display"], 170, PERCENT_DISPLAY_OPTIONS, function()
         return db.percentDisplay
     end, function(key)
         if not IsHorizontalMode() then
@@ -637,7 +638,7 @@ local function BuildDisplayPage(owner, parent)
         api.NormalizeDisplaySettings()
         api.RequestBarRefresh()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -380, "Text Display", 170, LABEL_ROW_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -380, L["Text Display"], 170, LABEL_ROW_OPTIONS, function()
         return db.labelRowPosition
     end, function(key)
         if not IsHorizontalMode() then
@@ -647,7 +648,7 @@ local function BuildDisplayPage(owner, parent)
         api.NormalizeDisplaySettings()
         api.RequestBarRefresh()
     end))
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -444, "Display Spark Line", function()
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -444, L["Display Spark Line"], function()
         return db.showSparkLine == true
     end, function(value)
         db.showSparkLine = value and true or false
@@ -663,46 +664,46 @@ local function BuildDisplayPage(owner, parent)
         end
     end
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Visual Style")
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -40, "Texture", 170, TEXTURE_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Visual Style"])
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -40, L["Texture"], 170, TEXTURE_OPTIONS, function()
         return db.textureKey
     end, function(key)
         db.textureKey = key
         api.ApplyBarSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -104, "Title Font", 170, FONT_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -104, L["Title Font"], 170, FONT_OPTIONS, function()
         return db.titleFontKey
     end, function(key)
         db.titleFontKey = key
         api.ApplyBarSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -168, "Percent Font", 170, FONT_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -168, L["Percent Font"], 170, FONT_OPTIONS, function()
         return db.percentFontKey
     end, function(key)
         db.percentFontKey = key
         api.ApplyBarSettings()
     end))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -232, "Fill Color", function() return db.fillColor end, function(color)
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -232, L["Fill Color"], function() return db.fillColor end, function(color)
         db.fillColor = color
         api.ApplyBarSettings()
     end, true))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -266, "Background Color", function() return db.bgColor end, function(color)
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -266, L["Background Color"], function() return db.bgColor end, function(color)
         db.bgColor = color
         api.ApplyBarSettings()
     end, true))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -300, "Title Color", function() return db.titleColor end, function(color)
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -300, L["Title Color"], function() return db.titleColor end, function(color)
         db.titleColor = color
         api.RequestBarRefresh()
     end, true))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -334, "Percent Color", function() return db.percentColor end, function(color)
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -334, L["Percent Color"], function() return db.percentColor end, function(color)
         db.percentColor = color
         api.RequestBarRefresh()
     end, true))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -368, "Tick Mark Color", function() return db.tickColor end, function(color)
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -368, L["Tick Mark Color"], function() return db.tickColor end, function(color)
         db.tickColor = color
         api.RequestBarRefresh()
     end, true))
-    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -402, "Border Color", function()
+    RegisterRefresher(owner, CreateColorButton(parent, COLUMN_RIGHT_X, -402, L["Border Color"], function()
         if db.borderColorLinked == false and db.borderColor then
             return db.borderColor
         end
@@ -713,7 +714,7 @@ local function BuildDisplayPage(owner, parent)
         api.NormalizeColorSettings()
         api.ApplyBarSettings()
     end, true))
-    local borderLinkCheck = CreateCheckbox(parent, COLUMN_RIGHT_X, -436, "Link border color to fill", function()
+    local borderLinkCheck = CreateCheckbox(parent, COLUMN_RIGHT_X, -436, L["Link border color to fill"], function()
         return db.borderColorLinked ~= false
     end, function(value)
         db.borderColorLinked = value and true or false
@@ -730,8 +731,8 @@ local function BuildVerticalPage(owner, parent)
         return (db.orientation or constants.ORIENTATION_HORIZONTAL) == constants.ORIENTATION_VERTICAL
     end
 
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Vertical Mode")
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, "Bar Orientation", 170, ORIENTATION_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Vertical Mode"])
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, L["Bar Orientation"], 170, ORIENTATION_OPTIONS, function()
         return db.orientation
     end, function(key)
         db.orientation = key
@@ -740,7 +741,7 @@ local function BuildVerticalPage(owner, parent)
         owner:RefreshControls()
     end))
 
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -104, "Vertical Fill Direction", 170, VERTICAL_FILL_DIRECTION_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -104, L["Vertical Fill Direction"], 170, VERTICAL_FILL_DIRECTION_OPTIONS, function()
         return db.verticalFillDirection
     end, function(key)
         db.verticalFillDirection = key
@@ -748,7 +749,7 @@ local function BuildVerticalPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -168, "Vertical Text Side", 170, VERTICAL_SIDE_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -168, L["Vertical Text Side"], 170, VERTICAL_SIDE_OPTIONS, function()
         return db.verticalTextSide
     end, function(key)
         db.verticalTextSide = key
@@ -756,7 +757,7 @@ local function BuildVerticalPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -232, "Vertical Text Alignment", 190, VERTICAL_TEXT_ALIGN_OPTIONS, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -232, L["Vertical Text Alignment"], 190, VERTICAL_TEXT_ALIGN_OPTIONS, function()
         return db.verticalTextAlign
     end, function(key)
         db.verticalTextAlign = key
@@ -764,7 +765,7 @@ local function BuildVerticalPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    local verticalPercentDisplayDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -296, "Vertical Percent Display", 190, VERTICAL_PERCENT_DISPLAY_OPTIONS, function()
+    local verticalPercentDisplayDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -296, L["Vertical Percent Display"], 190, VERTICAL_PERCENT_DISPLAY_OPTIONS, function()
         return db.verticalPercentDisplay
     end, function(key)
         db.verticalPercentDisplay = key
@@ -772,7 +773,7 @@ local function BuildVerticalPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    local verticalPercentSideDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -360, "Vertical Percent Tick Mark", 170, VERTICAL_PERCENT_SIDE_OPTIONS, function()
+    local verticalPercentSideDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -360, L["Vertical Percent Tick Mark"], 170, VERTICAL_PERCENT_SIDE_OPTIONS, function()
         return db.verticalPercentSide
     end, function(key)
         db.verticalPercentSide = key
@@ -780,7 +781,7 @@ local function BuildVerticalPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    local verticalTickPercentCheck = RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -410, "Show Percentage at Tick Marks", function()
+    local verticalTickPercentCheck = RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -410, L["Show Percentage at Tick Marks"], function()
         return db.showVerticalTickPercent == true
     end, function(value)
         db.showVerticalTickPercent = value and true or false
@@ -793,10 +794,10 @@ local function BuildVerticalPage(owner, parent)
     note:SetWidth(260)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
-    note:SetText("Vertical Percent Offset applies to vertical side/tick-mark side placements. Use tick marks to replace the single percent value.")
+    note:SetText(L["HINT_VERTICAL_PERCENT_OFFSET"])
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Vertical Dimensions")
-    local verticalScaleSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -80, "Scale", 0.5, 2, 0.05, function()
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Vertical Dimensions"])
+    local verticalScaleSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -80, L["Scale"], 0.5, 2, 0.05, function()
         return db.verticalScale or 0.9
     end, function(value)
         db.verticalScale = value
@@ -805,7 +806,7 @@ local function BuildVerticalPage(owner, parent)
         return string.format("%.2f", value)
     end))
 
-    local verticalWidthSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -140, "Width", 10, 60, 1, function()
+    local verticalWidthSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -140, L["Width"], 10, 60, 1, function()
         return db.verticalWidth or db.width
     end, function(value)
         db.verticalWidth = math.floor(value + 0.5)
@@ -817,7 +818,7 @@ local function BuildVerticalPage(owner, parent)
         return tostring(math.floor(value + 0.5))
     end))
 
-    local verticalHeightSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -200, "Height", 100, 350, 1, function()
+    local verticalHeightSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -200, L["Height"], 100, 350, 1, function()
         return db.verticalHeight or db.height
     end, function(value)
         db.verticalHeight = math.floor(value + 0.5)
@@ -829,7 +830,7 @@ local function BuildVerticalPage(owner, parent)
         return tostring(math.floor(value + 0.5))
     end))
 
-    local textOffsetSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -264, "Vertical Text Offset", 2, 60, 1, function()
+    local textOffsetSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -264, L["Vertical Text Offset"], 2, 60, 1, function()
         return db.verticalTextOffset or 10
     end, function(value)
         db.verticalTextOffset = math.floor(value + 0.5)
@@ -839,7 +840,7 @@ local function BuildVerticalPage(owner, parent)
         return tostring(math.floor(value + 0.5))
     end))
 
-    local percentOffsetSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -328, "Vertical Percent Offset", 2, 60, 1, function()
+    local percentOffsetSlider = RegisterRefresher(owner, CreateSlider(parent, COLUMN_RIGHT_X, -328, L["Vertical Percent Offset"], 2, 60, 1, function()
         return db.verticalPercentOffset or 10
     end, function(value)
         db.verticalPercentOffset = math.floor(value + 0.5)
@@ -956,8 +957,8 @@ local function BuildTextPage(owner, parent)
         end
     end
 
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Label Mode")
-    local labelModeDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, "Label Mode", 170, LABEL_MODE_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Label Mode"])
+    local labelModeDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, L["Label Mode"], 170, LABEL_MODE_OPTIONS, function()
         return db.stageLabelMode
     end, function(key)
         if IsVerticalMode() then
@@ -968,10 +969,10 @@ local function BuildTextPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -108, "Prefix Labels")
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -108, L["Prefix Labels"])
     for stageIndex = 1, constants.MAX_STAGE do
         local offset = -138 - ((stageIndex - 1) * 52)
-        RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, offset, "Stage " .. tostring(stageIndex), 220, function()
+        RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, offset, string.format(L["Stage %d"], stageIndex), 220, function()
             if not db.stageSuffixLabels then db.stageSuffixLabels = {} end
             return db.stageSuffixLabels[stageIndex] or ""
         end, function(value)
@@ -982,14 +983,14 @@ local function BuildTextPage(owner, parent)
         end))
     end
 
-    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, -346, "Out of Zone Prefix", 220, function()
+    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, -346, L["Out of Zone Prefix"], 220, function()
         return db.outOfZonePrefix or ""
     end, function(value)
         db.outOfZonePrefix = value
         api.NormalizeLabelSettings()
         api.UpdateBarDisplay()
     end))
-    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, -398, "Ambush Prefix", 220, function()
+    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_LEFT_X, -398, L["Ambush Prefix"], 220, function()
         return db.ambushPrefix or ""
     end, function(value)
         db.ambushPrefix = value
@@ -997,8 +998,8 @@ local function BuildTextPage(owner, parent)
         api.UpdateBarDisplay()
     end))
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Label Placement")
-    local labelRowDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -40, "Prefix/Suffix Row", 170, LABEL_ROW_OPTIONS, function()
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Label Placement"])
+    local labelRowDropdown = RegisterRefresher(owner, CreateDropdown(parent, COLUMN_RIGHT_X, -40, L["Prefix/Suffix Row"], 170, LABEL_ROW_OPTIONS, function()
         return db.labelRowPosition
     end, function(key)
         if IsVerticalMode() then
@@ -1009,10 +1010,10 @@ local function BuildTextPage(owner, parent)
         api.RequestBarRefresh()
     end))
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -108, "Suffix Labels")
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -108, L["Suffix Labels"])
     for stageIndex = 1, constants.MAX_STAGE do
         local offset = -138 - ((stageIndex - 1) * 52)
-        RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, offset, "Stage " .. tostring(stageIndex), 220, function()
+        RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, offset, string.format(L["Stage %d"], stageIndex), 220, function()
             return db.stageLabels[stageIndex] or ""
         end, function(value)
             db.stageLabels[stageIndex] = value
@@ -1021,21 +1022,21 @@ local function BuildTextPage(owner, parent)
         end))
     end
 
-    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, -346, "Out of Zone Label", 220, function()
+    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, -346, L["Out of Zone Label"], 220, function()
         return db.outOfZoneLabel
     end, function(value)
         db.outOfZoneLabel = value
         api.NormalizeLabelSettings()
         api.UpdateBarDisplay()
     end))
-    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, -398, "Ambush Override Text", 220, function()
+    RegisterRefresher(owner, CreateTextInput(parent, COLUMN_RIGHT_X, -398, L["Ambush Override Text"], 220, function()
         return db.ambushCustomText
     end, function(value)
         db.ambushCustomText = value
         api.NormalizeLabelSettings()
         api.UpdateBarDisplay()
     end))
-    CreateActionButton(parent, COLUMN_RIGHT_X, -458, 180, "Restore Default Names", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -458, 180, L["Restore Default Names"], function()
         for stageIndex = 1, constants.MAX_STAGE do
             db.stageLabels[stageIndex] = defaults.stageLabels[stageIndex] or ""
         end
@@ -1067,13 +1068,13 @@ local function BuildTextPage(owner, parent)
     lockNote:SetWidth(320)
     lockNote:SetJustifyH("LEFT")
     lockNote:SetWordWrap(true)
-    lockNote:SetText("In Vertical mode, only Label Mode and Prefix/Suffix Row are locked here. Stage names and custom labels remain editable.")
+    lockNote:SetText(L["HINT_VERTICAL_LOCK"])
 end
 
 local function BuildAudioPage(owner, parent)
     local db = api.GetSettings()
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Sound Selection")
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, "Stage 1 Sound", 170, function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Sound Selection"])
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -40, string.format(L["Stage %d Sound"], 1), 170, function()
         return api.BuildSoundDropdownOptions()
     end, function()
         return db.stageSounds[1]
@@ -1081,7 +1082,7 @@ local function BuildAudioPage(owner, parent)
         db.stageSounds[1] = key
         api.NormalizeSoundSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -104, "Stage 2 Sound", 170, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -104, string.format(L["Stage %d Sound"], 2), 170, function()
         return api.BuildSoundDropdownOptions()
     end, function()
         return db.stageSounds[2]
@@ -1089,7 +1090,7 @@ local function BuildAudioPage(owner, parent)
         db.stageSounds[2] = key
         api.NormalizeSoundSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -168, "Stage 3 Sound", 170, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -168, string.format(L["Stage %d Sound"], 3), 170, function()
         return api.BuildSoundDropdownOptions()
     end, function()
         return db.stageSounds[3]
@@ -1097,7 +1098,7 @@ local function BuildAudioPage(owner, parent)
         db.stageSounds[3] = key
         api.NormalizeSoundSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -232, "Stage 4 Sound", 170, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -232, string.format(L["Stage %d Sound"], 4), 170, function()
         return api.BuildSoundDropdownOptions()
     end, function()
         return db.stageSounds[4]
@@ -1105,7 +1106,7 @@ local function BuildAudioPage(owner, parent)
         db.stageSounds[4] = key
         api.NormalizeSoundSettings()
     end))
-    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -296, "Ambush Sound", 170, function()
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -296, L["Ambush Sound"], 170, function()
         return api.BuildSoundDropdownOptions()
     end, function()
         return db.ambushSoundPath
@@ -1113,12 +1114,12 @@ local function BuildAudioPage(owner, parent)
         db.ambushSoundPath = key
         api.NormalizeAmbushSettings()
     end))
-    RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -360, "Enhance Sounds", 0, 100, 5, function() return db.soundEnhance or 0 end, function(value)
+    RegisterRefresher(owner, CreateSlider(parent, COLUMN_LEFT_X, -360, L["Enhance Sounds"], 0, 100, 5, function() return db.soundEnhance or 0 end, function(value)
         db.soundEnhance = math.floor(value + 0.5)
     end, function(value) return tostring(math.floor(value + 0.5)) end))
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Custom Files / Tests")
-    local customSoundInput = CreateTextInput(parent, COLUMN_RIGHT_X, -40, "Custom Sound File", 220, function()
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Custom Files / Tests"])
+    local customSoundInput = CreateTextInput(parent, COLUMN_RIGHT_X, -40, L["Custom Sound File"], 220, function()
         return ""
     end, function()
     end)
@@ -1128,71 +1129,71 @@ local function BuildAudioPage(owner, parent)
     end)
     customSoundInput:SetText("")
 
-    CreateActionButton(parent, COLUMN_RIGHT_X, -100, 105, "Add File", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -100, 105, L["Add File"], function()
         local ok, message = api.AddSoundFileName(customSoundInput:GetText())
         if ok then
             customSoundInput:SetText("")
             owner:RefreshControls()
-            print("Preydator: Added sound file '" .. tostring(message) .. "'.")
+            print(string.format(L["Preydator: Added sound file '%s'."], tostring(message)))
         else
             print("Preydator: " .. tostring(message))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X + 115, -100, 105, "Remove File", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X + 115, -100, 105, L["Remove File"], function()
         local ok, message = api.RemoveSoundFileName(customSoundInput:GetText())
         if ok then
             customSoundInput:SetText("")
             owner:RefreshControls()
-            print("Preydator: Removed sound file '" .. tostring(message) .. "'.")
+            print(string.format(L["Preydator: Removed sound file '%s'."], tostring(message)))
         else
             print("Preydator: " .. tostring(message))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X, -148, 140, "Test Stage 1", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -148, 140, string.format(L["Test Stage %d"], 1), function()
         api.GetState().stageSoundPlayed[1] = nil
         local path = api.ResolveStageSoundPath(1)
         if not path then
-            print("Preydator: No stage 1 sound configured.")
+            print(string.format(L["Preydator: No stage %d sound configured."], 1))
             return
         end
         if not api.TryPlayStageSound(1, true) then
-            print("Preydator: Stage 1 sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
+            print(string.format(L["Preydator: Stage %d sound file failed to play. Ensure this file exists as .ogg: %s"], 1, tostring(path)))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X, -178, 140, "Test Stage 2", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -178, 140, string.format(L["Test Stage %d"], 2), function()
         api.GetState().stageSoundPlayed[2] = nil
         local path = api.ResolveStageSoundPath(2)
         if not path then
-            print("Preydator: No stage 2 sound configured.")
+            print(string.format(L["Preydator: No stage %d sound configured."], 2))
             return
         end
         if not api.TryPlayStageSound(2, true) then
-            print("Preydator: Stage 2 sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
+            print(string.format(L["Preydator: Stage %d sound file failed to play. Ensure this file exists as .ogg: %s"], 2, tostring(path)))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X, -208, 140, "Test Stage 3", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -208, 140, string.format(L["Test Stage %d"], 3), function()
         api.GetState().stageSoundPlayed[3] = nil
         local path = api.ResolveStageSoundPath(3)
         if not path then
-            print("Preydator: No stage 3 sound configured.")
+            print(string.format(L["Preydator: No stage %d sound configured."], 3))
             return
         end
         if not api.TryPlayStageSound(3, true) then
-            print("Preydator: Stage 3 sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
+            print(string.format(L["Preydator: Stage %d sound file failed to play. Ensure this file exists as .ogg: %s"], 3, tostring(path)))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X, -238, 140, "Test Stage 4", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -238, 140, string.format(L["Test Stage %d"], 4), function()
         api.GetState().stageSoundPlayed[4] = nil
         local path = api.ResolveStageSoundPath(4)
         if not path then
-            print("Preydator: No stage 4 sound configured.")
+            print(string.format(L["Preydator: No stage %d sound configured."], 4))
             return
         end
         if not api.TryPlayStageSound(4, true) then
-            print("Preydator: Stage 4 sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
+            print(string.format(L["Preydator: Stage %d sound file failed to play. Ensure this file exists as .ogg: %s"], 4, tostring(path)))
         end
     end)
-    CreateActionButton(parent, COLUMN_RIGHT_X, -268, 140, "Test Ambush", function()
+    CreateActionButton(parent, COLUMN_RIGHT_X, -268, 140, L["Test Ambush"], function()
         api.TriggerAmbushAlert("Manual test", "options")
     end)
     local note = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1200,14 +1201,14 @@ local function BuildAudioPage(owner, parent)
     note:SetWidth(250)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
-    note:SetText("Slider values can be dragged or typed directly. Custom sound input accepts bare names, .ogg, or full addon paths.")
+    note:SetText(L["HINT_AUDIO_SLIDER"])
 end
 
 local function BuildAdvancedPage(owner, parent)
     local db = api.GetSettings()
     local defaults = api.GetDefaults()
-    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, "Restore / Reset")
-    CreateActionButton(parent, COLUMN_LEFT_X, -44, 180, "Restore Default Names", function()
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -10, L["Restore / Reset"])
+    CreateActionButton(parent, COLUMN_LEFT_X, -44, 180, L["Restore Default Names"], function()
         for stageIndex = 1, (constants.MAX_STAGE - 1) do
             db.stageLabels[stageIndex] = defaults.stageLabels[stageIndex]
         end
@@ -1217,7 +1218,7 @@ local function BuildAdvancedPage(owner, parent)
         api.UpdateBarDisplay()
         owner:RefreshControls()
     end)
-    CreateActionButton(parent, COLUMN_LEFT_X, -76, 180, "Restore Default Sounds", function()
+    CreateActionButton(parent, COLUMN_LEFT_X, -76, 180, L["Restore Default Sounds"], function()
         db.soundsEnabled = defaults.soundsEnabled
         db.soundChannel = defaults.soundChannel
         db.soundEnhance = defaults.soundEnhance
@@ -1235,25 +1236,25 @@ local function BuildAdvancedPage(owner, parent)
         api.NormalizeAmbushSettings()
         owner:RefreshControls()
     end)
-    CreateActionButton(parent, COLUMN_LEFT_X, -108, 180, "Reset All Defaults", function()
+    CreateActionButton(parent, COLUMN_LEFT_X, -108, 180, L["Reset All Defaults"], function()
         api.ResetAllSettings()
         owner:RefreshControls()
     end)
 
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -146, "Enable Debug", function()
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -146, L["Enable Debug"], function()
         return db.debugSounds == true
     end, function(value)
         db.debugSounds = value and true or false
         _G.PreydatorDebugDB.enabled = db.debugSounds and true or false
     end))
 
-    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -174, "Currency Debug Events", function()
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -174, L["Currency Debug Events"], function()
         return db.currencyDebugEvents == true
     end, function(value)
         db.currencyDebugEvents = value and true or false
     end))
 
-    CreateActionButton(parent, COLUMN_LEFT_X, -208, 180, "Show What's New", function()
+    CreateActionButton(parent, COLUMN_LEFT_X, -208, 180, L["Show What's New"], function()
         db.currencyWhatsNewSeenVersion = nil
         local tracker = Preydator:GetModule("CurrencyTracker")
         if tracker and type(tracker.ShowCurrencyWhatsNew) == "function" then
@@ -1261,13 +1262,13 @@ local function BuildAdvancedPage(owner, parent)
         end
     end)
 
-    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Notes")
+    CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, L["Notes"])
     local note = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     note:SetPoint("TOPLEFT", parent, "TOPLEFT", COLUMN_RIGHT_X, -44)
     note:SetWidth(260)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
-    note:SetText("Existing installs keep their current saved values. New settings are only applied when a key is missing in PreydatorDB. This panel replaces the old long-form options page but uses the same database. The Inspect feature is compatible with BugSack.")
+    note:SetText(L["HINT_ADVANCED_NOTES"])
 end
 
 function SettingsModule:RefreshControls()
@@ -1280,7 +1281,7 @@ function SettingsModule:RefreshControls()
 end
 
 function SettingsModule:BuildTabbedOptions(parent, topOffset, bottomOffset)
-    local tabLabels = { "General", "Display", "Vertical", "Text", "Audio", "Currencies", "Advanced" }
+    local tabLabels = { L["General"], L["Display"], L["Vertical"], L["Text"], L["Audio"], L["Currencies"], L["Advanced"] }
     local tabs = CreateCustomTabs(parent, tabLabels, function(index)
         for tabIndex, frame in ipairs(self.tabFrames) do
             frame:SetShown(tabIndex == index)
@@ -1293,7 +1294,7 @@ function SettingsModule:BuildTabbedOptions(parent, topOffset, bottomOffset)
             end
         end
 
-        if tabLabels[index] == "Currencies" then
+        if tabLabels[index] == L["Currencies"] then
             local tracker = Preydator:GetModule("CurrencyTracker")
             if tracker and type(tracker.RefreshCurrencyPage) == "function" then
                 tracker:RefreshCurrencyPage()
@@ -1351,7 +1352,7 @@ function SettingsModule:EnsureOptionsPanel()
     subtitle:SetWidth(PANEL_WIDTH - 32)
     subtitle:SetJustifyH("LEFT")
     subtitle:SetWordWrap(true)
-    subtitle:SetText("Tabbed options layout with two-column pages. Slider values can be dragged or typed directly.")
+    subtitle:SetText(L["HINT_PANEL_SUBTITLE"])
 
     panel:SetScript("OnShow", function()
         self:RefreshControls()

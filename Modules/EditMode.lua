@@ -2,6 +2,7 @@
 
 local _, addonTable = ...
 local Preydator = _G.Preydator or addonTable
+local L = _G.PreydatorL or setmetatable({}, { __index = function(_, k) return k end })
 
 local EditModeModule = {}
 Preydator:RegisterModule("EditMode", EditModeModule)
@@ -176,47 +177,47 @@ function EditModeModule:CreateWindow()
 
     local title = window:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 18, -18)
-    title:SetText("Preydator Edit Mode")
+    title:SetText(L["Preydator Edit Mode"])
 
     local subtitle = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     subtitle:SetWidth(390)
     subtitle:SetJustifyH("LEFT")
     subtitle:SetWordWrap(true)
-    subtitle:SetText("Quick layout controls while Blizzard Edit Mode is open. Full Options can be found in Options > Addons > Preydator.")
+    subtitle:SetText(L["HINT_EDITMODE_SUBTITLE"])
 
     local closeButton = CreateFrame("Button", nil, window, "UIPanelCloseButton")
     closeButton:SetPoint("TOPRIGHT", -10, -10)
 
     self.controls = {}
-    self.controls[#self.controls + 1] = CreateCheckbox(window, 18, -70, "Lock Bar", function() return db.locked end, function(value)
+    self.controls[#self.controls + 1] = CreateCheckbox(window, 18, -70, L["Lock Bar"], function() return db.locked end, function(value)
         db.locked = value
         api.ApplyBarSettings()
     end)
-    self.controls[#self.controls + 1] = CreateCheckbox(window, 18, -98, "Only show in prey zone", function() return db.onlyShowInPreyZone end, function(value)
+    self.controls[#self.controls + 1] = CreateCheckbox(window, 18, -98, L["Only show in prey zone"], function() return db.onlyShowInPreyZone end, function(value)
         db.onlyShowInPreyZone = value
         api.UpdateBarDisplay()
     end)
-    self.controls[#self.controls + 1] = CreateCheckbox(window, 238, -70, "Disable Default Prey Icon", function() return db.disableDefaultPreyIcon == true end, function(value)
+    self.controls[#self.controls + 1] = CreateCheckbox(window, 238, -70, L["Disable Default Prey Icon"], function() return db.disableDefaultPreyIcon == true end, function(value)
         db.disableDefaultPreyIcon = value
         api.ApplyDefaultPreyIconVisibility()
         api.UpdateBarDisplay()
     end)
-    self.controls[#self.controls + 1] = CreateCheckbox(window, 238, -98, "Show bar during Edit Mode", function() return db.showInEditMode ~= false end, function(value)
+    self.controls[#self.controls + 1] = CreateCheckbox(window, 238, -98, L["Show bar during Edit Mode"], function() return db.showInEditMode ~= false end, function(value)
         db.showInEditMode = value
         api.NormalizeDisplaySettings()
         api.UpdateBarDisplay()
     end)
 
-    self.controls[#self.controls + 1] = CreateSlider(window, 18, -184, "Scale", 0.5, 2, 0.05, function() return db.scale end, function(value)
+    self.controls[#self.controls + 1] = CreateSlider(window, 18, -184, L["Scale"], 0.5, 2, 0.05, function() return db.scale end, function(value)
         db.scale = value
         api.ApplyBarSettings()
     end, function(value) return string.format("%.2f", value) end)
-    self.controls[#self.controls + 1] = CreateSlider(window, 18, -244, "Width", 160, 500, 1, function() return db.width end, function(value)
+    self.controls[#self.controls + 1] = CreateSlider(window, 18, -244, L["Width"], 160, 500, 1, function() return db.width end, function(value)
         db.width = math.floor(value + 0.5)
         api.RequestBarRefresh()
     end, function(value) return tostring(math.floor(value + 0.5)) end)
-    self.controls[#self.controls + 1] = CreateSlider(window, 18, -304, "Height", 10, 40, 1, function() return db.height end, function(value)
+    self.controls[#self.controls + 1] = CreateSlider(window, 18, -304, L["Height"], 10, 40, 1, function() return db.height end, function(value)
         db.height = math.floor(value + 0.5)
         api.RequestBarRefresh()
     end, function(value) return tostring(math.floor(value + 0.5)) end)

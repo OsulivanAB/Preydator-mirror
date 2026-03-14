@@ -3,9 +3,22 @@
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
 ## Category-enUS: Quests
-## Version: 1.6.0
+## Version: 1.6.3
 ## SavedVariables: PreydatorDB, PreydatorDebugDB
 ## OptionalDeps: Blizzard_Settings, LibStub, LibDataBroker-1.1, LibDBIcon-1.0
+
+Locales\Locales.lua
+Locales\enUS.lua
+Locales\deDE.lua
+Locales\frFR.lua
+Locales\esES.lua
+Locales\esMX.lua
+Locales\ptBR.lua
+Locales\itIT.lua
+Locales\ruRU.lua
+Locales\koKR.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
 
 Preydator.lua
 Modules\Settings.lua

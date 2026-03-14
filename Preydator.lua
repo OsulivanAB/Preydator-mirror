@@ -1,6 +1,7 @@
 ---@diagnostic disable
 
 local ADDON_NAME = ...
+local L = _G.PreydatorL or setmetatable({}, { __index = function(_, k) return k end })
 
 local CreateFrame = _G.CreateFrame
 local PlaySoundFile = _G.PlaySoundFile
@@ -48,8 +49,8 @@ local AMBUSH_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-ambush
 local TORMENT_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-torment.ogg"
 local KILL_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-kill.ogg"
 local DEBUG_LOG_LIMIT = 200
-local DEFAULT_OUT_OF_ZONE_LABEL = "No Sign in These Fields"
-local DEFAULT_AMBUSH_LABEL = "AMBUSH"
+local DEFAULT_OUT_OF_ZONE_LABEL = L["No Sign in These Fields"]
+local DEFAULT_AMBUSH_LABEL = L["AMBUSH"]
 local PROGRESS_SEGMENTS_QUARTERS = "quarters"
 local PROGRESS_SEGMENTS_THIRDS = "thirds"
 local BAR_TICK_PCTS_BY_SEGMENT = {
@@ -101,10 +102,10 @@ local PROTECTED_SOUND_FILENAMES = {
     ["predator-kill.ogg"] = true,
 }
 local DEFAULT_STAGE_LABELS = {
-    [1] = "Scent in the Wind",
-    [2] = "Blood in the Shadows",
-    [3] = "Echoes of the Kill",
-    [4] = "Feast of the Fang",
+    [1] = L["Scent in the Wind"],
+    [2] = L["Blood in the Shadows"],
+    [3] = L["Echoes of the Kill"],
+    [4] = L["Feast of the Fang"],
 }
 local STAGE_PCT_BY_SEGMENT = {
     [PROGRESS_SEGMENTS_QUARTERS] = {
@@ -1241,10 +1242,9 @@ local function IsAmbushSystemMessage(message, sender)
         return false
     end
 
-    if StringContainsInsensitiveSafe(message, "ambush") then
-        return true
-    end
-
+    -- Detection relies solely on prey name match to avoid English-only string dependency
+    -- and to eliminate the double-trigger caused by both the "Ambushed!" system message
+    -- and CHAT_MSG_MONSTER_SAY firing for the same encounter.
     local preyName = state and state.preyTargetName
     if type(preyName) == "string" and preyName ~= "" then
         if StringContainsInsensitiveSafe(message, preyName) or StringContainsInsensitiveSafe(sender, preyName) then

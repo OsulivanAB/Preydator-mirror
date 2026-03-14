@@ -21,7 +21,7 @@ Preydator is a retail World of Warcraft addon built specifically for Prey Hunts.
 
 Blizzard does not expose true percentage completion for Prey Hunts. Preydator tracks stage transitions directly, with clear fallback progress display options.
 
-## Major features (v1.6.0)
+## Major features (v1.6.3)
 
 - New Prey Currency Tracker window
 - New Warband currency table with sorting and realm grouping
@@ -58,6 +58,7 @@ Blizzard does not expose true percentage completion for Prey Hunts. Preydator tr
 - Epic 3: Weekly Hunt Cap Tracker - Planned
 - Epic 4: Achievement Gap Highlighter - Planned
 - Epic 5: Reward Intelligence / Cost Context - In progress
+- Epic 6: Localization for other Languages - Completed (infrastructure + 10 stubs; seeking community translators)
 
 ## Slash commands
 
@@ -68,6 +69,12 @@ Blizzard does not expose true percentage completion for Prey Hunts. Preydator tr
 - /pd toggle
 - /pd mem
 - /pd debug <on|off|show|clear>
+
+## Translations
+
+Preydator has localization infrastructure in place for 10 languages: deDE, frFR, esES, esMX, ptBR, itIT, ruRU, koKR, zhCN, and zhTW. Only the six in-game stage name strings need translating for a complete gameplay translation — everything else falls back to English gracefully.
+
+If you play in one of these regions and want to help, reach out via the CurseForge project page. Full translation guide is included in `Locales/enUS.lua`.
 
 ## Custom audio
 

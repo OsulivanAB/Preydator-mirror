@@ -15,6 +15,7 @@
 
 local _, addonTable = ...
 local Preydator = _G.Preydator or addonTable
+local L = _G.PreydatorL or setmetatable({}, { __index = function(_, k) return k end })
 
 local C_CurrencyInfo   = _G.C_CurrencyInfo
 local C_Timer          = _G.C_Timer
@@ -618,7 +619,7 @@ local function EnsureCurrencyWhatsNewFrame()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -18)
-    title:SetText("Preydator Currency: New in 1.6.0")
+    title:SetText(L["Preydator Currency: New in 1.6.0"])
     SetTextColor(title, COLOR_GOLD)
 
     local body = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -626,24 +627,17 @@ local function EnsureCurrencyWhatsNewFrame()
     body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -52)
     body:SetJustifyH("LEFT")
     body:SetJustifyV("TOP")
-    body:SetText(
-        "Currency tracking has arrived.\n\n"
-        .. "- Currency and Warband windows now support tracked-currency filtering\n"
-        .. "- Theme controls include Light, Brown, and Dark\n"
-        .. "- Layout controls for width, height, scale, and font are in Options\n"
-        .. "- Warband table auto-fits tracked columns and grouped realm rows\n\n"
-        .. "Both windows default to OFF for new installs. Enable them anytime from the Currencies options page or minimap icon."
-    )
+    body:SetText(L["WHATS_NEW_BODY"])
 
     local closeButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     closeButton:SetSize(120, 24)
     closeButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 16)
-    closeButton:SetText("Got It")
+    closeButton:SetText(L["Got It"])
 
     local settingsButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     settingsButton:SetSize(140, 24)
     settingsButton:SetPoint("RIGHT", closeButton, "LEFT", -8, 0)
-    settingsButton:SetText("Open Settings")
+    settingsButton:SetText(L["Open Settings"])
 
     closeButton:SetScript("OnClick", function()
         local settings = GetSettings()
@@ -944,7 +938,7 @@ local function EnsureCurrencyWindow()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", frame, "TOPLEFT", 10, -13)
-    title:SetText("Preydator Currency")
+    title:SetText(L["Preydator Currency"])
     SetTextColor(title, COLOR_GOLD)
     frame.PreydatorTitle = title
 
@@ -1025,7 +1019,7 @@ local function EnsureWarbandWindow()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", frame, "TOPLEFT", 10, -13)
-    title:SetText("Preydator Warband")
+    title:SetText(L["Preydator Warband"])
     SetTextColor(title, COLOR_GOLD)
     frame.PreydatorTitle = title
 
@@ -1049,13 +1043,13 @@ local function EnsureWarbandWindow()
     frame.PreydatorTopBar = topBar
 
     warbandColumns = {
-        { key = "realm", label = "Realm", width = 96 },
-        { key = "character", label = "Character", width = 112 },
-        { key = 3392, label = "Anguish", width = 56 },
-        { key = 3316, label = "Voidlight", width = 64 },
-        { key = 3383, label = "Adv", width = 48 },
-        { key = 3341, label = "Vet", width = 48 },
-        { key = 3343, label = "Champ", width = 56 },
+        { key = "realm",     label = L["Realm"],     width = 96 },
+        { key = "character", label = L["Character"], width = 112 },
+        { key = 3392, label = L["Anguish"],  width = 56 },
+        { key = 3316, label = L["Voidlight"], width = 64 },
+        { key = 3383, label = L["Adv"],      width = 48 },
+        { key = 3341, label = L["Vet"],      width = 48 },
+        { key = 3343, label = L["Champ"],    width = 56 },
     }
 
     warbandHeaderTexts = {}
@@ -1067,7 +1061,7 @@ local function EnsureWarbandWindow()
         totalText:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 2, -40)
         totalText:SetWidth(headerData.width - 4)
         totalText:SetJustifyH((headerData.key == "character" or headerData.key == "realm") and "LEFT" or "RIGHT")
-        totalText:SetText(headerData.key == "character" and "Total" or "0")
+        totalText:SetText(headerData.key == "character" and L["Total"] or "0")
         warbandTotalTexts[headerData.key] = totalText
 
         local headerButton = CreateFrame("Button", nil, frame)
@@ -1306,9 +1300,9 @@ local function EnsureLDBLauncher()
                 return
             end
             tooltip:AddLine("Preydator")
-            tooltip:AddLine("Left Click: Toggle Currency Window", 1, 1, 1)
-            tooltip:AddLine("Right Click: Toggle Warband Window", 1, 1, 1)
-            tooltip:AddLine("Shift + Right Click: Open Options", 1, 1, 1)
+            tooltip:AddLine(L["Left Click: Toggle Currency Window"], 1, 1, 1)
+            tooltip:AddLine(L["Right Click: Toggle Warband Window"], 1, 1, 1)
+            tooltip:AddLine(L["Shift + Right Click: Open Options"], 1, 1, 1)
         end,
     })
 
@@ -1555,7 +1549,7 @@ local function RefreshWarbandWindowDisplay()
                 local collapsed = data.collapsed == true
                 local prefix = collapsed and "+ " or "- "
                 rowData.cells.realm:SetText(prefix .. data.realm)
-                rowData.cells.character:SetText("Subtotal")
+                rowData.cells.character:SetText(L["Subtotal"])
                 rowData.cells[3392]:SetText(tostring(data.totals[3392] or 0))
                 rowData.cells[3316]:SetText(tostring(data.totals[3316] or 0))
                 rowData.cells[3383]:SetText(tostring(data.totals[3383] or 0))
@@ -1601,11 +1595,11 @@ local function RefreshWarbandWindowDisplay()
     end
 
     if warbandTotalTexts.realm then
-        warbandTotalTexts.realm:SetText("All Realms")
+        warbandTotalTexts.realm:SetText(L["All Realms"])
         SetTextColor(warbandTotalTexts.realm, theme.muted)
     end
     if warbandTotalTexts.character then
-        warbandTotalTexts.character:SetText("Totals")
+        warbandTotalTexts.character:SetText(L["Totals"])
         SetTextColor(warbandTotalTexts.character, theme.muted)
     end
     if warbandTotalTexts[3392] then
@@ -1748,7 +1742,7 @@ local function RefreshCurrencyWindowDisplay()
     end
 
     if currencyWindowSummary and showAffordableHunts then
-        currencyWindowSummary:SetText("Normal " .. tostring(normalCount) .. " | Hard " .. tostring(hardCount) .. " | Nightmare " .. nightmareText)
+        currencyWindowSummary:SetText(string.format(L["Normal %d | Hard %d | Nightmare %s"], normalCount, hardCount, nightmareText))
         SetTextColor(currencyWindowSummary, theme.muted)
     end
 
@@ -1765,7 +1759,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -12)
-    title:SetText("Currency Tracker")
+    title:SetText(L["Currency Tracker"])
 
 
     local controls = {}
@@ -1778,7 +1772,7 @@ local function BuildCurrencyConfigPage(parent)
     local openButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     openButton:SetSize(120, 22)
     openButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -36)
-    openButton:SetText("Toggle Tracker")
+    openButton:SetText(L["Toggle Tracker"])
     openButton:SetScript("OnClick", function()
         ToggleCurrencyWindow()
         CurrencyTrackerModule:RefreshCurrencyPage()
@@ -1787,7 +1781,7 @@ local function BuildCurrencyConfigPage(parent)
     local openWarbandButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     openWarbandButton:SetSize(120, 22)
     openWarbandButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -64)
-    openWarbandButton:SetText("Toggle Warband")
+    openWarbandButton:SetText(L["Toggle Warband"])
     openWarbandButton:SetScript("OnClick", function()
         ToggleWarbandWindow()
         CurrencyTrackerModule:RefreshCurrencyPage()
@@ -1795,7 +1789,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local themeLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     themeLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -92)
-    themeLabel:SetText("Currency Theme")
+    themeLabel:SetText(L["Currency Theme"])
 
     local themeDropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
     themeDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -106)
@@ -1804,12 +1798,12 @@ local function BuildCurrencyConfigPage(parent)
 
     local function ThemeLabelForKey(key)
         if key == "light" then
-            return "Light"
+            return L["Light"]
         end
         if key == "dark" then
-            return "Dark"
+            return L["Dark"]
         end
-        return "Brown"
+        return L["Brown"]
     end
 
     _G.UIDropDownMenu_Initialize(themeDropdown, function(self, level)
@@ -1827,7 +1821,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local minimapToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
     minimapToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -136)
-    minimapToggle.Text:SetText("Show Minimap Button")
+    minimapToggle.Text:SetText(L["Show Minimap Button"])
     minimapToggle:SetScript("OnClick", function(self)
         settings.currencyMinimapButton = self:GetChecked() and true or false
         settings.currencyMinimap.hide = not (settings.currencyMinimapButton == true)
@@ -1836,7 +1830,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local affordableToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
     affordableToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -164)
-    affordableToggle.Text:SetText("Show Affordable Hunts In Tracker")
+    affordableToggle.Text:SetText(L["Show Affordable Hunts In Tracker"])
     affordableToggle:SetScript("OnClick", function(self)
         settings.currencyShowAffordableHunts = self:GetChecked() and true or false
         CurrencyTrackerModule:RefreshCurrencyPage()
@@ -1844,7 +1838,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local realmToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
     realmToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -192)
-    realmToggle.Text:SetText("Show Group By Realm In Warband")
+    realmToggle.Text:SetText(L["Show Group By Realm In Warband"])
     realmToggle:SetScript("OnClick", function(self)
         settings.currencyShowRealmInWarband = self:GetChecked() and true or false
         CurrencyTrackerModule:RefreshCurrencyPage()
@@ -1852,7 +1846,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local trackedTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     trackedTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -222)
-    trackedTitle:SetText("Currencies to Track")
+    trackedTitle:SetText(L["Currencies to Track"])
     SetTextColor(trackedTitle, COLOR_GOLD)
 
     local y = -248
@@ -1871,7 +1865,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local costsTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     costsTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -36)
-    costsTitle:SetText("Random Hunt Cost (Anguish)")
+    costsTitle:SetText(L["Random Hunt Cost (Anguish)"])
     SetTextColor(costsTitle, COLOR_GOLD)
 
     local function CreateCostInput(label, key, yOffset)
@@ -1909,18 +1903,18 @@ local function BuildCurrencyConfigPage(parent)
         return box
     end
 
-    local normalBox = CreateCostInput("Normal", "normal", -64)
-    local hardBox = CreateCostInput("Hard", "hard", -92)
-    local nightmareBox = CreateCostInput("Nightmare", "nightmare", -120)
+    local normalBox = CreateCostInput(L["Normal"], "normal", -64)
+    local hardBox = CreateCostInput(L["Hard"], "hard", -92)
+    local nightmareBox = CreateCostInput(L["Nightmare"], "nightmare", -120)
 
     local layoutTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     layoutTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -196)
-    layoutTitle:SetText("Panel Layout")
+    layoutTitle:SetText(L["Panel Layout"])
     SetTextColor(layoutTitle, COLOR_GOLD)
 
     local layoutTargetLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     layoutTargetLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -222)
-    layoutTargetLabel:SetText("Adjust")
+    layoutTargetLabel:SetText(L["Adjust"])
 
     local activeLayoutTarget = "currency"
     local widthSlider
@@ -1995,10 +1989,10 @@ local function BuildCurrencyConfigPage(parent)
         return slider
     end
 
-    widthSlider = CreateLayoutSlider(-266, "Width")
-    heightSlider = CreateLayoutSlider(-312, "Height")
-    scaleSlider = CreateLayoutSlider(-358, "Scale")
-    fontSlider = CreateLayoutSlider(-404, "Font")
+    widthSlider = CreateLayoutSlider(-266, L["Width"])
+    heightSlider = CreateLayoutSlider(-312, L["Height"])
+    scaleSlider = CreateLayoutSlider(-358, L["Scale"])
+    fontSlider = CreateLayoutSlider(-404, L["Font Size"])
 
     local function ApplySliderValue(slider, rawValue)
         local field = slider.PreydatorField
@@ -2077,13 +2071,13 @@ local function BuildCurrencyConfigPage(parent)
             slider.PreydatorValueBox:SetText(FormatFieldValue(field, value))
         end
 
-        _G.UIDropDownMenu_SetText(layoutTargetDropdown, activeLayoutTarget == "warband" and "Warband Window" or "Currency Window")
+        _G.UIDropDownMenu_SetText(layoutTargetDropdown, activeLayoutTarget == "warband" and L["Warband Window"] or L["Currency Window"])
         isLayoutRefreshing = false
     end
 
     _G.UIDropDownMenu_Initialize(layoutTargetDropdown, function(self, level)
         local info = _G.UIDropDownMenu_CreateInfo()
-        info.text = "Currency Window"
+        info.text = L["Currency Window"]
         info.func = function()
             activeLayoutTarget = "currency"
             RefreshLayoutControls()
@@ -2092,7 +2086,7 @@ local function BuildCurrencyConfigPage(parent)
         _G.UIDropDownMenu_AddButton(info, level)
 
         info = _G.UIDropDownMenu_CreateInfo()
-        info.text = "Warband Window"
+        info.text = L["Warband Window"]
         info.func = function()
             activeLayoutTarget = "warband"
             RefreshLayoutControls()
@@ -2104,7 +2098,7 @@ local function BuildCurrencyConfigPage(parent)
     local gainColorButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     gainColorButton:SetSize(120, 22)
     gainColorButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -145)
-    gainColorButton:SetText("Gain Color")
+    gainColorButton:SetText(L["Gain Color"])
     gainColorButton:SetScript("OnClick", function()
         OpenColorPicker(settings.currencyDeltaGainColor, function(color)
             settings.currencyDeltaGainColor = { color[1], color[2], color[3], color[4] or 1 }
@@ -2119,7 +2113,7 @@ local function BuildCurrencyConfigPage(parent)
     local lossColorButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     lossColorButton:SetSize(120, 22)
     lossColorButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -173)
-    lossColorButton:SetText("Spend Color")
+    lossColorButton:SetText(L["Spend Color"])
     lossColorButton:SetScript("OnClick", function()
         OpenColorPicker(settings.currencyDeltaLossColor, function(color)
             settings.currencyDeltaLossColor = { color[1], color[2], color[3], color[4] or 1 }
@@ -2160,7 +2154,7 @@ local function BuildCurrencyConfigPage(parent)
 
     local previewTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     previewTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 426, -114)
-    previewTitle:SetText("Delta Preview")
+    previewTitle:SetText(L["Delta Preview"])
 
     local previewBoxes = {
         CreatePreviewBox(426, -132),
@@ -2185,8 +2179,8 @@ local function BuildCurrencyConfigPage(parent)
         _G.UIDropDownMenu_SetText(themeDropdown, ThemeLabelForKey(settings.currencyTheme or "brown"))
         RefreshLayoutControls()
 
-        openButton:SetText((settings.currencyWindowEnabled ~= false) and "Close Tracker" or "Open Tracker")
-        openWarbandButton:SetText((settings.currencyWarbandWindowEnabled == true) and "Close Warband" or "Open Warband")
+        openButton:SetText((settings.currencyWindowEnabled ~= false) and L["Close Tracker"] or L["Open Tracker"])
+        openWarbandButton:SetText((settings.currencyWarbandWindowEnabled == true) and L["Close Warband"] or L["Open Warband"])
 
         local gain = settings.currencyDeltaGainColor or COLOR_GREEN
         local loss = settings.currencyDeltaLossColor or COLOR_RED
