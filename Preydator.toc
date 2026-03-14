@@ -2,11 +2,13 @@
 ## Title: Preydator
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
-## Version: 1.1.2
+## Category-enUS: Quests
+## Version: 1.6.0
 ## SavedVariables: PreydatorDB, PreydatorDebugDB
-## OptionalDeps: Blizzard_Settings
+## OptionalDeps: Blizzard_Settings, LibStub, LibDataBroker-1.1, LibDBIcon-1.0
 
 Preydator.lua
 Modules\Settings.lua
 Modules\EditMode.lua
 Modules\DebugInspect.lua
+Modules\CurrencyTracker.lua

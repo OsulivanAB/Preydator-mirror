@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.0 - 2026-03-14
+
+### Added
+- New Currency Tracker system for approved Prey currencies (`3392`, `3316`, `3383`, `3341`, `3343`).
+- New Warband currency window with sortable columns and optional realm grouping/subtotals.
+- New currency-focused options page controls for tracked IDs, random hunt cost context, gain/spend delta colors, and layout controls.
+- New one-time "What's New" splash for the currency feature rollout.
+- New Advanced-tab action button: `Show What's New`.
+
+### Changed
+- Currency and Warband windows now default to OFF for fresh installs.
+- Currency theme naming cleaned up (`Light` instead of `Light (Tan)`).
+- Currency options panel streamlined to keep core controls in one place, including a local theme selector.
+- Release metadata updated for `1.6.0`.
+
+### Fixed
+- Light theme readability improved for text/title contrast.
+- Currency window now expands and contracts correctly with tracked-row count.
+- Warband table columns remain inside window bounds and auto-fit tracked currency columns.
+- Warband sizing now grows and contracts with content demand without forcing manual slider correction.
+
 ## 1.5.5 - 2026-03-13
 
 ### Added

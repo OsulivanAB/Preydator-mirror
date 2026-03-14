@@ -21,7 +21,20 @@ Preydator is a retail World of Warcraft addon built specifically for Prey Hunts.
 
 Blizzard does not expose true percentage completion for Prey Hunts. Preydator tracks stage transitions directly, with clear fallback progress display options.
 
-## Major features (v1.5.5)
+## Major features (v1.6.0)
+
+- New Prey Currency Tracker window
+- New Warband currency table with sorting and realm grouping
+- Approved-currency allow-list tracking for:
+	- Remnant of Anguish (`3392`)
+	- Voidlight Marl (`3316`)
+	- Adventurer Dawncrest (`3383`)
+	- Veteran Dawncrest (`3341`)
+	- Champion Dawncrest (`3343`)
+- Session delta tracking and configurable gain/spend color indicators
+- In-page Currencies controls for tracked IDs, hunt cost context, and panel layout sliders
+- Theme support for currency windows (`Light`, `Brown`, `Dark`)
+- One-time What's New splash for currency feature rollout
 
 - Tabbed settings UI: General, Display, Text, Audio, Advanced
 - Edit Mode quick-settings window with click-to-open behavior
@@ -37,6 +50,14 @@ Blizzard does not expose true percentage completion for Prey Hunts. Preydator tr
 - Custom sound file management directly in settings
 - Optional hide of default prey icon with stage 4 map fallback behavior
 - Debug and diagnostics tools available in UI and slash commands
+
+## Roadmap progress
+
+- Epic 1: Approved Currency Ledger (MVP) - Completed
+- Epic 2: Hunt Source Scanner - Planned
+- Epic 3: Weekly Hunt Cap Tracker - Planned
+- Epic 4: Achievement Gap Highlighter - Planned
+- Epic 5: Reward Intelligence / Cost Context - In progress
 
 ## Slash commands
 

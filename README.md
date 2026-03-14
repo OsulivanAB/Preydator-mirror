@@ -2,7 +2,7 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v1.1.2`
+Current release: `v1.6.0`
 
 ## What Preydator tracks
 
@@ -22,7 +22,14 @@ Important: Blizzard does not expose a true percent completion for Prey Hunts. Pr
 3. **Echoes of the Kill**
 4. **Feast of the Fang**
 
-## UI and layout features (1.5.5)
+## UI and layout features (1.6.0)
+
+- New Currency Tracker window for approved Prey currencies
+- New Warband currency table with sortable columns and realm grouping
+- Session delta tracking for approved Prey currencies
+- Theme support in currency windows: `Light`, `Brown`, `Dark`
+- One-time What's New splash for currency launch (with Show Again in Advanced tab)
+- Currencies tab now includes direct controls for tracker/warband visibility, tracked currency selection, random hunt cost context, and panel layout sliders
 
 - Modular tabbed settings panel: `General`, `Display`, `Text`, `Audio`, `Advanced`
 - Compact Edit Mode quick-settings window
@@ -104,6 +111,14 @@ Bundled default files:
 	- `/pd debug off`
 	- `/pd debug show`
 	- `/pd debug clear`
+
+## Roadmap progress snapshot
+
+- Epic 1: Approved Currency Ledger (MVP) - Completed in `v1.6.0`
+- Epic 2: Hunt Source Scanner - Planned
+- Epic 3: Weekly Hunt Cap Tracker - Planned
+- Epic 4: Prey Achievement Gap Highlighter - Planned
+- Epic 5: Reward Intelligence and Cost Context - In progress
 
 ## Slash commands
 

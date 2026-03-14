@@ -48,6 +48,12 @@ local CHANNEL_OPTIONS = {
     Ambience = { text = "Ambience" },
 }
 
+local CURRENCY_THEME_OPTIONS = {
+    light = { text = "Light" },
+    brown = { text = "Brown" },
+    dark = { text = "Dark" },
+}
+
 local PERCENT_DISPLAY_OPTIONS = {
     [constants.PERCENT_DISPLAY_INSIDE] = { text = "In Bar" },
     [constants.PERCENT_DISPLAY_ABOVE_BAR] = { text = "Above Bar" },
@@ -458,13 +464,18 @@ end
 
 local function CreateCustomTabs(parent, labels, onSelect)
     local tabs = {}
+    local tabGap = 4
+    local tabStartX = 16
+    local usableWidth = PANEL_WIDTH - (tabStartX * 2)
+    local computedWidth = math.floor((usableWidth - (tabGap * (#labels - 1))) / #labels)
+    local tabWidth = math.max(65, computedWidth - 15)
     for index, label in ipairs(labels) do
         local tab = CreateFrame("Button", nil, parent)
-        tab:SetSize(TAB_WIDTH, 28)
+        tab:SetSize(tabWidth or TAB_WIDTH, 28)
         if index == 1 then
-            tab:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, -72)
+            tab:SetPoint("TOPLEFT", parent, "TOPLEFT", tabStartX, -72)
         else
-            tab:SetPoint("LEFT", tabs[index - 1], "RIGHT", 4, 0)
+            tab:SetPoint("LEFT", tabs[index - 1], "RIGHT", tabGap, 0)
         end
 
         local background = tab:CreateTexture(nil, "BACKGROUND")
@@ -516,6 +527,16 @@ local function BuildGeneralPage(owner, parent)
         db.showInEditMode = value
         api.NormalizeDisplaySettings()
         api.UpdateBarDisplay()
+    end))
+    CreateSectionTitle(parent, COLUMN_LEFT_X, -146, "Currencies")
+    RegisterRefresher(owner, CreateDropdown(parent, COLUMN_LEFT_X, -176, "Currency Theme", 170, CURRENCY_THEME_OPTIONS, function()
+        return db.currencyTheme or "brown"
+    end, function(key)
+        db.currencyTheme = key
+        local tracker = Preydator:GetModule("CurrencyTracker")
+        if tracker and type(tracker.RefreshCurrencyPage) == "function" then
+            tracker:RefreshCurrencyPage()
+        end
     end))
 
     CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Behavior")
@@ -1226,6 +1247,20 @@ local function BuildAdvancedPage(owner, parent)
         _G.PreydatorDebugDB.enabled = db.debugSounds and true or false
     end))
 
+    RegisterRefresher(owner, CreateCheckbox(parent, COLUMN_LEFT_X, -174, "Currency Debug Events", function()
+        return db.currencyDebugEvents == true
+    end, function(value)
+        db.currencyDebugEvents = value and true or false
+    end))
+
+    CreateActionButton(parent, COLUMN_LEFT_X, -208, 180, "Show What's New", function()
+        db.currencyWhatsNewSeenVersion = nil
+        local tracker = Preydator:GetModule("CurrencyTracker")
+        if tracker and type(tracker.ShowCurrencyWhatsNew) == "function" then
+            tracker:ShowCurrencyWhatsNew(true)
+        end
+    end)
+
     CreateSectionTitle(parent, COLUMN_RIGHT_X, -10, "Notes")
     local note = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     note:SetPoint("TOPLEFT", parent, "TOPLEFT", COLUMN_RIGHT_X, -44)
@@ -1245,7 +1280,7 @@ function SettingsModule:RefreshControls()
 end
 
 function SettingsModule:BuildTabbedOptions(parent, topOffset, bottomOffset)
-    local tabLabels = { "General", "Display", "Vertical", "Text", "Audio", "Advanced" }
+    local tabLabels = { "General", "Display", "Vertical", "Text", "Audio", "Currencies", "Advanced" }
     local tabs = CreateCustomTabs(parent, tabLabels, function(index)
         for tabIndex, frame in ipairs(self.tabFrames) do
             frame:SetShown(tabIndex == index)
@@ -1257,11 +1292,25 @@ function SettingsModule:BuildTabbedOptions(parent, topOffset, bottomOffset)
                 self.tabs[tabIndex].PreydatorText:SetTextColor(0.8, 0.8, 0.8)
             end
         end
+
+        if tabLabels[index] == "Currencies" then
+            local tracker = Preydator:GetModule("CurrencyTracker")
+            if tracker and type(tracker.RefreshCurrencyPage) == "function" then
+                tracker:RefreshCurrencyPage()
+            end
+        end
     end)
 
     self.tabs = tabs
     self.tabFrames = self.tabFrames or {}
     self.refreshers = self.refreshers or {}
+
+    local function BuildCurrenciesPage(owner, frame)
+        local tracker = Preydator:GetModule("CurrencyTracker")
+        if tracker and type(tracker.BuildCurrencyPage) == "function" then
+            tracker:BuildCurrencyPage(owner, frame)
+        end
+    end
 
     local pageBuilders = {
         BuildGeneralPage,
@@ -1269,6 +1318,7 @@ function SettingsModule:BuildTabbedOptions(parent, topOffset, bottomOffset)
         BuildVerticalPage,
         BuildTextPage,
         BuildAudioPage,
+        BuildCurrenciesPage,
         BuildAdvancedPage,
     }
 
