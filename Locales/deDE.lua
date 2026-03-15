@@ -4,11 +4,12 @@ if GetLocale() ~= "deDE" then return end
 local L = _G.PreydatorL
 
 -- Translate each string. Remove the comment markers and fill in the value.
+-- The below are AI translations if anyon can proof them I could do translations this way.
 -- Untranslated strings automatically fall back to English.
 
--- L["No Sign in These Fields"]   = ""
--- L["AMBUSH"]                    = ""
--- L["Scent in the Wind"]         = ""
--- L["Blood in the Shadows"]      = ""
--- L["Echoes of the Kill"]        = ""
--- L["Feast of the Fang"]         = ""
+-- L["No Sign in These Fields"]   = "Keine Spuren in diesen Feldern"
+-- L["AMBUSH"]                    = "Hinterhalt"
+-- L["Scent in the Wind"]         = "Duft im Wind"
+-- L["Blood in the Shadows"]      = "Blut im Schatten"
+-- L["Echoes of the Kill"]        = "Echos des Todes"
+-- L["Feast of the Fang"]         = "Fest des Fangzahns"

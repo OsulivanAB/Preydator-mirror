@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.5 - 2026-03-14
+
+### Fixed
+- Restored semantic localization fallback text assignments so settings hints and currency splash body no longer display raw keys (`HINT_PANEL_SUBTITLE`, `HINT_VERTICAL_PERCENT_OFFSET`, `HINT_VERTICAL_LOCK`, `HINT_AUDIO_SLIDER`, `HINT_ADVANCED_NOTES`, `WHATS_NEW_BODY`).
+- Reworked fallback minimap button behavior for clients without icon managers:
+  - corrected full-circle drag math using quadrant-safe angle handling;
+  - restored proper icon asset source (`media/Preydator_64.png` from project asset copy);
+  - stabilized Blizzard-style circular button presentation.
+
 ## 1.6.4 - 2026-03-14
 
 ### Fixed

@@ -40,6 +40,39 @@ local type             = _G.type
 local LibDataBroker = LibStub and LibStub:GetLibrary("LibDataBroker-1.1", true)
 local LibDBIcon = LibStub and LibStub:GetLibrary("LibDBIcon-1.0", true)
 
+local function Atan2(y, x)
+    if math.atan2 then
+        return math.atan2(y, x)
+    end
+    if x > 0 then
+        return math.atan(y / x)
+    end
+    if x < 0 then
+        if y >= 0 then
+            return math.atan(y / x) + math.pi
+        end
+        return math.atan(y / x) - math.pi
+    end
+    if y > 0 then
+        return math.pi / 2
+    end
+    if y < 0 then
+        return -math.pi / 2
+    end
+    return 0
+end
+
+local function NormalizeAngleDegrees(angle)
+    if type(angle) ~= "number" then
+        return 225
+    end
+    angle = angle % 360
+    if angle < 0 then
+        angle = angle + 360
+    end
+    return angle
+end
+
 --------------------------------------------------------------------------------
 -- Constants
 --------------------------------------------------------------------------------
@@ -775,13 +808,20 @@ local function UpdateMinimapButtonPosition()
     elseif settings and type(settings.currencyMinimapAngle) == "number" then
         angle = settings.currencyMinimapAngle
     end
+    angle = NormalizeAngleDegrees(angle)
+    local minimap = _G.Minimap
+    if not minimap then
+        return
+    end
+
     local radians = math.rad(angle)
-    local radius = 80
+    local minimapRadius = (math.min(minimap:GetWidth(), minimap:GetHeight()) / 2)
+    local radius = minimapRadius + 8
     local x = math.cos(radians) * radius
     local y = math.sin(radians) * radius
 
     minimapButton:ClearAllPoints()
-    minimapButton:SetPoint("CENTER", _G.Minimap, "CENTER", x, y)
+    minimapButton:SetPoint("CENTER", minimap, "CENTER", x, y)
 end
 
 local function UpdateVisibilityFromSettings()
@@ -1327,32 +1367,53 @@ local function EnsureMinimapButton()
     local button = CreateFrame("Button", "PreydatorCurrencyMiniMapButton", _G.Minimap)
     button:SetSize(32, 32)
     button:SetFrameStrata("MEDIUM")
+    button:SetFrameLevel(8)
+    button:EnableMouse(true)
+    button:SetMovable(true)
     button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     button:RegisterForDrag("LeftButton")
 
+    local background = button:CreateTexture(nil, "BACKGROUND")
+    background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    background:SetSize(20, 20)
+    background:SetPoint("CENTER", button, "CENTER", 0, 0)
+
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(MINIMAP_ICON_PATH)
-    icon:SetAllPoints()
+    icon:SetSize(20, 20)
+    icon:SetPoint("CENTER", button, "CENTER", 0, 0)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetAllPoints()
+    border:SetSize(53, 53)
+    border:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
 
     button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
-    button:SetScript("OnClick", function(_, mouseButton)
+    button:SetScript("OnClick", function(self, mouseButton)
+        if self.wasDragged then
+            return
+        end
         HandleMinimapClick(mouseButton)
     end)
 
     button:SetScript("OnDragStart", function(self)
         self.dragging = true
+        self.wasDragged = false
         self:SetScript("OnUpdate", function(s)
+            local minimap = _G.Minimap
+            if not minimap then
+                return
+            end
             local mx, my = GetCursorPosition()
             local scale = _G.UIParent:GetEffectiveScale()
             mx, my = mx / scale, my / scale
-            local cx, cy = _G.Minimap:GetCenter()
-            local angle = math.deg(math.atan(my - cy, mx - cx))
+            local cx, cy = minimap:GetCenter()
+            if not cx or not cy then
+                return
+            end
+            local angle = NormalizeAngleDegrees(math.deg(Atan2(my - cy, mx - cx)))
             local settings = GetSettings()
             if settings then
                 if type(settings.currencyMinimap) ~= "table" then
@@ -1361,6 +1422,7 @@ local function EnsureMinimapButton()
                 settings.currencyMinimap.minimapPos = angle
                 settings.currencyMinimapAngle = angle
             end
+            s.wasDragged = true
             UpdateMinimapButtonPosition()
         end)
     end)
@@ -1368,6 +1430,11 @@ local function EnsureMinimapButton()
     button:SetScript("OnDragStop", function(self)
         self.dragging = nil
         self:SetScript("OnUpdate", nil)
+        C_Timer.After(0.05, function()
+            if minimapButton then
+                minimapButton.wasDragged = nil
+            end
+        end)
     end)
 
     minimapButton = button

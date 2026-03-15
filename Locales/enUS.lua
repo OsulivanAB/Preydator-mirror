@@ -272,3 +272,18 @@
   L["Shift + Right Click: Open Options"]   = ""
   L["Preydator Currency Tracker"]          = ""
 --]]
+
+-- Runtime defaults for semantic keys. These are not English-as-key labels,
+-- so they must be explicitly assigned to avoid showing raw key names.
+local L = _G.PreydatorL
+if not L then
+    return
+end
+
+L["HINT_VERTICAL_PERCENT_OFFSET"] = "Vertical Percent Offset applies to vertical side/tick-mark side placements. Use tick marks to replace the single percent value."
+L["HINT_VERTICAL_LOCK"] = "In Vertical mode, only Label Mode and Prefix/Suffix Row are locked here. Stage names and custom labels remain editable."
+L["HINT_AUDIO_SLIDER"] = "Slider values can be dragged or typed directly. Custom sound input accepts bare names, .ogg, or full addon paths."
+L["HINT_ADVANCED_NOTES"] = "Existing installs keep their current saved values. New settings are only applied when a key is missing in PreydatorDB. This panel replaces the old long-form options page but uses the same database. The Inspect feature is compatible with BugSack."
+L["HINT_PANEL_SUBTITLE"] = "Tabbed options layout with two-column pages. Slider values can be dragged or typed directly."
+L["HINT_EDITMODE_SUBTITLE"] = "Quick layout controls while Blizzard Edit Mode is open. Full Options can be found in Options > Addons > Preydator."
+L["WHATS_NEW_BODY"] = "Currency tracking has arrived.\n\n- Currency and Warband windows now support tracked-currency filtering\n- Theme controls include Light, Brown, and Dark\n- Layout controls for width, height, scale, and font are in Options\n- Warband table auto-fits tracked columns and grouped realm rows\n\nBoth windows default to OFF for new installs. Enable them anytime from the Currencies options page or minimap icon."
