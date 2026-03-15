@@ -27,6 +27,7 @@ local RAID_CLASS_COLORS = _G.RAID_CLASS_COLORS
 local UnitClass        = _G.UnitClass
 local UnitName         = _G.UnitName
 local GetRealmName     = _G.GetRealmName
+local GetZoneText      = _G.GetZoneText
 local UIParent         = _G.UIParent
 local math             = _G.math
 local string           = _G.string
@@ -129,7 +130,7 @@ local WARBAND_MAX_FONT = 24
 local WARBAND_DEFAULT_SCALE = 1.00
 local WARBAND_MIN_SCALE = 0.70
 local WARBAND_MAX_SCALE = 1.40
-local CURRENCY_WHATS_NEW_VERSION = "1.6.0"
+local CURRENCY_WHATS_NEW_VERSION = "1.7.0"
 local MINIMAP_ICON_PATH = "Interface\\AddOns\\Preydator\\media\\Preydator_64.png"
 local LDB_LAUNCHER_NAME = "PreydatorCurrencyTracker"
 
@@ -195,6 +196,7 @@ Preydator:RegisterModule("CurrencyTracker", CurrencyTrackerModule)
 -- Internal state (not persisted to SavedVariables — that happens via OnAddonLoaded/OnEvent)
 local db                -- reference to PreydatorDB.currency sub-table
 local sessionStart      = {}   -- [currencyID] = quantity at login/reload
+local sessionBaselineReady = false
 local currencyPanelPage = nil  -- the Tab content frame, built lazily
 local lastKnownQuantity = {}   -- [currencyID] = quantity
 local pollElapsed = 0
@@ -236,7 +238,273 @@ local function EnsureDB()
     local c = _G.PreydatorDB.currency
     c.snapshots    = c.snapshots    or {}
     c.warbandTotal = c.warbandTotal or {}
+    c.preySnapshots = c.preySnapshots or {}
+    c.preyWeeklyProgress = c.preyWeeklyProgress or {}
     db = c
+end
+
+local function GetCurrentPreyState()
+    if Preydator and type(Preydator.GetState) == "function" then
+        return Preydator.GetState()
+    end
+    return nil
+end
+
+local function BuildPreyRankLabel(stage, difficulty)
+    if type(difficulty) == "string" and difficulty ~= "" then
+        return difficulty
+    end
+
+    local stageNumber = tonumber(stage)
+    if stageNumber and stageNumber > 0 then
+        return string.format("Stage %d", stageNumber)
+    end
+
+    return L["No active prey"]
+end
+
+local function GetWeeklyResetKey()
+    local now = date("!*t")
+    if type(now) ~= "table" then
+        return date("%Y-%U")
+    end
+
+    return date("%Y-%U")
+end
+
+local function NormalizePreyDifficultyKey(diff)
+    local text = tostring(diff or "")
+    if text == tostring(L["Nightmare"]) or text:find("Nightmare", 1, true) then
+        return "nightmare"
+    end
+    if text == tostring(L["Hard"]) or text:find("Hard", 1, true) then
+        return "hard"
+    end
+    return "normal"
+end
+
+local function GetPreyWeeklyCompleted(charKey, weekKey)
+    EnsureDB()
+    local weeks = db.preyWeeklyProgress[charKey]
+    if type(weeks) ~= "table" then
+        weeks = {}
+        db.preyWeeklyProgress[charKey] = weeks
+    end
+
+    local entry = weeks[weekKey]
+    if type(entry) ~= "table" then
+        entry = { normal = 0, hard = 0, nightmare = 0 }
+        weeks[weekKey] = entry
+    end
+
+    entry.normal = math.max(0, tonumber(entry.normal) or 0)
+    entry.hard = math.max(0, tonumber(entry.hard) or 0)
+    entry.nightmare = math.max(0, tonumber(entry.nightmare) or 0)
+    return entry
+end
+
+local function GetPreyAvailabilityFromHuntScanner()
+    local scanner = Preydator and Preydator.GetModule and Preydator:GetModule("HuntScanner")
+    if not scanner or type(scanner.GetAvailabilityCounts) ~= "function" then
+        return nil, false
+    end
+
+    local counts = scanner:GetAvailabilityCounts()
+    if type(counts) ~= "table" then
+        return nil, false
+    end
+
+    if counts.known == false then
+        return nil, false
+    end
+
+    return {
+        normal = math.max(0, tonumber(counts.normal) or 0),
+        hard = math.max(0, tonumber(counts.hard) or 0),
+        nightmare = math.max(0, tonumber(counts.nightmare) or 0),
+        capturedAt = GetTime and GetTime() or 0,
+    }, true
+end
+
+local function RecordPreyTurnIn(questID)
+    local id = tonumber(questID)
+    if not id or id < 1 then
+        return
+    end
+
+    local state = GetCurrentPreyState()
+    if not state or tonumber(state.activeQuestID) ~= id then
+        return
+    end
+
+    EnsureDB()
+    local key = CharacterKey()
+    local weekKey = GetWeeklyResetKey()
+    local completed = GetPreyWeeklyCompleted(key, weekKey)
+    local diffKey = NormalizePreyDifficultyKey(state.preyTargetDifficulty)
+    completed[diffKey] = (tonumber(completed[diffKey]) or 0) + 1
+end
+
+local function BuildPreyProgressTriplet(snap, mode)
+    local level = tonumber(snap and snap.level) or 0
+    local maxNormal = 4
+    local maxHard = (level >= 90) and 4 or 0
+    local maxNightmare = (snap and snap.nightmareUnlocked == true) and 4 or 0
+
+    local completed = type(snap and snap.weeklyCompleted) == "table" and snap.weeklyCompleted or {}
+    local normalDone = math.max(0, tonumber(completed.normal) or 0)
+    local hardDone = math.max(0, tonumber(completed.hard) or 0)
+    local nightmareDone = math.max(0, tonumber(completed.nightmare) or 0)
+    local availabilityKnown = (snap and snap.preyAvailabilityKnown == true)
+
+    local available = type(snap and snap.preyAvailableCounts) == "table" and snap.preyAvailableCounts or nil
+
+    if not availabilityKnown and not available and normalDone == 0 and hardDone == 0 and nightmareDone == 0 then
+        return "?/?/?"
+    end
+
+    if maxNightmare == 0 and level >= 90 and type(snap and snap.preyTargetDifficulty) == "string" and tostring(snap.preyTargetDifficulty):find("Nightmare", 1, true) then
+        maxNightmare = 4
+    end
+
+    if available then
+        local availableNormal = math.max(0, tonumber(available.normal) or 0)
+        local availableHard = math.max(0, tonumber(available.hard) or 0)
+        local availableNightmare = math.max(0, tonumber(available.nightmare) or 0)
+
+        if availableHard > 0 and maxHard == 0 then
+            maxHard = 4
+        end
+        if availableNightmare > 0 and maxNightmare == 0 then
+            maxNightmare = 4
+        end
+
+        maxNormal = math.max(maxNormal, availableNormal + normalDone)
+        maxHard = math.max(maxHard, availableHard + hardDone)
+        maxNightmare = math.max(maxNightmare, availableNightmare + nightmareDone)
+    end
+
+    if mode ~= "completed" then
+        local nLeft
+        local hLeft
+        local niLeft
+
+        if available then
+            nLeft = math.max(0, tonumber(available.normal) or 0)
+            hLeft = (maxHard > 0) and math.max(0, tonumber(available.hard) or 0) or nil
+            niLeft = (maxNightmare > 0) and math.max(0, tonumber(available.nightmare) or 0) or nil
+        else
+            nLeft = math.max(0, maxNormal - normalDone)
+            hLeft = (maxHard > 0) and math.max(0, maxHard - hardDone) or nil
+            niLeft = (maxNightmare > 0) and math.max(0, maxNightmare - nightmareDone) or nil
+        end
+
+        local n = tostring(nLeft)
+        local h = (hLeft ~= nil) and tostring(hLeft) or "-"
+        local ni = (niLeft ~= nil) and tostring(niLeft) or "-"
+        return n .. "/" .. h .. "/" .. ni
+    end
+
+    local nDoneDisplay = normalDone
+    local hDoneDisplay = hardDone
+    local niDoneDisplay = nightmareDone
+
+    if available then
+        nDoneDisplay = math.max(normalDone, math.max(0, maxNormal - (tonumber(available.normal) or 0)))
+        if maxHard > 0 then
+            hDoneDisplay = math.max(hardDone, math.max(0, maxHard - (tonumber(available.hard) or 0)))
+        end
+        if maxNightmare > 0 then
+            niDoneDisplay = math.max(nightmareDone, math.max(0, maxNightmare - (tonumber(available.nightmare) or 0)))
+        end
+    end
+
+    local n = tostring(nDoneDisplay)
+    local h = (maxHard > 0) and tostring(hDoneDisplay) or "-"
+    local ni = (maxNightmare > 0) and tostring(niDoneDisplay) or "-"
+    return n .. "/" .. h .. "/" .. ni
+end
+
+local function SnapshotCurrentPreyCharacter()
+    EnsureDB()
+    local state = GetCurrentPreyState()
+    if not state then
+        return
+    end
+
+    local key = CharacterKey()
+    local weekKey = GetWeeklyResetKey()
+    local weeklyCompleted = GetPreyWeeklyCompleted(key, weekKey)
+    local availableCounts, availabilityKnown = GetPreyAvailabilityFromHuntScanner()
+    local existing = db.preySnapshots[key]
+    if not availabilityKnown and type(existing) == "table" and existing.preyAvailabilityKnown == true and type(existing.preyAvailableCounts) == "table" then
+        availableCounts = {
+            normal = math.max(0, tonumber(existing.preyAvailableCounts.normal) or 0),
+            hard = math.max(0, tonumber(existing.preyAvailableCounts.hard) or 0),
+            nightmare = math.max(0, tonumber(existing.preyAvailableCounts.nightmare) or 0),
+            capturedAt = math.max(0, tonumber(existing.preyAvailableCounts.capturedAt) or 0),
+        }
+        availabilityKnown = true
+    end
+
+    if not availabilityKnown then
+        local hasWeeklyProgress = (tonumber(weeklyCompleted.normal) or 0) > 0
+            or (tonumber(weeklyCompleted.hard) or 0) > 0
+            or (tonumber(weeklyCompleted.nightmare) or 0) > 0
+        if hasWeeklyProgress then
+            availabilityKnown = true
+        end
+    end
+    local classFile = nil
+    if UnitClass then
+        local _, token = UnitClass("player")
+        classFile = token
+    end
+
+    db.preySnapshots[key] = {
+        stage = tonumber(state.stage) or 0,
+        level = UnitLevel and (tonumber(UnitLevel("player")) or 0) or 0,
+        zoneName = state.preyZoneName or ((GetZoneText and GetZoneText()) or ""),
+        activeQuestID = tonumber(state.activeQuestID) or 0,
+        inPreyZone = state.inPreyZone == true,
+        preyTargetName = state.preyTargetName,
+        preyTargetDifficulty = state.preyTargetDifficulty,
+        nightmareUnlocked = (type(state.preyTargetDifficulty) == "string" and tostring(state.preyTargetDifficulty):find("Nightmare", 1, true) ~= nil) and true or false,
+        rankLabel = BuildPreyRankLabel(state.stage, state.preyTargetDifficulty),
+        weeklyKey = weekKey,
+        weeklyCompleted = {
+            normal = tonumber(weeklyCompleted.normal) or 0,
+            hard = tonumber(weeklyCompleted.hard) or 0,
+            nightmare = tonumber(weeklyCompleted.nightmare) or 0,
+        },
+        preyAvailabilityKnown = availabilityKnown == true,
+        preyAvailableCounts = availableCounts,
+        lastSeen = GetTime(),
+        classFile = classFile,
+    }
+end
+
+local function GetPreySnapshotRows()
+    if not db or type(db.preySnapshots) ~= "table" then
+        return {}
+    end
+
+    local rows = {}
+    for charKey, snap in pairs(db.preySnapshots) do
+        rows[#rows + 1] = { charKey = charKey, snap = snap }
+    end
+
+    local currentKey = CharacterKey()
+    table.sort(rows, function(a, b)
+        local aIsCurrent = a.charKey == currentKey
+        local bIsCurrent = b.charKey == currentKey
+        if aIsCurrent ~= bIsCurrent then
+            return aIsCurrent
+        end
+        return a.charKey < b.charKey
+    end)
+
+    return rows
 end
 
 local function IsCurrencyDebugEnabled()
@@ -269,11 +537,45 @@ local function SnapshotCurrentCharacter()
 
     for _, entry in ipairs(CURRENCY_ALLOW_LIST) do
         local qty = GetCurrencyQuantity(entry.id)
-        if not sessionStart[entry.id] then
-            sessionStart[entry.id] = qty
-        end
         db.snapshots[key][entry.id] = { quantity = qty, lastSeen = GetTime(), classFile = classFile }
     end
+end
+
+local function PrimeSessionBaseline(source)
+    EnsureDB()
+
+    local key = CharacterKey()
+    local existing = db and db.snapshots and db.snapshots[key] or nil
+    local allZero = true
+    local hasExistingNonZero = false
+
+    for _, entry in ipairs(CURRENCY_ALLOW_LIST) do
+        local qty = GetCurrencyQuantity(entry.id)
+        sessionStart[entry.id] = qty
+        if qty ~= 0 then
+            allZero = false
+        end
+
+        local prev = existing and existing[entry.id]
+        if type(prev) == "table" and (tonumber(prev.quantity) or 0) > 0 then
+            hasExistingNonZero = true
+        end
+    end
+
+    -- If the API is still cold at login, keep deltas hidden until a valid baseline lands.
+    if allZero and hasExistingNonZero then
+        sessionBaselineReady = false
+        LogCurrencyDebug("SessionBaseline pending [" .. tostring(source or "unknown") .. "]: API returned zeros while prior snapshot has non-zero totals")
+        return false
+    end
+
+    sessionBaselineReady = true
+    local parts = {}
+    for _, entry in ipairs(CURRENCY_ALLOW_LIST) do
+        parts[#parts + 1] = entry.label .. "=" .. tostring(sessionStart[entry.id] or 0)
+    end
+    LogCurrencyDebug("SessionBaseline ready [" .. tostring(source or "unknown") .. "]: " .. table.concat(parts, ", "))
+    return true
 end
 
 local function UpdateLastKnownQuantities()
@@ -297,6 +599,9 @@ local function UpdateLastKnownQuantities()
 end
 
 local function SessionDelta(currencyID)
+    if not sessionBaselineReady then
+        return 0
+    end
     local start = sessionStart[currencyID]
     if not start then return 0 end
     return GetCurrencyQuantity(currencyID) - start
@@ -469,6 +774,13 @@ local function GetThemePreset()
     return THEME_PRESETS[key] or THEME_PRESETS.brown
 end
 
+local function GetWarbandThemePreset()
+    local settings = GetSettings()
+    local useCurrencyTheme = not settings or settings.currencyWarbandUseCurrencyTheme ~= false
+    local key = useCurrencyTheme and (settings and settings.currencyTheme or "brown") or (settings and settings.currencyWarbandTheme or "brown")
+    return THEME_PRESETS[key] or THEME_PRESETS.brown
+end
+
 local function EnsureTrackerSettings()
     local settings = GetSettings()
     if not settings then
@@ -519,6 +831,22 @@ local function EnsureTrackerSettings()
         settings.currencyShowRealmInWarband = false
     end
 
+    if settings.currencyWarbandShowPreyTrack == nil then
+        settings.currencyWarbandShowPreyTrack = true
+    end
+
+    if settings.currencyWarbandPreyMode ~= "completed" and settings.currencyWarbandPreyMode ~= "available" then
+        settings.currencyWarbandPreyMode = "available"
+    end
+
+    if settings.currencyWarbandUseCurrencyTheme == nil then
+        settings.currencyWarbandUseCurrencyTheme = true
+    end
+
+    if type(settings.currencyWarbandTheme) ~= "string" then
+        settings.currencyWarbandTheme = "brown"
+    end
+
     if type(settings.currencyTheme) ~= "string" then
         settings.currencyTheme = "brown"
     end
@@ -539,9 +867,16 @@ local function EnsureTrackerSettings()
         settings.currencyTrackedIDs = {}
     end
 
+    if type(settings.currencyWarbandTrackedIDs) ~= "table" then
+        settings.currencyWarbandTrackedIDs = {}
+    end
+
     for _, entry in ipairs(CURRENCY_ALLOW_LIST) do
         if settings.currencyTrackedIDs[entry.id] == nil then
             settings.currencyTrackedIDs[entry.id] = true
+        end
+        if settings.currencyWarbandTrackedIDs[entry.id] == nil then
+            settings.currencyWarbandTrackedIDs[entry.id] = true
         end
     end
 
@@ -600,6 +935,13 @@ local function IsCurrencyTracked(settings, currencyID)
     return settings.currencyTrackedIDs[currencyID] ~= false
 end
 
+local function IsWarbandCurrencyTracked(settings, currencyID)
+    if not settings or type(settings.currencyWarbandTrackedIDs) ~= "table" then
+        return true
+    end
+    return settings.currencyWarbandTrackedIDs[currencyID] ~= false
+end
+
 local currencyWindow
 local currencyWindowRows = {}
 local currencyWindowSummary
@@ -652,7 +994,7 @@ local function EnsureCurrencyWhatsNewFrame()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -18)
-    title:SetText(L["Preydator Currency: New in 1.6.0"])
+    title:SetText(L["Preydator Updates: New in 1.7.0"])
     SetTextColor(title, COLOR_GOLD)
 
     local body = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -748,6 +1090,12 @@ local function ToggleWarbandWindow()
     if settings.currencyWarbandWindowEnabled then
         CurrencyTrackerModule:RefreshCurrencyPage()
     end
+end
+
+function CurrencyTrackerModule:ToggleWarbandWindow()
+    EnsureTrackerSettings()
+    EnsureWarbandWindow()
+    ToggleWarbandWindow()
 end
 
 local function HandleMinimapClick(mouseButton)
@@ -1085,6 +1433,7 @@ local function EnsureWarbandWindow()
     warbandColumns = {
         { key = "realm",     label = L["Realm"],     width = 96 },
         { key = "character", label = L["Character"], width = 112 },
+        { key = "prey",      label = L["N/H/Ni"],    width = 56 },
         { key = 3392, label = L["Anguish"],  width = 56 },
         { key = 3316, label = L["Voidlight"], width = 64 },
         { key = 3383, label = L["Adv"],      width = 48 },
@@ -1178,7 +1527,7 @@ local function ApplyWarbandColumnLayout(showRealm)
     local orderedCurrencyIDs = { 3392, 3316, 3383, 3341, 3343 }
     local trackedCurrencyIDs = {}
     for _, currencyID in ipairs(orderedCurrencyIDs) do
-        if IsCurrencyTracked(settings, currencyID) then
+        if IsWarbandCurrencyTracked(settings, currencyID) then
             trackedCurrencyIDs[#trackedCurrencyIDs + 1] = currencyID
         end
     end
@@ -1203,7 +1552,8 @@ local function ApplyWarbandColumnLayout(showRealm)
     end
 
     local realmWidth = showRealm and 96 or 0
-    local charWidth = 140
+    local charWidth = showRealm and 108 or 124
+    local maxCharWidth = showRealm and 132 or 148
     local currencyDefaults = {
         [3392] = 56,
         [3316] = 64,
@@ -1212,12 +1562,15 @@ local function ApplyWarbandColumnLayout(showRealm)
         [3343] = 56,
     }
 
-    local requiredTableWidth = charWidth + realmWidth
+    local preyWidth = (settings and settings.currencyWarbandShowPreyTrack ~= false) and 56 or 0
+    local requiredTableWidth = charWidth + realmWidth + preyWidth
     for _, currencyID in ipairs(trackedCurrencyIDs) do
         requiredTableWidth = requiredTableWidth + (currencyDefaults[currencyID] or 48)
     end
     local requiredWindowWidth = math.max(WARBAND_MIN_WIDTH, requiredTableWidth + 24)
-    local finalWindowWidth = math.max(windowWidth, requiredWindowWidth)
+    local configuredWidth = tonumber(settings and settings.currencyWarbandWidth)
+    local useAutoWidth = configuredWidth == nil or math.abs(configuredWidth - WARBAND_DEFAULT_WIDTH) < 0.01
+    local finalWindowWidth = useAutoWidth and requiredWindowWidth or math.max(windowWidth, requiredWindowWidth)
 
     local rowHeight = math.max(16, fontSize + 4)
     local requiredWindowHeight = 86 + (math.max(1, rowCount) * rowHeight) + 12
@@ -1233,14 +1586,14 @@ local function ApplyWarbandColumnLayout(showRealm)
         currencyWidth = currencyWidth + (currencyDefaults[currencyID] or 48)
     end
 
-    local charSlack = tableWidth - realmWidth - currencyWidth - charWidth
+    local charSlack = tableWidth - realmWidth - preyWidth - currencyWidth - charWidth
     if charSlack > 0 then
-        charWidth = charWidth + charSlack
+        charWidth = math.min(maxCharWidth, charWidth + charSlack)
     end
 
     local currencyWidths = {}
     for _, currencyID in ipairs(orderedCurrencyIDs) do
-        if IsCurrencyTracked(settings, currencyID) then
+        if IsWarbandCurrencyTracked(settings, currencyID) then
             currencyWidths[currencyID] = currencyDefaults[currencyID] or 48
         else
             currencyWidths[currencyID] = 0
@@ -1250,6 +1603,7 @@ local function ApplyWarbandColumnLayout(showRealm)
     local effectiveWidths = {
         ["realm"] = realmWidth,
         ["character"] = charWidth,
+        ["prey"] = preyWidth,
         [3392] = currencyWidths[3392],
         [3316] = currencyWidths[3316],
         [3383] = currencyWidths[3383],
@@ -1442,13 +1796,34 @@ local function EnsureMinimapButton()
     return button
 end
 
+function CurrencyTrackerModule:SetMinimapButtonEnabled(enabled)
+    local settings = GetSettings()
+    if not settings then
+        return
+    end
+
+    EnsureTrackerSettings()
+    settings.currencyMinimapButton = enabled == true
+    if type(settings.currencyMinimap) ~= "table" then
+        settings.currencyMinimap = {}
+    end
+    settings.currencyMinimap.hide = not settings.currencyMinimapButton
+
+    if settings.currencyMinimapButton then
+        EnsureMinimapButton()
+        UpdateMinimapButtonPosition()
+    end
+
+    UpdateVisibilityFromSettings()
+end
+
 local function RefreshWarbandWindowDisplay()
     if not warbandWindow then
         return
     end
 
     local settings = GetSettings()
-    local theme = GetThemePreset()
+    local theme = GetWarbandThemePreset()
     local showRealm = settings and settings.currencyShowRealmInWarband == true
     ApplyWarbandColumnLayout(showRealm)
 
@@ -1496,6 +1871,11 @@ local function RefreshWarbandWindowDisplay()
         if key == "character" then
             leftValue = left.charKey
             rightValue = right.charKey
+        elseif key == "prey" then
+            local leftSnap = settings and settings.preySnapshots and settings.preySnapshots[left.charKey] or nil
+            local rightSnap = settings and settings.preySnapshots and settings.preySnapshots[right.charKey] or nil
+            leftValue = BuildPreyProgressTriplet(leftSnap, (settings and settings.currencyWarbandPreyMode) or "available")
+            rightValue = BuildPreyProgressTriplet(rightSnap, (settings and settings.currencyWarbandPreyMode) or "available")
         else
             leftValue = (left.snaps[key] and left.snaps[key].quantity) or 0
             rightValue = (right.snaps[key] and right.snaps[key].quantity) or 0
@@ -1539,6 +1919,9 @@ local function RefreshWarbandWindowDisplay()
                 charName = charName,
                 charKey = rowData.charKey,
                 snaps = rowData.snaps,
+                preyTriplet = (settings and settings.currencyWarbandShowPreyTrack ~= false and db and db.preySnapshots and db.preySnapshots[rowData.charKey])
+                    and BuildPreyProgressTriplet(db.preySnapshots[rowData.charKey], (settings and settings.currencyWarbandPreyMode) or "available")
+                    or "",
             }
             group.chars[#group.chars + 1] = charEntry
             group.totals[3392] = group.totals[3392] + ((rowData.snaps[3392] and rowData.snaps[3392].quantity) or 0)
@@ -1562,6 +1945,9 @@ local function RefreshWarbandWindowDisplay()
             table.sort(group.chars, function(left, right)
                 if warbandSortKey == "character" then
                     return compareValues(left.charName, right.charName, left.charKey, right.charKey)
+                end
+                if warbandSortKey == "prey" then
+                    return compareValues(left.preyTriplet or "", right.preyTriplet or "", left.charName, right.charName)
                 end
                 if type(warbandSortKey) == "number" then
                     local leftValue = (left.snaps[warbandSortKey] and left.snaps[warbandSortKey].quantity) or 0
@@ -1591,12 +1977,14 @@ local function RefreshWarbandWindowDisplay()
                 charName = rowData.charKey
                 realmName = "Unknown"
             end
+            local snap = db and db.preySnapshots and db.preySnapshots[rowData.charKey] or nil
             displayRows[#displayRows + 1] = {
                 type = "character",
                 realm = realmName,
                 charName = charName,
                 charKey = rowData.charKey,
                 snaps = rowData.snaps,
+                preyTriplet = (settings and settings.currencyWarbandShowPreyTrack ~= false and snap) and BuildPreyProgressTriplet(snap, (settings and settings.currencyWarbandPreyMode) or "available") or "",
             }
         end
     end
@@ -1617,6 +2005,7 @@ local function RefreshWarbandWindowDisplay()
                 local prefix = collapsed and "+ " or "- "
                 rowData.cells.realm:SetText(prefix .. data.realm)
                 rowData.cells.character:SetText(L["Subtotal"])
+                rowData.cells.prey:SetText("")
                 rowData.cells[3392]:SetText(tostring(data.totals[3392] or 0))
                 rowData.cells[3316]:SetText(tostring(data.totals[3316] or 0))
                 rowData.cells[3383]:SetText(tostring(data.totals[3383] or 0))
@@ -1624,6 +2013,7 @@ local function RefreshWarbandWindowDisplay()
                 rowData.cells[3343]:SetText(tostring(data.totals[3343] or 0))
                 SetTextColor(rowData.cells.realm, theme.title)
                 SetTextColor(rowData.cells.character, theme.muted)
+                SetTextColor(rowData.cells.prey, theme.muted)
                 SetTextColor(rowData.cells[3392], theme.title)
                 SetTextColor(rowData.cells[3316], theme.title)
                 SetTextColor(rowData.cells[3383], theme.title)
@@ -1637,6 +2027,7 @@ local function RefreshWarbandWindowDisplay()
             else
                 rowData.cells.realm:SetText("")  -- realm column blank on character rows; grouping is visual
                 rowData.cells.character:SetText(data.charName)
+                rowData.cells.prey:SetText(data.preyTriplet or "")
                 rowData.cells[3392]:SetText(tostring((data.snaps[3392] and data.snaps[3392].quantity) or 0))
                 rowData.cells[3316]:SetText(tostring((data.snaps[3316] and data.snaps[3316].quantity) or 0))
                 rowData.cells[3383]:SetText(tostring((data.snaps[3383] and data.snaps[3383].quantity) or 0))
@@ -1651,6 +2042,7 @@ local function RefreshWarbandWindowDisplay()
                 else
                     SetTextColor(rowData.cells.character, theme.text)
                 end
+                SetTextColor(rowData.cells.prey, theme.muted)
                 SetTextColor(rowData.cells[3392], theme.text)
                 SetTextColor(rowData.cells[3316], theme.text)
                 SetTextColor(rowData.cells[3383], theme.text)
@@ -1668,6 +2060,10 @@ local function RefreshWarbandWindowDisplay()
     if warbandTotalTexts.character then
         warbandTotalTexts.character:SetText(L["Totals"])
         SetTextColor(warbandTotalTexts.character, theme.muted)
+    end
+    if warbandTotalTexts.prey then
+        warbandTotalTexts.prey:SetText("")
+        SetTextColor(warbandTotalTexts.prey, theme.muted)
     end
     if warbandTotalTexts[3392] then
         warbandTotalTexts[3392]:SetText(tostring((db and db.warbandTotal and db.warbandTotal[3392]) or 0))
@@ -1845,21 +2241,12 @@ local function BuildCurrencyConfigPage(parent)
         CurrencyTrackerModule:RefreshCurrencyPage()
     end)
 
-    local openWarbandButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    openWarbandButton:SetSize(120, 22)
-    openWarbandButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -64)
-    openWarbandButton:SetText(L["Toggle Warband"])
-    openWarbandButton:SetScript("OnClick", function()
-        ToggleWarbandWindow()
-        CurrencyTrackerModule:RefreshCurrencyPage()
-    end)
-
     local themeLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    themeLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -92)
+    themeLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -64)
     themeLabel:SetText(L["Currency Theme"])
 
     local themeDropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
-    themeDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -106)
+    themeDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -78)
     _G.UIDropDownMenu_SetWidth(themeDropdown, 150)
     _G.UIDropDownMenu_JustifyText(themeDropdown, "LEFT")
 
@@ -1887,36 +2274,26 @@ local function BuildCurrencyConfigPage(parent)
     end)
 
     local minimapToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
-    minimapToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -136)
-    minimapToggle.Text:SetText(L["Show Minimap Button"])
+    minimapToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -108)
+    minimapToggle.Text:SetText(L["Disable Minimap Button"])
     minimapToggle:SetScript("OnClick", function(self)
-        settings.currencyMinimapButton = self:GetChecked() and true or false
-        settings.currencyMinimap.hide = not (settings.currencyMinimapButton == true)
-        UpdateVisibilityFromSettings()
+        CurrencyTrackerModule:SetMinimapButtonEnabled(not (self:GetChecked() and true or false))
     end)
 
     local affordableToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
-    affordableToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -164)
+    affordableToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -136)
     affordableToggle.Text:SetText(L["Show Affordable Hunts In Tracker"])
     affordableToggle:SetScript("OnClick", function(self)
         settings.currencyShowAffordableHunts = self:GetChecked() and true or false
         CurrencyTrackerModule:RefreshCurrencyPage()
     end)
 
-    local realmToggle = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
-    realmToggle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -192)
-    realmToggle.Text:SetText(L["Show Group By Realm In Warband"])
-    realmToggle:SetScript("OnClick", function(self)
-        settings.currencyShowRealmInWarband = self:GetChecked() and true or false
-        CurrencyTrackerModule:RefreshCurrencyPage()
-    end)
-
     local trackedTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    trackedTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -222)
+    trackedTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -192)
     trackedTitle:SetText(L["Currencies to Track"])
     SetTextColor(trackedTitle, COLOR_GOLD)
 
-    local y = -248
+    local y = -218
     for _, entry in ipairs(CURRENCY_ALLOW_LIST) do
         local check = add(CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate"))
         check:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, y)
@@ -1975,43 +2352,21 @@ local function BuildCurrencyConfigPage(parent)
     local nightmareBox = CreateCostInput(L["Nightmare"], "nightmare", -120)
 
     local layoutTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    layoutTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -196)
+    layoutTitle:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -201)
     layoutTitle:SetText(L["Panel Layout"])
     SetTextColor(layoutTitle, COLOR_GOLD)
 
-    local layoutTargetLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    layoutTargetLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 260, -222)
-    layoutTargetLabel:SetText(L["Adjust"])
-
-    local activeLayoutTarget = "currency"
     local widthSlider
     local heightSlider
     local scaleSlider
     local fontSlider
     local isLayoutRefreshing = false
-
-    local layoutTargetDropdown = CreateFrame("Frame", "PreydatorCurrencyLayoutTargetDropdown", parent, "UIDropDownMenuTemplate")
-    layoutTargetDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 242, -236)
-    _G.UIDropDownMenu_SetWidth(layoutTargetDropdown, 150)
-    _G.UIDropDownMenu_JustifyText(layoutTargetDropdown, "LEFT")
-
-    local function GetLayoutSpec()
-        if activeLayoutTarget == "warband" then
-            return {
-                width = { key = "currencyWarbandWidth", min = WARBAND_MIN_WIDTH, max = WARBAND_MAX_WIDTH, step = 4, isFloat = false },
-                height = { key = "currencyWarbandHeight", min = WARBAND_MIN_HEIGHT, max = WARBAND_MAX_HEIGHT, step = 4, isFloat = false },
-                scale = { key = "currencyWarbandScale", min = WARBAND_MIN_SCALE, max = WARBAND_MAX_SCALE, step = 0.01, isFloat = true, decimals = 2 },
-                font = { key = "currencyWarbandFontSize", min = WARBAND_MIN_FONT, max = WARBAND_MAX_FONT, step = 1, isFloat = false },
-            }
-        end
-
-        return {
-            width = { key = "currencyWindowWidth", min = TRACKER_MIN_WIDTH, max = TRACKER_MAX_WIDTH, step = 4, isFloat = false },
-            height = { key = "currencyWindowHeight", min = TRACKER_MIN_HEIGHT, max = TRACKER_MAX_HEIGHT, step = 4, isFloat = false },
-            scale = { key = "currencyWindowScale", min = TRACKER_MIN_SCALE, max = TRACKER_MAX_SCALE, step = 0.01, isFloat = true, decimals = 2 },
-            font = { key = "currencyWindowFontSize", min = TRACKER_MIN_FONT, max = TRACKER_MAX_FONT, step = 1, isFloat = false },
-        }
-    end
+    local layoutSpec = {
+        width = { key = "currencyWindowWidth", min = TRACKER_MIN_WIDTH, max = TRACKER_MAX_WIDTH, step = 4, isFloat = false },
+        height = { key = "currencyWindowHeight", min = TRACKER_MIN_HEIGHT, max = TRACKER_MAX_HEIGHT, step = 4, isFloat = false },
+        scale = { key = "currencyWindowScale", min = TRACKER_MIN_SCALE, max = TRACKER_MAX_SCALE, step = 0.01, isFloat = true, decimals = 2 },
+        font = { key = "currencyWindowFontSize", min = TRACKER_MIN_FONT, max = TRACKER_MAX_FONT, step = 1, isFloat = false },
+    }
 
     local function NormalizeSliderValue(raw, field)
         local numeric = tonumber(raw)
@@ -2056,10 +2411,10 @@ local function BuildCurrencyConfigPage(parent)
         return slider
     end
 
-    widthSlider = CreateLayoutSlider(-266, L["Width"])
-    heightSlider = CreateLayoutSlider(-312, L["Height"])
-    scaleSlider = CreateLayoutSlider(-358, L["Scale"])
-    fontSlider = CreateLayoutSlider(-404, L["Font Size"])
+    widthSlider = CreateLayoutSlider(-236, L["Width"])
+    heightSlider = CreateLayoutSlider(-282, L["Height"])
+    scaleSlider = CreateLayoutSlider(-328, L["Scale"])
+    fontSlider = CreateLayoutSlider(-374, L["Font Size"])
 
     local function ApplySliderValue(slider, rawValue)
         local field = slider.PreydatorField
@@ -2112,13 +2467,11 @@ local function BuildCurrencyConfigPage(parent)
         end
 
         isLayoutRefreshing = true
-        local spec = GetLayoutSpec()
-
         local map = {
-            { slider = widthSlider, field = spec.width },
-            { slider = heightSlider, field = spec.height },
-            { slider = scaleSlider, field = spec.scale },
-            { slider = fontSlider, field = spec.font },
+            { slider = widthSlider, field = layoutSpec.width },
+            { slider = heightSlider, field = layoutSpec.height },
+            { slider = scaleSlider, field = layoutSpec.scale },
+            { slider = fontSlider, field = layoutSpec.font },
         }
 
         for _, entry in ipairs(map) do
@@ -2137,30 +2490,8 @@ local function BuildCurrencyConfigPage(parent)
             slider:SetValue(value)
             slider.PreydatorValueBox:SetText(FormatFieldValue(field, value))
         end
-
-        _G.UIDropDownMenu_SetText(layoutTargetDropdown, activeLayoutTarget == "warband" and L["Warband Window"] or L["Currency Window"])
         isLayoutRefreshing = false
     end
-
-    _G.UIDropDownMenu_Initialize(layoutTargetDropdown, function(self, level)
-        local info = _G.UIDropDownMenu_CreateInfo()
-        info.text = L["Currency Window"]
-        info.func = function()
-            activeLayoutTarget = "currency"
-            RefreshLayoutControls()
-        end
-        info.checked = activeLayoutTarget == "currency"
-        _G.UIDropDownMenu_AddButton(info, level)
-
-        info = _G.UIDropDownMenu_CreateInfo()
-        info.text = L["Warband Window"]
-        info.func = function()
-            activeLayoutTarget = "warband"
-            RefreshLayoutControls()
-        end
-        info.checked = activeLayoutTarget == "warband"
-        _G.UIDropDownMenu_AddButton(info, level)
-    end)
 
     local gainColorButton = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     gainColorButton:SetSize(120, 22)
@@ -2230,9 +2561,8 @@ local function BuildCurrencyConfigPage(parent)
     }
 
     function parent:PreydatorCurrencyRefresh()
-        minimapToggle:SetChecked(settings.currencyMinimap.hide ~= true)
+        minimapToggle:SetChecked(settings.currencyMinimapButton == false)
         affordableToggle:SetChecked(settings.currencyShowAffordableHunts ~= false)
-        realmToggle:SetChecked(settings.currencyShowRealmInWarband == true)
 
         for _, control in ipairs(controls) do
             if control.currencyID then
@@ -2247,7 +2577,6 @@ local function BuildCurrencyConfigPage(parent)
         RefreshLayoutControls()
 
         openButton:SetText((settings.currencyWindowEnabled ~= false) and L["Close Tracker"] or L["Open Tracker"])
-        openWarbandButton:SetText((settings.currencyWarbandWindowEnabled == true) and L["Close Warband"] or L["Open Warband"])
 
         local gain = settings.currencyDeltaGainColor or COLOR_GREEN
         local loss = settings.currencyDeltaLossColor or COLOR_RED
@@ -2279,6 +2608,7 @@ end
 
 function CurrencyTrackerModule:RefreshCurrencyPage()
     SnapshotCurrentCharacter()
+    SnapshotCurrentPreyCharacter()
     UpdateLastKnownQuantities()
     RefreshCurrencyWindowDisplay()
     RefreshWarbandWindowDisplay()
@@ -2342,6 +2672,11 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         return
     end
 
+    if event == "QUEST_TURNED_IN" then
+        local questID = ...
+        RecordPreyTurnIn(questID)
+    end
+
     if event == "CHAT_MSG_CURRENCY" or event == "CHAT_MSG_LOOT" or event == "QUEST_TURNED_IN" or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
         CurrencyTrackerModule:QueueRefreshSweep(event)
     end
@@ -2378,13 +2713,19 @@ function CurrencyTrackerModule:OnAddonLoaded()
     eventFrame:RegisterEvent("QUEST_TURNED_IN")
     eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    sessionStart = {}
+    sessionBaselineReady = false
     UpdateLastKnownQuantities()
+    SnapshotCurrentPreyCharacter()
 end
 
 function CurrencyTrackerModule:OnEvent(event, ...)
     if event == "PLAYER_LOGIN" then
         EnsureDB()
         EnsureTrackerSettings()
+        sessionStart = {}
+        sessionBaselineReady = false
+        PrimeSessionBaseline("PLAYER_LOGIN")
         SnapshotCurrentCharacter()
         UpdateLastKnownQuantities()
         EnsureCurrencyWindow()
@@ -2395,6 +2736,40 @@ function CurrencyTrackerModule:OnEvent(event, ...)
         UpdateWarbandWindowPosition()
         UpdateMinimapButtonPosition()
         self:RefreshCurrencyPage()
+
+        if C_Timer and type(C_Timer.After) == "function" then
+            C_Timer.After(0.5, function()
+                if PrimeSessionBaseline("PLAYER_LOGIN+0.5s") then
+                    CurrencyTrackerModule:RefreshCurrencyPage()
+                end
+            end)
+            C_Timer.After(1.5, function()
+                if PrimeSessionBaseline("PLAYER_LOGIN+1.5s") then
+                    CurrencyTrackerModule:RefreshCurrencyPage()
+                end
+            end)
+            C_Timer.After(3.0, function()
+                if PrimeSessionBaseline("PLAYER_LOGIN+3.0s") then
+                    CurrencyTrackerModule:RefreshCurrencyPage()
+                end
+            end)
+        end
+
         ShowCurrencyWhatsNewIfNeeded()
+        return
+    end
+
+    if event == "QUEST_LOG_UPDATE"
+        or event == "UPDATE_ALL_UI_WIDGETS"
+        or event == "UPDATE_UI_WIDGET"
+        or event == "ZONE_CHANGED"
+        or event == "ZONE_CHANGED_INDOORS"
+        or event == "ZONE_CHANGED_NEW_AREA"
+        or event == "PLAYER_ENTERING_WORLD"
+    then
+        SnapshotCurrentPreyCharacter()
+        if currencyPanelPage and currencyPanelPage:IsVisible() then
+            self:RefreshCurrencyPage()
+        end
     end
 end

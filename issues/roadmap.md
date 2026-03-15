@@ -1,10 +1,10 @@
 ### Preydator Expansion Roadmap (Issue: Roadmap)
 
-## Status (as of v1.6.0)
+## Status (as of v1.7.0)
 
 - Epic 1: Approved Currency Ledger (MVP) - Completed
 - Epic 2: Hunt Source Scanner - Planned
-- Epic 3: Weekly Hunt Cap Tracker - Planned
+- Epic 3: Weekly Hunt Cap Tracker - In progress
 - Epic 4: Prey Achievement Gap Highlighter - Planned
 - Epic 5: Reward Intelligence and Cost Context - In progress
 - Epic 6: Localization for other Languages - Completed (infrastructure + 10 stubs; seeking community translators)
@@ -149,6 +149,10 @@ Acceptance criteria:
 
 ## Epic 3: Weekly Hunt Cap Tracker
 
+Current progress:
+
+- Initial alt-visible prey progress chart added in settings (`Prey Track (Alts)`), showing per-character zone and rank snapshots as a foundation for weekly cap counters.
+
 Deliverables:
 
 - Tier counters for weekly completions and remaining opportunities:
@@ -203,6 +207,10 @@ Acceptance criteria:
 3. Milestone C: Weekly Hunt Cap Tracker (2/2/2 by tier) + crest indicators.
 4. Milestone D: Achievement Gap Highlighter for Expansion Features > Prey.
 5. Milestone E: Reward Intelligence and optional cost-context panel.
+
+## Post-v1.7.0 Backlog
+
+1. Add Prey Tracking per Zone as a dedicated post-launch enhancement (after v1.7.0).
 
 ## Architecture Notes
 

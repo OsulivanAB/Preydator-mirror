@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.7.0 - 2026-03-15
+
+### Added
+- Added an alt-aware prey progress chart in Currency settings (`Prey Track (Alts)`) showing character, zone, and rank snapshot data.
+- Added prey snapshot persistence per character to SavedVariables so alt progress remains visible between sessions and reloads.
+- Added a Hunt Table companion panel that appears during hunt-table interactions and lists available prey quests with reward summaries while preserving Blizzard's default quest/model panel.
+- Added General-tab controls for Hunt Table tracking and side placement (`Left` / `Right`).
+- Added dedicated `Hunt Table` and `Warband` settings tabs to begin separating hunt and warband controls from broad general settings.
+- Added troubleshooting slash command `/pd huntdebug` to print captured hunt-table payload details (available quests, active quests, options, NPC/spell context).
+- Expanded Hunt Table diagnostics to capture modern interaction-manager and quest-detail API paths, plus recent event traces, to support non-gossip hunt-table flows.
+- Hunt Table capture now supports observed alternate NPC context (`246231`) and performs short delayed re-scan passes after interaction events to catch fast-populated quest payloads before UI close.
+
+### Changed
+- Mapped the new alt prey progress tracking work into the roadmap Epic 3 direction (weekly/prey progress visibility).
+- Hunt Table tracker now uses Blizzard Adventure Map quest pins as the primary hunt source and warms per-quest reward data asynchronously from the quest-choice dialog, with retry-safe timeouts for empty payloads.
+- Hunt reward warming now samples one representative quest per difficulty (plus active quests) to reduce visible quest-choice dialog flicker during cache warm-up.
+- Hunt reward lines now include reward icons and normalize numeric experience rewards to include `XP` text.
+- `/pd huntdebug bs` now uses BugGrabber APIs directly when available and no longer routes through error-handler paths that attach large local-variable dumps.
+- Improved `/pd huntdebug bs` compatibility by trying multiple BugGrabber/BugSack call styles and auto-opening BugSack when a payload is delivered.
+- Hunt panel quest rows are now clickable and open the corresponding Blizzard quest dialog on the adventure map.
+- Hunt reward cache now persists in SavedVariables, refreshes on the first login of each day by invalidating stale entries, and reuses shared difficulty rewards when quests return after abandon.
+- Completing prey stage 4 now invalidates cached rewards for that difficulty so the next Hunt Table visit refills updated rewards.
+- Hunt Table actions are blocked while a prey quest is active, and row-level `Accept` now uses a hidden non-zoom dialog flow to avoid leaving the adventure map stuck on a zone zoom.
+- Reward hydration now waits for fuller quest-choice reward widget population before committing cache, preventing premature XP-only snapshots; reward icon extraction also supports additional widget field variants.
+- Advanced Debug now includes a `Refresh Hunt Cache` action, and Hunt settings includes direct cache/table refresh controls wired to `HuntScanner` refresh APIs.
+- Hunt reward extraction now falls back to item-based fields (`itemID` / `itemLink`) for name/icon/count resolution, improving capture of chest/cache rewards that omit direct reward text fields.
+- Currency settings have been decoupled from Warband controls: Warband toggles/grouping/layout controls no longer live on the Currencies page.
+- Warband now has a dedicated option to show/hide `Prey Track (Alts)` directly inside the Warband window instead of the Currencies tab.
+- Hunt Table warm-up now samples one representative quest per difficulty again, and Hunt settings now include grouping/sorting controls (`Group Hunts By`, `Sort Hunts By`) for zone/difficulty/title organization.
+- Fixed HuntScanner reward API errors by passing the required `isChoice` argument to `C_QuestLog.GetQuestRewardCurrencyInfo`, eliminating repeated snapshot error spam.
+- Clicking an already-open Hunt Table quest row now closes the quest details and attempts to reset zoom, improving map navigation UX.
+- Hunt panel now supports settings for width, height, scale, font size, and side-anchor vertical alignment (`Top`, `Middle`, `Bottom`).
+- Hunt grouped headers (zone/difficulty) are now collapsible directly from the Hunt panel.
+- Warband tab now uses an open/close button flow, removes the link shortcut to Currencies, and includes tracked-currency toggles.
+- Warband prey rows now show an `N/H/Ni` column with mode toggle (`available` or `completed`) and keep rank visible in a dedicated column.
+- Hunt Table preview can now be shown directly from Options, with independent Hunt theme selection and cleaner grouped row titles that no longer append difficulty/zone suffixes.
+- Hunt grouping now buckets by group first and sorts within each group, preventing duplicate zone/difficulty headers when sort order changes.
+- Warband runtime now honors its own tracked-currency list and theme settings, and grouped character rows fill the `N/H/Ni` column instead of adding separate prey rows.
+- Hunt availability counts now preserve cached values at login and update automatically on first Hunt Table interaction, removing the need to manually click the table before Warband difficulty tracking refreshes.
+- Hunt Table defaults for new installs are now `Match Currency Theme = On`, `Group Hunts By = Difficulty`, and `Sort Hunts By = Zone`.
+- Removed the Hunt Table bottom debug helper text from the live panel for a cleaner in-game presentation.
+- Updated one-time splash content and release metadata for `1.7.0` (TOC, build script default version, and What's New version gate).
+
+### Fixed
+- Prevented prey availability snapshots from being overwritten with nil scanner values during early login refresh timing, so cached N/H/Ni values remain visible until live hunt data arrives.
+- Kept localization bootstrap/fallback flow release-safe for ship builds while updating the splash body/title copy used in `1.7.0`.
+
 ## 1.6.5 - 2026-03-14
 
 ### Fixed

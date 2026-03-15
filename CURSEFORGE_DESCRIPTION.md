@@ -21,10 +21,12 @@ Preydator is a retail World of Warcraft addon built specifically for Prey Hunts.
 
 Blizzard does not expose true percentage completion for Prey Hunts. Preydator tracks stage transitions directly, with clear fallback progress display options.
 
-## Major features (v1.6.3)
+## Major features (v1.7.0)
 
 - New Prey Currency Tracker window
 - New Warband currency table with sorting and realm grouping
+- Hunt Table tracker with grouping/sorting controls, reward icons, and direct quest accept/open actions from tracker rows
+- Warband prey tracking improvements with `N/H/Ni` available/completed modes and weekly-aware per-character snapshots
 - Approved-currency allow-list tracking for:
 	- Remnant of Anguish (`3392`)
 	- Voidlight Marl (`3316`)

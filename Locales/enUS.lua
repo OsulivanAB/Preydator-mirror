@@ -31,6 +31,7 @@
 ---- Section headers
   L["Visibility"]            = ""
   L["Behavior"]              = ""
+  L["Hunt Table"]            = ""
   L["Currencies"]            = ""
   L["Bar Size"]              = ""
   L["Progress Display"]      = ""
@@ -51,6 +52,7 @@
   L["Only show in prey zone"]            = ""
   L["Disable Default Prey Icon"]         = ""
   L["Show in Edit Mode preview"]         = ""
+  L["Enable Hunt Table Tracker"]         = ""
   L["Enable sounds"]                     = ""
   L["Ambush sound alert"]                = ""
   L["Ambush visual alert"]               = ""
@@ -69,6 +71,7 @@
   L["Currency Theme"]           = ""
   L["Progress Segments"]        = ""
   L["Sound Channel"]            = ""
+  L["Hunt Panel Side"]          = ""
   L["Bar Orientation"]          = ""
   L["Vertical Fill Direction"]  = ""
   L["Vertical Text Side"]       = ""
@@ -223,8 +226,8 @@
   L["Preydator Currency"]        = ""
   L["Preydator Warband"]         = ""
   L["Currency Tracker"]          = ""
-  L["Preydator Currency: New in 1.6.0"] = ""
-  L["WHATS_NEW_BODY"]            = "Currency tracking has arrived.\n\n- Currency and Warband windows now support tracked-currency filtering\n- Theme controls include Light, Brown, and Dark\n- Layout controls for width, height, scale, and font are in Options\n- Warband table auto-fits tracked columns and grouped realm rows\n\nBoth windows default to OFF for new installs. Enable them anytime from the Currencies options page or minimap icon."
+  L["Preydator Updates: New in 1.7.0"] = ""
+  L["WHATS_NEW_BODY"]            = "Tracking updates have arrived.\n\n- Hunt Table tracking has been updated for better reliability and rewards visibility\n- Warband tracking has been updated with improved prey progress and layout handling\n- Currency tracking continues with tracked-currency filtering and layout/theme controls\n\nHunt Tracker is ON by default for new installs. Currency and Warband windows still default to OFF and can be enabled anytime from the Currencies options page or minimap icon."
   L["Got It"]                    = ""
   L["Open Settings"]             = ""
   L["Toggle Tracker"]            = ""
@@ -235,6 +238,14 @@
   L["Close Warband"]             = ""
   L["Gain Color"]                = ""
   L["Spend Color"]               = ""
+
+---- Hunt Table companion panel
+  L["Preydator Hunt Tracker"]                          = ""
+  L["Available Hunts"]                                 = ""
+  L["Rewards unknown"]                                 = ""
+  L["Reward data pending"]                             = ""
+  L["No available hunts"]                              = ""
+  L["Use /pd huntdebug at a hunt table to print payload data."] = ""
 
 ---- Currency config page labels
   L["Currencies to Track"]          = ""
@@ -286,4 +297,4 @@ L["HINT_AUDIO_SLIDER"] = "Slider values can be dragged or typed directly. Custom
 L["HINT_ADVANCED_NOTES"] = "Existing installs keep their current saved values. New settings are only applied when a key is missing in PreydatorDB. This panel replaces the old long-form options page but uses the same database. The Inspect feature is compatible with BugSack."
 L["HINT_PANEL_SUBTITLE"] = "Tabbed options layout with two-column pages. Slider values can be dragged or typed directly."
 L["HINT_EDITMODE_SUBTITLE"] = "Quick layout controls while Blizzard Edit Mode is open. Full Options can be found in Options > Addons > Preydator."
-L["WHATS_NEW_BODY"] = "Currency tracking has arrived.\n\n- Currency and Warband windows now support tracked-currency filtering\n- Theme controls include Light, Brown, and Dark\n- Layout controls for width, height, scale, and font are in Options\n- Warband table auto-fits tracked columns and grouped realm rows\n\nBoth windows default to OFF for new installs. Enable them anytime from the Currencies options page or minimap icon."
+L["WHATS_NEW_BODY"] = "Tracking updates have arrived.\n\n- Hunt Table tracking has been updated for better reliability and rewards visibility\n- Warband tracking has been updated with improved prey progress and layout handling\n- Currency tracking continues with tracked-currency filtering and layout/theme controls\n\nHunt Tracker is ON by default for new installs. Currency and Warband windows still default to OFF and can be enabled anytime from the Currencies options page or minimap icon."
