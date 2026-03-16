@@ -264,38 +264,38 @@ jobs:
           short_sha="${{ steps.upstream.outputs.short_sha }}"
 
           # Write release notes to a temp file to avoid quoting issues
-          cat > /tmp/release-notes.md << NOTES
-## Automated Mirror Release
-
-> ⚠️ **This is NOT an official release.**
-> All credit for the addon belongs to [RagingAltoholic](https://github.com/RagingAltoholic).
-
-This release was created automatically by the [Preydator-mirror](https://github.com/${{ github.repository }}) workflow.
-
-👉 **Original project:** https://github.com/RagingAltoholic/Preydator
-🐛 **Report addon bugs upstream:** https://github.com/RagingAltoholic/Preydator/issues
-
----
-
-| Field | Value |
-|---|---|
-| Upstream addon version | \`${ADDON_VERSION}\` |
-| Upstream commit | [\`${short_sha}\`](https://github.com/RagingAltoholic/Preydator/commit/${upstream_sha}) |
-| Original author | [RagingAltoholic](https://github.com/RagingAltoholic) |
-| Mirror purpose | WowUp packaging / distribution only |
-
----
-
-### Installation
-
-**Via WowUp:** Point WowUp at \`https://github.com/${{ github.repository }}\` — it will find this release automatically.
-
-**Manual:** Download \`${ZIP_NAME}\` below and extract into \`Interface/AddOns/\`. The addon folder will be \`Interface/AddOns/Preydator/\`.
-
----
-
-*Addon credit: [Preydator](https://github.com/RagingAltoholic/Preydator) by [RagingAltoholic](https://github.com/RagingAltoholic). All addon code and assets belong to the original author.*
-NOTES
+          {
+            printf '%s\n' '## Automated Mirror Release'
+            printf '\n'
+            printf '%s\n' '> ⚠️ **This is NOT an official release.**'
+            printf '%s\n' '> All credit for the addon belongs to [RagingAltoholic](https://github.com/RagingAltoholic).'
+            printf '\n'
+            printf '%s\n' "This release was created automatically by the [Preydator-mirror](https://github.com/${{ github.repository }}) workflow."
+            printf '\n'
+            printf '%s\n' '👉 **Original project:** https://github.com/RagingAltoholic/Preydator'
+            printf '%s\n' '🐛 **Report addon bugs upstream:** https://github.com/RagingAltoholic/Preydator/issues'
+            printf '\n'
+            printf '%s\n' '---'
+            printf '\n'
+            printf '%s\n' '| Field | Value |'
+            printf '%s\n' '|---|---|'
+            printf '%s\n' "| Upstream addon version | \`${ADDON_VERSION}\` |"
+            printf '%s\n' "| Upstream commit | [\`${short_sha}\`](https://github.com/RagingAltoholic/Preydator/commit/${upstream_sha}) |"
+            printf '%s\n' '| Original author | [RagingAltoholic](https://github.com/RagingAltoholic) |'
+            printf '%s\n' '| Mirror purpose | WowUp packaging / distribution only |'
+            printf '\n'
+            printf '%s\n' '---'
+            printf '\n'
+            printf '%s\n' '### Installation'
+            printf '\n'
+            printf '%s\n' "**Via WowUp:** Point WowUp at \`https://github.com/${{ github.repository }}\` — it will find this release automatically."
+            printf '\n'
+            printf '%s\n' "**Manual:** Download \`${ZIP_NAME}\` below and extract into \`Interface/AddOns/\`. The addon folder will be \`Interface/AddOns/Preydator/\`."
+            printf '\n'
+            printf '%s\n' '---'
+            printf '\n'
+            printf '%s\n' '*Addon credit: [Preydator](https://github.com/RagingAltoholic/Preydator) by [RagingAltoholic](https://github.com/RagingAltoholic). All addon code and assets belong to the original author.*'
+          } > /tmp/release-notes.md
 
           echo "Creating release: ${release_tag}"
           gh release create "${release_tag}" \
@@ -313,12 +313,12 @@ NOTES
         run: |
           # Overwrite the state file with the upstream SHA we just mirrored.
           # Preserve the header comment for human readability.
-          cat > .last-upstream-sha << 'HEADER'
-# Tracks the last upstream commit SHA that was successfully mirrored.
-# Updated automatically by the sync workflow after each successful release.
-# Leave blank (or delete this file) to trigger a fresh release on next run.
-HEADER
-          echo "${{ steps.upstream.outputs.sha }}" >> .last-upstream-sha
+          {
+            printf '%s\n' '# Tracks the last upstream commit SHA that was successfully mirrored.'
+            printf '%s\n' '# Updated automatically by the sync workflow after each successful release.'
+            printf '%s\n' '# Leave blank (or delete this file) to trigger a fresh release on next run.'
+            printf '%s\n' "${{ steps.upstream.outputs.sha }}"
+          } > .last-upstream-sha
 
       - name: Commit SHA update
         if: steps.check.outputs.changed == 'true'
