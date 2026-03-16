@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.2 - 2026-03-15
+
+### Changed
+- Removed dead gossip-path code from HuntScanner: `GatherGossipQuests`, `IsLikelyPreyTitle`, all legacy gossip/quest-greeting API locals, and the gossip-based fallback rows in `BuildQuestRows`. Hunt data is sourced exclusively from adventure map pins; gossip scanning was a holdover from earlier implementation attempts and called taint-prone secure APIs on every scan pass.
+- `IsHuntTableContext` now only checks target NPC ID, interaction type 3, and the Hunt Table controller spell ID option — no gossip quest title scanning.
+- Removed `QUEST_ACCEPTED` event registration from HuntScanner (unused after pin-based system).
+
+## 1.7.1 - 2026-03-15
+
+### Fixed
+- HuntScanner no longer fires gossip/quest scan passes inside battlegrounds, arenas, dungeons, raids, or delves, eliminating repeated "snapshot error: attempt to perform string conversion on a secret string value" spam caused by Blizzard taint in restricted instances.
+
 ## 1.7.0 - 2026-03-15
 
 ### Added

@@ -17,6 +17,7 @@ local UnitGUID = _G.UnitGUID
 local UnitName = _G.UnitName
 local UnitLevel = _G.UnitLevel
 local GetRealmName = _G.GetRealmName
+local IsInInstance = _G.IsInInstance
 local UIParent = _G.UIParent
 local GetQuestID = _G.GetQuestID
 local GetTitleText = _G.GetTitleText
@@ -24,15 +25,6 @@ local GetObjectiveText = _G.GetObjectiveText
 local GetNumQuestChoices = _G.GetNumQuestChoices
 local HookSecureFunc = _G.hooksecurefunc
 local HideUIPanel = _G.HideUIPanel
-local GetNumGossipAvailableQuests = _G.GetNumGossipAvailableQuests
-local GetNumGossipActiveQuests = _G.GetNumGossipActiveQuests
-local GetGossipAvailableQuests = _G.GetGossipAvailableQuests
-local GetGossipActiveQuests = _G.GetGossipActiveQuests
-local GetNumAvailableQuests = _G.GetNumAvailableQuests
-local GetNumActiveQuests = _G.GetNumActiveQuests
-local GetAvailableQuestInfo = _G.GetAvailableQuestInfo
-local GetActiveQuestID = _G.GetActiveQuestID
-local GetTitleText = _G.GetTitleText
 local geterrorhandler = _G.geterrorhandler
 local strsplit = _G.strsplit
 local tonumber = _G.tonumber
@@ -93,6 +85,21 @@ local HandleInteractionSnapshot
 local QueueInteractionSnapshotPasses
 local HidePanel
 local GetSettings
+
+local function IsInRestrictedInstance()
+    if type(IsInInstance) ~= "function" then
+        return false
+    end
+    local inInstance, instanceType = IsInInstance()
+    if not inInstance then
+        return false
+    end
+    return instanceType == "pvp"
+        or instanceType == "arena"
+        or instanceType == "party"
+        or instanceType == "raid"
+        or instanceType == "scenario"
+end
 
 local function IsOptionsPreviewVisible()
     local settings = GetSettings()
@@ -608,26 +615,7 @@ local function ParseTargetNPCID()
     return tonumber(npcID)
 end
 
-local function IsLikelyPreyTitle(title)
-    if type(title) ~= "string" or title == "" then
-        return false
-    end
-
-    if title:match("^%s*[Pp]rey:%s*") then
-        return true
-    end
-
-    return false
-end
-
-local function GetQuestTitle(entry)
-    if type(entry) ~= "table" then
-        return nil
-    end
-    return entry.title or entry.name
-end
-
-local function IsHuntTableContext(availableQuests, options)
+local function IsHuntTableContext(options)
     local npcID = ParseTargetNPCID()
     if npcID and HUNT_TABLE_NPC_IDS[npcID] then
         return true, npcID
@@ -644,12 +632,6 @@ local function IsHuntTableContext(availableQuests, options)
         end
     end
 
-    for _, entry in ipairs(availableQuests or {}) do
-        if IsLikelyPreyTitle(GetQuestTitle(entry)) then
-            return true, npcID
-        end
-    end
-
     return false, npcID
 end
 
@@ -662,12 +644,10 @@ local function SnapshotHasUsefulData(snapshot)
         return true
     end
 
-    local available = snapshot.available or {}
-    local active = snapshot.active or {}
     local options = snapshot.options or {}
     local detail = snapshot.questDetail or {}
 
-    return #available > 0 or #active > 0 or #options > 0 or ((tonumber(detail.questID) or 0) > 0)
+    return #options > 0 or ((tonumber(detail.questID) or 0) > 0)
 end
 
 local function CopySnapshot(source)
@@ -1427,98 +1407,7 @@ local function WarmRewardCacheFromPins()
     StartCurrentQuest()
 end
 
-local function GatherGossipQuests()
-    local available = {}
-    local active = {}
-    local legacyAvailableCount = 0
-    local legacyActiveCount = 0
-
-    if C_GossipInfo and type(C_GossipInfo.GetAvailableQuests) == "function" then
-        available = C_GossipInfo.GetAvailableQuests() or {}
-    end
-
-    if C_GossipInfo and type(C_GossipInfo.GetActiveQuests) == "function" then
-        active = C_GossipInfo.GetActiveQuests() or {}
-    end
-
-    if #available == 0 and type(GetNumGossipAvailableQuests) == "function" and type(GetGossipAvailableQuests) == "function" then
-        local rawCount = GetNumGossipAvailableQuests()
-        legacyAvailableCount = tonumber(rawCount) or 0
-        if legacyAvailableCount > 0 then
-            local flat = { GetGossipAvailableQuests() }
-            local stride = (#flat % 7 == 0) and 7 or 6
-            for index = 1, #flat, stride do
-                local title = flat[index]
-                local questID = tonumber(flat[index + stride - 1]) or tonumber(flat[index + 5])
-                if type(title) == "string" and title ~= "" then
-                    available[#available + 1] = {
-                        title = title,
-                        questID = questID,
-                        source = "legacy",
-                    }
-                end
-            end
-        end
-    end
-
-    if #active == 0 and type(GetNumGossipActiveQuests) == "function" and type(GetGossipActiveQuests) == "function" then
-        local rawCount = GetNumGossipActiveQuests()
-        legacyActiveCount = tonumber(rawCount) or 0
-        if legacyActiveCount > 0 then
-            local flat = { GetGossipActiveQuests() }
-            local stride = (#flat % 7 == 0) and 7 or 6
-            for index = 1, #flat, stride do
-                local title = flat[index]
-                local questID = tonumber(flat[index + stride - 1]) or tonumber(flat[index + 5])
-                if type(title) == "string" and title ~= "" then
-                    active[#active + 1] = {
-                        title = title,
-                        questID = questID,
-                        source = "legacy",
-                    }
-                end
-            end
-        end
-    end
-
-    if #available == 0 and type(GetNumAvailableQuests) == "function" and type(GetAvailableQuestInfo) == "function" then
-        local rawCount = GetNumAvailableQuests()
-        local count = tonumber(rawCount) or 0
-        if count > 0 then
-            for index = 1, count do
-                local title, _, _, _, _, questID = GetAvailableQuestInfo(index)
-                if type(title) == "string" and title ~= "" then
-                    available[#available + 1] = {
-                        title = title,
-                        questID = tonumber(questID),
-                        source = "quest_greeting",
-                    }
-                end
-            end
-        end
-    end
-
-    if #active == 0 and type(GetNumActiveQuests) == "function" and type(GetActiveQuestID) == "function" then
-        local rawCount = GetNumActiveQuests()
-        local count = tonumber(rawCount) or 0
-        if count > 0 then
-            for index = 1, count do
-                local questID = tonumber(GetActiveQuestID(index))
-                if questID and questID > 0 then
-                    active[#active + 1] = {
-                        title = string.format("Quest %d", questID),
-                        questID = questID,
-                        source = "quest_greeting",
-                    }
-                end
-            end
-        end
-    end
-
-    return available, active, legacyAvailableCount, legacyActiveCount
-end
-
-local function CaptureSnapshot(availableQuests, activeQuests, options, npcID, legacyAvailableCount, legacyActiveCount)
+local function CaptureSnapshot(options, npcID)
     local interactionType = (C_PlayerInteractionManager and C_PlayerInteractionManager.GetInteractionType and C_PlayerInteractionManager.GetInteractionType()) or nil
     if interactionType ~= nil then
         lastInteractionType = interactionType
@@ -1560,11 +1449,7 @@ local function CaptureSnapshot(availableQuests, activeQuests, options, npcID, le
     local snapshot = {
         time = GetTime and GetTime() or 0,
         npcID = npcID,
-        available = availableQuests,
-        active = activeQuests,
         options = options,
-        legacyAvailableCount = legacyAvailableCount or 0,
-        legacyActiveCount = legacyActiveCount or 0,
         interactionType = interactionType,
         mapState = {
             missionVisible = IsMissionFrameVisible(),
@@ -1619,23 +1504,8 @@ local function BuildDebugSnapshotLines(snapshot)
         .. " hasAnchor=" .. tostring(HasVisibleHuntAnchor())
         .. " panelShown=" .. tostring(panelFrame and panelFrame.IsShown and panelFrame:IsShown() == true)
 
-    local available = snapshot.available or {}
-    lines[#lines + 1] = "Preydator HuntDebug: availableQuests=" .. tostring(#available)
-    for index, entry in ipairs(available) do
-        local title = GetQuestTitle(entry) or "?"
-        lines[#lines + 1] = "  [A" .. tostring(index) .. "] questID=" .. tostring(entry.questID) .. " title=" .. tostring(title)
-    end
-
-    local active = snapshot.active or {}
-    lines[#lines + 1] = "Preydator HuntDebug: activeQuests=" .. tostring(#active)
-    for index, entry in ipairs(active) do
-        local title = GetQuestTitle(entry) or "?"
-        lines[#lines + 1] = "  [R" .. tostring(index) .. "] questID=" .. tostring(entry.questID) .. " title=" .. tostring(title)
-    end
-
     local options = snapshot.options or {}
     lines[#lines + 1] = "Preydator HuntDebug: options=" .. tostring(#options)
-    lines[#lines + 1] = "Preydator HuntDebug: legacy available=" .. tostring(snapshot.legacyAvailableCount or 0) .. " active=" .. tostring(snapshot.legacyActiveCount or 0)
     for index, option in ipairs(options) do
         local text = option and (option.name or option.text) or "?"
         local spellID = option and option.spellID
@@ -1728,23 +1598,15 @@ local function SendLinesToBugSack(lines)
 end
 
 local function RefreshDebugSnapshotFromLiveAPI()
-    local availableQuests, activeQuests, legacyAvailableCount, legacyActiveCount = GatherGossipQuests()
     local options = {}
     if C_GossipInfo and type(C_GossipInfo.GetOptions) == "function" then
         options = C_GossipInfo.GetOptions() or {}
     end
 
-    local _, npcID = IsHuntTableContext(availableQuests, options)
-    CaptureSnapshot(availableQuests, activeQuests, options, npcID, legacyAvailableCount, legacyActiveCount)
+    local _, npcID = IsHuntTableContext(options)
+    CaptureSnapshot(options, npcID)
 
-    if (npcID == nil) and GetQuestID and GetQuestID() then
-        return true
-    end
-
-    return (npcID ~= nil)
-        or (#availableQuests > 0)
-        or (#activeQuests > 0)
-        or (#options > 0)
+    return (npcID ~= nil) or (#options > 0)
 end
 
 local function SelectBestSnapshotForDebug()
@@ -1991,7 +1853,7 @@ local function GetDifficultyBadge(difficulty)
     return "|cff9aa3ad[?]|r"
 end
 
-local function BuildQuestRows(availableQuests, activeQuests, mapHunts)
+local function BuildQuestRows(mapHunts)
     local rows = {}
 
     for _, hunt in ipairs(mapHunts or {}) do
@@ -2100,42 +1962,6 @@ local function BuildQuestRows(availableQuests, activeQuests, mapHunts)
         return grouped
     end
 
-    for _, quest in ipairs(availableQuests or {}) do
-        local questID = tonumber(quest.questID)
-        local title = GetQuestTitle(quest) or (questID and ("Quest " .. tostring(questID))) or L["Unknown"]
-        rows[#rows + 1] = {
-            questID = questID,
-            title = title,
-            reward = BuildRewardSummary(questID),
-            canAccept = true,
-        }
-    end
-
-    if #rows == 0 then
-        for _, quest in ipairs(activeQuests or {}) do
-            local questID = tonumber(quest.questID)
-            local title = GetQuestTitle(quest) or (questID and ("Quest " .. tostring(questID))) or L["Unknown"]
-            rows[#rows + 1] = {
-                questID = questID,
-                title = title .. " (" .. L["Active"] .. ")",
-                reward = BuildRewardSummary(questID),
-                canAccept = false,
-            }
-        end
-    end
-
-    if #rows == 0 and GetQuestID and GetQuestID() then
-        local rawQuestID = GetQuestID()
-        local questID = tonumber(rawQuestID)
-        local title = (GetTitleText and GetTitleText()) or (questID and ("Quest " .. tostring(questID))) or L["Unknown"]
-        rows[#rows + 1] = {
-            questID = questID,
-            title = title,
-            reward = BuildRewardSummary(questID),
-            canAccept = true,
-        }
-    end
-
     return rows
 end
 
@@ -2238,6 +2064,12 @@ HandleInteractionSnapshot = function()
     if isHandlingSnapshot then
         return
     end
+
+    if IsInRestrictedInstance() then
+        HidePanel()
+        return
+    end
+
     isHandlingSnapshot = true
 
     local ok, err = pcall(function()
@@ -2250,16 +2082,12 @@ HandleInteractionSnapshot = function()
             return
         end
 
-        local availableQuests, activeQuests, legacyAvailableCount, legacyActiveCount = GatherGossipQuests()
         local options = {}
         if C_GossipInfo and type(C_GossipInfo.GetOptions) == "function" then
             options = C_GossipInfo.GetOptions() or {}
         end
 
-        local isHuntContext, npcID = IsHuntTableContext(availableQuests, options)
-        if not isHuntContext and GetQuestID and GetQuestID() then
-            isHuntContext = true
-        end
+        local isHuntContext, npcID = IsHuntTableContext(options)
 
         local mapHunts = RefreshHuntsFromPins()
         if #mapHunts > 0 and IsMissionFrameVisible() then
@@ -2268,7 +2096,7 @@ HandleInteractionSnapshot = function()
         if isHuntContext then
             MarkAvailabilityTouched()
         end
-        CaptureSnapshot(availableQuests, activeQuests, options, npcID, legacyAvailableCount, legacyActiveCount)
+        CaptureSnapshot(options, npcID)
         NotifyCurrencyTrackerAvailabilityChanged()
 
         if not isHuntContext then
@@ -2289,7 +2117,7 @@ HandleInteractionSnapshot = function()
             return
         end
 
-        local rows = BuildQuestRows(availableQuests, activeQuests, mapHunts)
+        local rows = BuildQuestRows(mapHunts)
         RenderPanel(rows)
         if #mapHunts > 0 then
             WarmRewardCacheFromPins()
@@ -2456,6 +2284,11 @@ function HuntScannerModule:OnSlashCommand(text, rest)
 end
 
 QueueInteractionSnapshotPasses = function()
+    if IsInRestrictedInstance() then
+        HidePanel()
+        return
+    end
+
     snapshotSequence = snapshotSequence + 1
     local token = snapshotSequence
 
@@ -2561,7 +2394,6 @@ huntEventFrame:RegisterEvent("QUEST_DATA_LOAD_RESULT")
 huntEventFrame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
 huntEventFrame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
 huntEventFrame:RegisterEvent("QUEST_DETAIL")
-huntEventFrame:RegisterEvent("QUEST_ACCEPTED")
 huntEventFrame:RegisterEvent("QUEST_PROGRESS")
 huntEventFrame:RegisterEvent("QUEST_COMPLETE")
 huntEventFrame:RegisterEvent("QUEST_FINISHED")
