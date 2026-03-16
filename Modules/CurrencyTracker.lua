@@ -205,6 +205,8 @@ local ldbIconRegistered = false
 local warbandSortKey = "character"
 local warbandSortAsc = true
 local currencyWhatsNewFrame
+local EnsureCurrencyWindow
+local EnsureWarbandWindow
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -1283,7 +1285,7 @@ local function CreateCurrencyWindowRow(parent, yOffset)
     return row
 end
 
-local function EnsureCurrencyWindow()
+EnsureCurrencyWindow = function()
     if currencyWindow then
         return currencyWindow
     end
@@ -1364,7 +1366,7 @@ local function EnsureCurrencyWindow()
     return frame
 end
 
-local function EnsureWarbandWindow()
+EnsureWarbandWindow = function()
     if warbandWindow then
         return warbandWindow
     end

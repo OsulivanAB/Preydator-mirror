@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.3 - 2026-03-15
+
+### Fixed
+- Fixed a CurrencyTracker Lua scoping regression where `ToggleWarbandWindow()` could call `EnsureWarbandWindow` before its local function declaration was in scope, causing `attempt to call global 'EnsureWarbandWindow' (a nil value)` when opening Warband from settings.
+
 ## 1.7.2 - 2026-03-15
 
 ### Changed
