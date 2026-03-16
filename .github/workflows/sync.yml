@@ -270,7 +270,7 @@ jobs:
             printf '%s\n' '> ⚠️ **This is NOT an official release.**'
             printf '%s\n' '> All credit for the addon belongs to [RagingAltoholic](https://github.com/RagingAltoholic).'
             printf '\n'
-            printf '%s\n' "This release was created automatically by the [Preydator-mirror](https://github.com/${GITHUB_REPOSITORY}) workflow."
+            printf '%s\n' "This release was created automatically by the [Preydator-mirror](https://github.com/${{ github.repository }}) workflow."
             printf '\n'
             printf '%s\n' '👉 **Original project:** https://github.com/RagingAltoholic/Preydator'
             printf '%s\n' '🐛 **Report addon bugs upstream:** https://github.com/RagingAltoholic/Preydator/issues'
@@ -288,7 +288,7 @@ jobs:
             printf '\n'
             printf '%s\n' '### Installation'
             printf '\n'
-            printf '%s\n' "**Via WowUp:** Point WowUp at \`https://github.com/${GITHUB_REPOSITORY}\` — it will find this release automatically."
+            printf '%s\n' "**Via WowUp:** Point WowUp at \`https://github.com/${{ github.repository }}\` — it will find this release automatically."
             printf '\n'
             printf '%s\n' "**Manual:** Download \`${ZIP_NAME}\` below and extract into \`Interface/AddOns/\`. The addon folder will be \`Interface/AddOns/Preydator/\`."
             printf '\n'
