@@ -1,92 +1,60 @@
 # Preydator
 
-Track the hunt. Hear the danger. Own your layout.
+**Your Prey Is Never Alone… and Neither Are You.**
 
-Preydator is a retail World of Warcraft addon built specifically for Prey Hunts. It gives you clear stage tracking, cinematic Predator-style audio cues, and a fully customizable progress bar that works with modern Edit Mode workflows.
+Preydator sharpens your senses for Midnight’s Prey Hunts, delivering real‑time stage tracking, cinematic Predator‑style audio cues, and a clean, customizable progress bar built for modern Edit Mode layouts. Every transition, every ambush warning, every moment of the hunt is delivered with clarity and intention—no clutter, no noise, just the information you need when the prey is near.
 
-## Why players use Preydator
+Designed specifically for Midnight’s hunt systems, Preydator goes far beyond a simple bar. It adds a full Prey Currency Tracker, a Warband‑wide prey overview, a Hunt Table companion panel with reward intelligence, and weekly‑aware snapshots for all your characters. Whether you’re chasing your next crest, planning your weekly rewards, or managing a roster of alts, Preydator keeps your prey state, rewards, and opportunities visible at a glance.
 
-- Real-time prey stage tracking using Blizzard quest/widget APIs
-- Clean, compact progress bar designed for practical in-combat readability
-- Deep visual customization without bloated menus
-- Strong audio controls with stage-based sound cues and ambush alerts
-- Reliable behavior across custom UI layouts and Edit Mode presets
+ 
 
-## Stage flow
+### Why Preydator
 
-1. Scent in the Wind
-2. Blood in the Shadows
-3. Echoes of the Kill
-4. Feast of the Fang
+Preydator is built for players who want clarity, immersion, and control during Midnight’s Prey Hunts. Blizzard exposes only stage transitions—not true percentages—so the addon interprets the hunt the way the game actually works: stage‑based, event‑driven, and zone‑aware. Every cue, every transition, every alert is grounded in real API data, not guesswork.
 
-Blizzard does not expose true percentage completion for Prey Hunts. Preydator tracks stage transitions directly, with clear fallback progress display options.
+Players choose Preydator because it delivers:
 
-## Major features (v1.7.0)
+*   **Reliable stage tracking** driven by Blizzard’s quest and widget APIs
+*   **Cinematic Predator‑inspired audio cues** that make each stage feel alive
+*   **A clean, customizable progress bar** that stays readable in combat
+*   **A Hunt Table companion panel** with grouping, sorting, reward intel, and direct quest actions
+*   **A full Prey Currency Tracker** with session deltas, themes, and layout controls
+*   **Warband‑wide prey visibility**, including weekly‑aware snapshots and N/H/Ni tracking
+*   **Deep customization** for textures, colors, percent modes, vertical orientation, labels, and audio
+*   **Modern Edit Mode integration**, including a compact quick‑settings window
+*   **Stable, predictable behavior** that avoids taint‑prone Blizzard paths and respects your UI
 
-- New Prey Currency Tracker window
-- New Warband currency table with sorting and realm grouping
-- Hunt Table tracker with grouping/sorting controls, reward icons, and direct quest accept/open actions from tracker rows
-- Warband prey tracking improvements with `N/H/Ni` available/completed modes and weekly-aware per-character snapshots
-- Approved-currency allow-list tracking for:
-	- Remnant of Anguish (`3392`)
-	- Voidlight Marl (`3316`)
-	- Adventurer Dawncrest (`3383`)
-	- Veteran Dawncrest (`3341`)
-	- Champion Dawncrest (`3343`)
-- Session delta tracking and configurable gain/spend color indicators
-- In-page Currencies controls for tracked IDs, hunt cost context, and panel layout sliders
-- Theme support for currency windows (`Light`, `Brown`, `Dark`)
-- One-time What's New splash for currency feature rollout
+Preydator is a focused, Midnight‑specific companion designed to enhance the hunt without overwhelming your screen or your workflow.
 
-- Tabbed settings UI: General, Display, Text, Audio, Advanced
-- Edit Mode quick-settings window with click-to-open behavior
-- Vertical bar mode with dedicated settings: orientation, fill direction, vertical scale, text side/alignment, and vertical percent controls
-- Label system with prefix/suffix modes (centered, left/right, separate, none)
-- Percent display modes including Above Ticks behavior using per-tick labels
-- Text Display row placement for stage names (Above Bar / Below Bar)
-- Tick color, border color, and linked border-to-fill behavior
-- Optional spark line at the fill edge (toggleable)
-- Adjustable bar width, height, scale, and font size
-- Stage 1-4 sound selection plus Ambush sound selection
-- Built-in test buttons for stage sounds and ambush alerts
-- Custom sound file management directly in settings
-- Optional hide of default prey icon with stage 4 map fallback behavior
-- Debug and diagnostics tools available in UI and slash commands
+### Major Features (v1.7.3)
 
-## Roadmap progress
+*   Real‑time prey stage tracking with fallback percent modes
+*   Predator‑style audio cues for stages and ambushes
+*   Fully customizable progress bar (textures, colors, fonts, percent modes, vertical orientation, spark line)
+*   Edit Mode quick‑settings window with click‑to‑open behavior
+*   Prey Currency Tracker with session deltas, themes, and layout controls
+*   Warband currency table with sorting, grouping, and tracked‑currency visibility
+*   Hunt Table companion panel with reward icons, grouping/sorting, and direct accept/open actions
+*   Warband prey overview with Normal/Hard/Nightmare (N/H/Ni) difficulty tracking and weekly‑aware snapshots
+*   Localization infrastructure for 10 languages (community translators welcome)
+*   Debug and diagnostics tools (`/pd inspect`, `/pd mem`, `/pd debug`)
 
-- Epic 1: Approved Currency Ledger (MVP) - Completed
-- Epic 2: Hunt Source Scanner - Planned
-- Epic 3: Weekly Hunt Cap Tracker - Planned
-- Epic 4: Achievement Gap Highlighter - Planned
-- Epic 5: Reward Intelligence / Cost Context - In progress
-- Epic 6: Localization for other Languages - Completed (infrastructure + 10 stubs; seeking community translators)
+### Coming Soon
 
-## Slash commands
+Preydator continues to expand into a full Midnight Prey companion. Upcoming features include:
 
-- /pd options
-- /pd inspect
-- /pd show
-- /pd hide
-- /pd toggle
-- /pd mem
-- /pd debug <on|off|show|clear>
+*   **Weekly Hunt Cap Tracker**  
+    Track chest and sack progress for Normal, Hard, and Nightmare tiers, including remaining weekly opportunities and crest indicators.
+*   **Prey Achievement Gap Highlighter**  
+    Identify which hunts advance your missing Prey achievements and highlight qualifying options directly in the Hunt Table panel.
+*   **Reward Intelligence & Cost Context**  
+    Smarter reward summaries, value‑aware sorting, and optional Remnant of Anguish spending guidance.
+*   **Expanded Hunt Source Scanner**  
+    More reliable hunt discovery, improved grouping, and cleaner fallback behavior across NPC contexts.
+*   **Modular runtime improvements**  
+    Cleaner internal modules for prey state, UI rendering, and diagnostics to keep the addon fast, stable, and future‑proof.
 
-## Translations
+### Support & Feedback
 
-Preydator has localization infrastructure in place for 10 languages: deDE, frFR, esES, esMX, ptBR, itIT, ruRU, koKR, zhCN, and zhTW. Only the six in-game stage name strings need translating for a complete gameplay translation — everything else falls back to English gracefully.
-
-If you play in one of these regions and want to help, reach out via the CurseForge project page. Full translation guide is included in `Locales/enUS.lua`.
-
-## Custom audio
-
-Drop your own .ogg files into:
-
-Interface/AddOns/Preydator/sounds/
-
-Then assign them in the Audio tab.
-
-## Support and feedback
-
-Report bugs or request features:
-https://github.com/RagingAltoholic/Preydator/issues
+All issues, feature requests, and feedback should be filed at:  
+**[https://github.com/RagingAltoholic/Preydator/issues](https://github.com/RagingAltoholic/Preydator/issues)**
