@@ -1,0 +1,3 @@
+# Tracks the last upstream commit SHA that was successfully mirrored.
+# Updated automatically by the sync workflow after each successful release.
+# Leave blank (or delete this file) to trigger a fresh release on next run.

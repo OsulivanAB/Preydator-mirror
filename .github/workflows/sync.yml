@@ -1,0 +1,340 @@
+# Preydator Mirror — Upstream Sync Workflow
+#
+# Purpose:
+#   Periodically checks the upstream Preydator repository for new commits.
+#   When a change is detected, downloads the source, packages it into a
+#   WowUp-ready zip, and publishes a GitHub Release in this mirror repo.
+#
+# Change detection:
+#   The SHA of the last successfully mirrored upstream commit is stored in
+#   .last-upstream-sha in this repository. Each run compares the current
+#   upstream HEAD SHA against that stored value. If they differ, a new
+#   release is built. If they match, the run exits with no changes.
+#
+# Release naming:
+#   Tags follow the pattern  v{toc_version}  (e.g. v1.7.3).
+#   If that tag already exists (same version number, different commit),
+#   the short upstream commit SHA is appended: v1.7.3-5a349d9.
+#
+# Permissions required:
+#   The repo must have Actions set to "Read and write permissions" under
+#   Settings → Actions → General → Workflow permissions.
+#   No secrets beyond the built-in GITHUB_TOKEN are needed.
+
+name: Sync Upstream Preydator
+
+on:
+  # Run approximately every 30 minutes
+  schedule:
+    - cron: '*/30 * * * *'
+  # Allow manual trigger at any time
+  workflow_dispatch:
+
+# Allow this workflow to push commits (SHA update) and create releases
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Check upstream and mirror if changed
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------------------------------------------ #
+      # 1. Checkout this mirror repo so we can read/write .last-upstream-sha
+      # ------------------------------------------------------------------ #
+      - name: Checkout mirror repo
+        uses: actions/checkout@v4
+        with:
+          # Use the default GITHUB_TOKEN; write access is granted above
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ------------------------------------------------------------------ #
+      # 2. Fetch the current HEAD commit SHA from the upstream repo
+      # ------------------------------------------------------------------ #
+      - name: Get upstream HEAD commit SHA
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Query the upstream default branch (main) via the GitHub REST API.
+          # Using the GITHUB_TOKEN increases the rate limit from 60 to 5 000 req/hr.
+          upstream_api="https://api.github.com/repos/RagingAltoholic/Preydator/commits/main"
+
+          response=$(curl -sf \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${upstream_api}")
+
+          if [ $? -ne 0 ] || [ -z "$response" ]; then
+            echo "ERROR: Failed to query upstream GitHub API. Check network or rate limits." >&2
+            exit 1
+          fi
+
+          sha=$(echo "$response" | jq -r '.sha')
+
+          if [ -z "$sha" ] || [ "$sha" = "null" ]; then
+            echo "ERROR: Could not parse commit SHA from upstream API response." >&2
+            echo "Response: $response" >&2
+            exit 1
+          fi
+
+          short_sha="${sha:0:7}"
+          echo "sha=${sha}"         >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "Upstream HEAD: ${sha} (${short_sha})"
+
+      # ------------------------------------------------------------------ #
+      # 3. Compare upstream SHA against the last mirrored SHA
+      # ------------------------------------------------------------------ #
+      - name: Check if already mirrored
+        id: check
+        run: |
+          last_sha=""
+
+          # Read the stored SHA, ignoring comment lines (lines starting with #)
+          if [ -f ".last-upstream-sha" ]; then
+            last_sha=$(grep -v '^\s*#' .last-upstream-sha | tr -d '[:space:]')
+          fi
+
+          echo "Last mirrored SHA : ${last_sha:-<none — first run>}"
+          echo "Upstream HEAD SHA : ${{ steps.upstream.outputs.sha }}"
+
+          if [ "$last_sha" = "${{ steps.upstream.outputs.sha }}" ]; then
+            echo "No upstream change detected. Nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream has changed. A new release will be created."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ------------------------------------------------------------------ #
+      # 4. Download the upstream source archive
+      # ------------------------------------------------------------------ #
+      - name: Download upstream source
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          upstream_sha="${{ steps.upstream.outputs.sha }}"
+          archive_url="https://github.com/RagingAltoholic/Preydator/archive/${upstream_sha}.zip"
+
+          echo "Downloading: ${archive_url}"
+          mkdir -p /tmp/upstream
+
+          curl -sfL "${archive_url}" -o /tmp/upstream-src.zip
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to download upstream source archive." >&2
+            exit 1
+          fi
+
+          unzip -q /tmp/upstream-src.zip -d /tmp/upstream
+
+          # GitHub archives extract to  RepoName-{sha}/  inside the zip
+          extracted_dir=$(find /tmp/upstream -maxdepth 1 -type d -name 'Preydator-*' | head -1)
+
+          if [ -z "$extracted_dir" ]; then
+            echo "ERROR: Could not locate extracted upstream directory." >&2
+            ls -la /tmp/upstream/ >&2
+            exit 1
+          fi
+
+          echo "Extracted to: ${extracted_dir}"
+          echo "UPSTREAM_DIR=${extracted_dir}" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------ #
+      # 5. Extract the addon version from the upstream .toc file
+      # ------------------------------------------------------------------ #
+      - name: Extract version from Preydator.toc
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          toc_file="${UPSTREAM_DIR}/Preydator.toc"
+
+          if [ ! -f "$toc_file" ]; then
+            echo "ERROR: Preydator.toc not found at ${toc_file}" >&2
+            ls -la "${UPSTREAM_DIR}/" >&2
+            exit 1
+          fi
+
+          # TOC line format:  ## Version: 1.7.3
+          version=$(grep -m1 '^## Version:' "$toc_file" \
+                    | sed 's/^## Version:[[:space:]]*//' \
+                    | tr -d '[:space:]')
+
+          if [ -z "$version" ]; then
+            echo "ERROR: Could not extract ## Version from ${toc_file}" >&2
+            cat "$toc_file" >&2
+            exit 1
+          fi
+
+          echo "ADDON_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "Addon version: ${version}"
+
+      # ------------------------------------------------------------------ #
+      # 6. Package the addon into a WowUp-ready zip
+      #
+      # WoW expects: Interface/AddOns/Preydator/<files>
+      # WowUp expects the zip to contain a top-level Preydator/ folder.
+      # The upstream files live at the repo root, so we create the folder.
+      # Exclusion list mirrors upstream build-release.ps1 logic.
+      # ------------------------------------------------------------------ #
+      - name: Package addon zip
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          staging_dir="/tmp/staging"
+          addon_dir="${staging_dir}/Preydator"
+          mkdir -p "$addon_dir"
+
+          echo "Staging addon files into: ${addon_dir}"
+
+          # Copy addon files, excluding developer/meta files.
+          # This mirrors the exclusion list in the upstream build-release.ps1.
+          for item in "${UPSTREAM_DIR}"/* "${UPSTREAM_DIR}"/.*; do
+            name=$(basename "$item")
+
+            # Skip shell glob non-matches
+            [ -e "$item" ] || continue
+
+            case "$name" in
+              # Exclude: version control, IDE config, dev-only files
+              .git | .gitattributes | .vscode | build-release.ps1 | \
+              issues | CURSEFORGE_DESCRIPTION.md | . | ..)
+                echo "  skip: ${name}"
+                continue
+                ;;
+            esac
+
+            echo "  include: ${name}"
+            cp -r "$item" "$addon_dir/"
+          done
+
+          # Build the zip from the staging directory so that the archive
+          # root contains exactly  Preydator/  (no extra parent folder)
+          zip_name="Preydator-${ADDON_VERSION}.zip"
+          zip_path="/tmp/${zip_name}"
+
+          (cd "$staging_dir" && zip -r "$zip_path" Preydator/)
+
+          if [ ! -f "$zip_path" ] || [ ! -s "$zip_path" ]; then
+            echo "ERROR: Zip was not created or is empty: ${zip_path}" >&2
+            exit 1
+          fi
+
+          echo "ZIP_PATH=${zip_path}" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=${zip_name}"  >> "$GITHUB_ENV"
+
+          echo ""
+          echo "--- Zip contents (first 30 entries) ---"
+          unzip -l "$zip_path" | head -35
+
+      # ------------------------------------------------------------------ #
+      # 7. Determine the release tag name
+      #    Use  v{toc_version}  by default.
+      #    If that tag already exists (same version, new commits), append
+      #    the short upstream SHA to avoid collisions.
+      # ------------------------------------------------------------------ #
+      - name: Determine release tag
+        if: steps.check.outputs.changed == 'true'
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          base_tag="v${ADDON_VERSION}"
+          short_sha="${{ steps.upstream.outputs.short_sha }}"
+
+          if gh release view "$base_tag" > /dev/null 2>&1; then
+            # Tag already exists — append commit hash for a unique tag
+            release_tag="${base_tag}-${short_sha}"
+            echo "Tag '${base_tag}' already exists; using '${release_tag}' instead."
+          else
+            release_tag="$base_tag"
+          fi
+
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "Release tag: ${release_tag}"
+
+      # ------------------------------------------------------------------ #
+      # 8. Create the GitHub Release with the packaged zip attached
+      # ------------------------------------------------------------------ #
+      - name: Create GitHub Release
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_tag="${{ steps.tag.outputs.release_tag }}"
+          upstream_sha="${{ steps.upstream.outputs.sha }}"
+          short_sha="${{ steps.upstream.outputs.short_sha }}"
+
+          # Write release notes to a temp file to avoid quoting issues
+          cat > /tmp/release-notes.md << NOTES
+## Automated Mirror Release
+
+> ⚠️ **This is NOT an official release.**
+> All credit for the addon belongs to [RagingAltoholic](https://github.com/RagingAltoholic).
+
+This release was created automatically by the [Preydator-mirror](https://github.com/${{ github.repository }}) workflow.
+
+👉 **Original project:** https://github.com/RagingAltoholic/Preydator
+🐛 **Report addon bugs upstream:** https://github.com/RagingAltoholic/Preydator/issues
+
+---
+
+| Field | Value |
+|---|---|
+| Upstream addon version | \`${ADDON_VERSION}\` |
+| Upstream commit | [\`${short_sha}\`](https://github.com/RagingAltoholic/Preydator/commit/${upstream_sha}) |
+| Original author | [RagingAltoholic](https://github.com/RagingAltoholic) |
+| Mirror purpose | WowUp packaging / distribution only |
+
+---
+
+### Installation
+
+**Via WowUp:** Point WowUp at \`https://github.com/${{ github.repository }}\` — it will find this release automatically.
+
+**Manual:** Download \`${ZIP_NAME}\` below and extract into \`Interface/AddOns/\`. The addon folder will be \`Interface/AddOns/Preydator/\`.
+
+---
+
+*Addon credit: [Preydator](https://github.com/RagingAltoholic/Preydator) by [RagingAltoholic](https://github.com/RagingAltoholic). All addon code and assets belong to the original author.*
+NOTES
+
+          echo "Creating release: ${release_tag}"
+          gh release create "${release_tag}" \
+            "${ZIP_PATH}#${ZIP_NAME}" \
+            --title "Preydator ${ADDON_VERSION} (mirror)" \
+            --notes-file /tmp/release-notes.md
+
+          echo "Release created successfully: ${release_tag}"
+
+      # ------------------------------------------------------------------ #
+      # 9. Record the newly mirrored SHA so future runs skip this commit
+      # ------------------------------------------------------------------ #
+      - name: Update .last-upstream-sha
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # Overwrite the state file with the upstream SHA we just mirrored.
+          # Preserve the header comment for human readability.
+          cat > .last-upstream-sha << 'HEADER'
+# Tracks the last upstream commit SHA that was successfully mirrored.
+# Updated automatically by the sync workflow after each successful release.
+# Leave blank (or delete this file) to trigger a fresh release on next run.
+HEADER
+          echo "${{ steps.upstream.outputs.sha }}" >> .last-upstream-sha
+
+      - name: Commit SHA update
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .last-upstream-sha
+
+          # Only commit if there is actually something staged
+          if git diff --cached --quiet; then
+            echo "No changes to commit (SHA unchanged on disk)."
+          else
+            git commit -m "chore: mirror upstream Preydator @ ${{ steps.upstream.outputs.short_sha }}"
+            # Rebase against origin in case another run pushed while this one was running
+            git pull --rebase
+            git push
+            echo "Committed and pushed updated .last-upstream-sha"
+          fi
