@@ -4,6 +4,9 @@
 
 ### Fixed
 - Fixed a CurrencyTracker Lua scoping regression where `ToggleWarbandWindow()` could call `EnsureWarbandWindow` before its local function declaration was in scope, causing `attempt to call global 'EnsureWarbandWindow' (a nil value)` when opening Warband from settings.
+- Fixed HuntScanner callback spam outside real Hunt Table usage by tightening context detection, cancelling queued follow-up passes when the panel closes, and ignoring passive widget/quest churn unless Hunt Table context, mission frame, or explicit preview is active.
+- Fixed HuntScanner reward-cache invalidation flow by moving prey-completion cache clearing to an explicit hook from `Preydator.lua`, so accepted prey quests no longer rely on broad background scan churn to clear stale hunt rewards.
+- Hardened HuntDebug snapshot/report formatting against protected Blizzard strings so debug payload generation no longer trips secret-string conversion failures in restricted contexts.
 
 ## 1.7.2 - 2026-03-15
 

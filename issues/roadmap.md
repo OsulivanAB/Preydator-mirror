@@ -1,6 +1,6 @@
 ### Preydator Expansion Roadmap (Issue: Roadmap)
 
-## Status (as of v1.7.0)
+## Status (as of v1.7.3)
 
 - Epic 1: Approved Currency Ledger (MVP) - Completed
 - Epic 2: Hunt Source Scanner - Planned
@@ -211,6 +211,31 @@ Acceptance criteria:
 ## Post-v1.7.0 Backlog
 
 1. Add Prey Tracking per Zone as a dedicated post-launch enhancement (after v1.7.0).
+
+## Post-v1.7.3 Technical Follow-Up
+
+Goal:
+Reduce maintenance risk in `Preydator.lua` and keep future Hunt/Prey work away from Lua's 200-local-variable ceiling.
+
+Planned surgical split:
+
+1. Extract prey state tracking and quest/widget interpretation from `Preydator.lua` into a dedicated module while keeping the existing `Preydator` state object as the source of truth.
+2. Extract bar rendering, display refresh, and click interaction behavior into a separate UI-focused module.
+3. Move debug/inspect helpers that are not core runtime requirements out of the main chunk so routine feature work does not keep consuming top-level locals.
+
+Implementation notes:
+
+1. Preserve current SavedVariables structure and public module hooks.
+2. Keep load order explicit in `Preydator.toc`; avoid dynamic loading.
+3. Prefer moving cohesive helper groups with minimal behavior changes instead of broad rewrites.
+4. Keep HuntScanner cache-clearing driven by the explicit prey-end hook added in `Preydator.lua`, not by passive callback churn.
+5. Treat Hunt Table rendering, preview mode, and debug paths as separate responsibilities with separate entry points.
+
+Immediate candidate extraction order:
+
+1. Prey runtime/state evaluation.
+2. Bar/UI rendering.
+3. Diagnostics/debug helpers.
 
 ## Architecture Notes
 

@@ -34,6 +34,7 @@ local table = _G.table
 local wipe = _G.wipe
 local ipairs = _G.ipairs
 local pairs = _G.pairs
+local pcall = _G.pcall
 local print = _G.print
 local string = _G.string
 local math = _G.math
@@ -80,11 +81,47 @@ local availabilityCache = {
     capturedAt = 0,
 }
 local availabilityTouched = false
+local huntInteractionActive = false
 
 local HandleInteractionSnapshot
 local QueueInteractionSnapshotPasses
 local HidePanel
 local GetSettings
+
+local function SafeToString(value)
+    local ok, result = pcall(tostring, value)
+    if ok and type(result) == "string" then
+        return result
+    end
+
+    if type(value) == "string" then
+        return "<protected string>"
+    end
+
+    return "<unprintable>"
+end
+
+local function SafeFindLiteral(text, needle)
+    if type(text) ~= "string" or text == "" or type(needle) ~= "string" or needle == "" then
+        return false
+    end
+
+    local ok, startPos = pcall(string.find, text, needle, 1, true)
+    return ok and startPos ~= nil
+end
+
+local function GetGossipOptionsSafe()
+    if not (C_GossipInfo and type(C_GossipInfo.GetOptions) == "function") then
+        return {}
+    end
+
+    local ok, options = pcall(C_GossipInfo.GetOptions)
+    if ok and type(options) == "table" then
+        return options
+    end
+
+    return {}
+end
 
 local function IsInRestrictedInstance()
     if type(IsInInstance) ~= "function" then
@@ -99,6 +136,7 @@ local function IsInRestrictedInstance()
         or instanceType == "party"
         or instanceType == "raid"
         or instanceType == "scenario"
+        or instanceType == "delve"
 end
 
 local function IsOptionsPreviewVisible()
@@ -556,24 +594,14 @@ local function ProcessRewardCacheLifecycle()
     end
 
     local activeQuestID = GetActivePreyQuestID()
-    local activeStage = GetActivePreyStage()
     local activeDifficulty = activeQuestID and GetRememberedQuestDifficulty(activeQuestID) or nil
 
     if activeQuestID and activeDifficulty then
         RememberQuestDifficulty(activeQuestID, activeDifficulty)
     end
 
-    if activeStage == 4 and lastObservedPreyStage ~= 4 and activeDifficulty then
-        ClearRewardCacheForDifficulty(activeDifficulty)
-    elseif lastObservedPreyQuestID and not activeQuestID and lastObservedPreyStage == 4 then
-        local previousDifficulty = GetRememberedQuestDifficulty(lastObservedPreyQuestID)
-        if previousDifficulty then
-            ClearRewardCacheForDifficulty(previousDifficulty)
-        end
-    end
-
     lastObservedPreyQuestID = activeQuestID
-    lastObservedPreyStage = activeStage
+    lastObservedPreyStage = GetActivePreyStage()
 end
 
 local function BlockHuntTableWhileActivePrey()
@@ -618,11 +646,6 @@ end
 local function IsHuntTableContext(options)
     local npcID = ParseTargetNPCID()
     if npcID and HUNT_TABLE_NPC_IDS[npcID] then
-        return true, npcID
-    end
-
-    local interactionType = (C_PlayerInteractionManager and C_PlayerInteractionManager.GetInteractionType and C_PlayerInteractionManager.GetInteractionType()) or nil
-    if interactionType == 3 then
         return true, npcID
     end
 
@@ -778,11 +801,11 @@ local function ParseDifficulty(description)
         return L["Normal"]
     end
 
-    if description:find("Nightmare", 1, true) then
+    if SafeFindLiteral(description, "Nightmare") then
         return L["Nightmare"]
     end
 
-    if description:find("Hard", 1, true) then
+    if SafeFindLiteral(description, "Hard") then
         return L["Hard"]
     end
 
@@ -1497,56 +1520,56 @@ end
 
 local function BuildDebugSnapshotLines(snapshot)
     local lines = {}
-    lines[#lines + 1] = "Preydator HuntDebug: NPC=" .. tostring(snapshot.npcID) .. " time=" .. tostring(snapshot.time)
-    lines[#lines + 1] = "Preydator HuntDebug: interactionType=" .. tostring(snapshot.interactionType)
-    lines[#lines + 1] = "Preydator HuntDebug: previewEnabled=" .. tostring(IsOptionsPreviewVisible())
-        .. " previewSetting=" .. tostring(GetSettings() and GetSettings().huntScannerPreviewInOptions)
-        .. " hasAnchor=" .. tostring(HasVisibleHuntAnchor())
-        .. " panelShown=" .. tostring(panelFrame and panelFrame.IsShown and panelFrame:IsShown() == true)
+    lines[#lines + 1] = "Preydator HuntDebug: NPC=" .. SafeToString(snapshot.npcID) .. " time=" .. SafeToString(snapshot.time)
+    lines[#lines + 1] = "Preydator HuntDebug: interactionType=" .. SafeToString(snapshot.interactionType)
+    lines[#lines + 1] = "Preydator HuntDebug: previewEnabled=" .. SafeToString(IsOptionsPreviewVisible())
+        .. " previewSetting=" .. SafeToString(GetSettings() and GetSettings().huntScannerPreviewInOptions)
+        .. " hasAnchor=" .. SafeToString(HasVisibleHuntAnchor())
+        .. " panelShown=" .. SafeToString(panelFrame and panelFrame.IsShown and panelFrame:IsShown() == true)
 
     local options = snapshot.options or {}
-    lines[#lines + 1] = "Preydator HuntDebug: options=" .. tostring(#options)
+    lines[#lines + 1] = "Preydator HuntDebug: options=" .. SafeToString(#options)
     for index, option in ipairs(options) do
         local text = option and (option.name or option.text) or "?"
         local spellID = option and option.spellID
-        lines[#lines + 1] = "  [O" .. tostring(index) .. "] spellID=" .. tostring(spellID) .. " text=" .. tostring(text)
+        lines[#lines + 1] = "  [O" .. SafeToString(index) .. "] spellID=" .. SafeToString(spellID) .. " text=" .. SafeToString(text)
     end
 
     local mapState = snapshot.mapState or {}
-    lines[#lines + 1] = "Preydator HuntDebug: mapHunts=" .. tostring(mapState.hunts or 0)
-        .. " cachedRewards=" .. tostring(mapState.cachedRewards or 0)
-        .. " pendingRewards=" .. tostring(mapState.pendingRewards or 0)
-        .. " warming=" .. tostring(mapState.warming)
-        .. " mapVisible=" .. tostring(mapState.missionVisible)
+    lines[#lines + 1] = "Preydator HuntDebug: mapHunts=" .. SafeToString(mapState.hunts or 0)
+        .. " cachedRewards=" .. SafeToString(mapState.cachedRewards or 0)
+        .. " pendingRewards=" .. SafeToString(mapState.pendingRewards or 0)
+        .. " warming=" .. SafeToString(mapState.warming)
+        .. " mapVisible=" .. SafeToString(mapState.missionVisible)
 
     if type(mapState.difficultyCounts) == "table" then
-        lines[#lines + 1] = "Preydator HuntDebug: mapDiffs normal=" .. tostring(mapState.difficultyCounts[L["Normal"]] or 0)
-            .. " hard=" .. tostring(mapState.difficultyCounts[L["Hard"]] or 0)
-            .. " nightmare=" .. tostring(mapState.difficultyCounts[L["Nightmare"]] or 0)
+        lines[#lines + 1] = "Preydator HuntDebug: mapDiffs normal=" .. SafeToString(mapState.difficultyCounts[L["Normal"]] or 0)
+            .. " hard=" .. SafeToString(mapState.difficultyCounts[L["Hard"]] or 0)
+            .. " nightmare=" .. SafeToString(mapState.difficultyCounts[L["Nightmare"]] or 0)
     end
 
     for index, hunt in ipairs(mapState.preview or {}) do
-        lines[#lines + 1] = "  [M" .. tostring(index) .. "] questID=" .. tostring(hunt.questID)
-            .. " title=" .. tostring(hunt.title)
-            .. " diff=" .. tostring(hunt.difficulty)
-            .. " zone=" .. tostring(hunt.zone)
+        lines[#lines + 1] = "  [M" .. SafeToString(index) .. "] questID=" .. SafeToString(hunt.questID)
+            .. " title=" .. SafeToString(hunt.title)
+            .. " diff=" .. SafeToString(hunt.difficulty)
+            .. " zone=" .. SafeToString(hunt.zone)
     end
 
     local detail = snapshot.questDetail or {}
-    lines[#lines + 1] = "Preydator HuntDebug: questDetail questID=" .. tostring(detail.questID)
-        .. " title=" .. tostring(detail.title)
-        .. " choices=" .. tostring(detail.choiceCount)
+    lines[#lines + 1] = "Preydator HuntDebug: questDetail questID=" .. SafeToString(detail.questID)
+        .. " title=" .. SafeToString(detail.title)
+        .. " choices=" .. SafeToString(detail.choiceCount)
 
     if type(detail.objective) == "string" and detail.objective ~= "" then
-        lines[#lines + 1] = "Preydator HuntDebug: questObjective=" .. tostring(detail.objective)
+        lines[#lines + 1] = "Preydator HuntDebug: questObjective=" .. SafeToString(detail.objective)
     end
 
     if #recentEvents > 0 then
-        lines[#lines + 1] = "Preydator HuntDebug: recentEvents=" .. tostring(#recentEvents)
+        lines[#lines + 1] = "Preydator HuntDebug: recentEvents=" .. SafeToString(#recentEvents)
         local startIndex = math.max(1, #recentEvents - 9)
         for i = startIndex, #recentEvents do
             local e = recentEvents[i]
-            lines[#lines + 1] = string.format("  [E] %.3f %s | %s | %s | %s", tonumber(e.t) or 0, tostring(e.event), tostring(e.a1), tostring(e.a2), tostring(e.a3))
+            lines[#lines + 1] = string.format("  [E] %.3f %s | %s | %s | %s", tonumber(e.t) or 0, SafeToString(e.event), SafeToString(e.a1), SafeToString(e.a2), SafeToString(e.a3))
         end
     end
 
@@ -1560,7 +1583,7 @@ local function SendLinesToBugSack(lines)
 
     local safeLines = {}
     for index, line in ipairs(lines) do
-        safeLines[index] = tostring(line)
+        safeLines[index] = SafeToString(line)
     end
 
     local payload = table.concat(safeLines, "\n")
@@ -1598,10 +1621,7 @@ local function SendLinesToBugSack(lines)
 end
 
 local function RefreshDebugSnapshotFromLiveAPI()
-    local options = {}
-    if C_GossipInfo and type(C_GossipInfo.GetOptions) == "function" then
-        options = C_GossipInfo.GetOptions() or {}
-    end
+    local options = GetGossipOptionsSafe()
 
     local _, npcID = IsHuntTableContext(options)
     CaptureSnapshot(options, npcID)
@@ -2056,6 +2076,8 @@ HidePanel = function()
     if panelFrame then
         panelFrame:Hide()
     end
+    huntInteractionActive = false
+    snapshotSequence = snapshotSequence + 1
     lastOpenQuestID = nil
     lastOpenAt = 0
 end
@@ -2082,10 +2104,7 @@ HandleInteractionSnapshot = function()
             return
         end
 
-        local options = {}
-        if C_GossipInfo and type(C_GossipInfo.GetOptions) == "function" then
-            options = C_GossipInfo.GetOptions() or {}
-        end
+        local options = GetGossipOptionsSafe()
 
         local isHuntContext, npcID = IsHuntTableContext(options)
 
@@ -2093,6 +2112,7 @@ HandleInteractionSnapshot = function()
         if #mapHunts > 0 and IsMissionFrameVisible() then
             isHuntContext = true
         end
+        huntInteractionActive = isHuntContext == true
         if isHuntContext then
             MarkAvailabilityTouched()
         end
@@ -2289,6 +2309,19 @@ QueueInteractionSnapshotPasses = function()
         return
     end
 
+    if HasActivePreyQuest() and not IsOptionsPreviewVisible() then
+        HidePanel()
+        return
+    end
+
+    if not IsOptionsPreviewVisible() and not IsMissionFrameVisible() and not huntInteractionActive then
+        local options = GetGossipOptionsSafe()
+        local isHuntContext = IsHuntTableContext(options)
+        if not isHuntContext then
+            return
+        end
+    end
+
     snapshotSequence = snapshotSequence + 1
     local token = snapshotSequence
 
@@ -2325,6 +2358,31 @@ function HuntScannerModule:RefreshRewardCache()
     end
     HandleInteractionSnapshot()
     WarmRewardCacheFromPins()
+end
+
+function HuntScannerModule:OnPreyQuestEnded(payload)
+    if type(payload) ~= "table" then
+        return
+    end
+
+    local questID = tonumber(payload.questID)
+    if not questID or questID < 1 then
+        return
+    end
+
+    local completed = payload.completed == true or tonumber(payload.stage) == 4
+    if completed then
+        local difficulty = GetRememberedQuestDifficulty(questID)
+        if type(difficulty) ~= "string" or difficulty == "" then
+            difficulty = type(payload.difficulty) == "string" and payload.difficulty or nil
+        end
+        if difficulty then
+            ClearRewardCacheForDifficulty(difficulty)
+        end
+    end
+
+    rewardRetryCount[questID] = nil
+    HidePanel()
 end
 
 function HuntScannerModule:GetAvailabilityCounts()
@@ -2430,11 +2488,27 @@ huntEventFrame:SetScript("OnEvent", function(_, event, ...)
         or event == "QUEST_DETAIL"
         or event == "QUEST_PROGRESS"
         or event == "QUEST_COMPLETE"
-        or event == "UPDATE_UI_WIDGET"
+    then
+        if IsMissionFrameVisible() or huntInteractionActive or IsOptionsPreviewVisible() then
+            QueueInteractionSnapshotPasses()
+            return
+        end
+
+        local options = GetGossipOptionsSafe()
+        local isHuntContext = IsHuntTableContext(options)
+        if isHuntContext then
+            QueueInteractionSnapshotPasses()
+        end
+        return
+    end
+
+    if event == "UPDATE_UI_WIDGET"
         or event == "UPDATE_ALL_UI_WIDGETS"
         or event == "QUEST_LOG_UPDATE"
     then
-        QueueInteractionSnapshotPasses()
+        if IsMissionFrameVisible() or huntInteractionActive or IsOptionsPreviewVisible() then
+            QueueInteractionSnapshotPasses()
+        end
         return
     end
 
@@ -2444,7 +2518,9 @@ huntEventFrame:SetScript("OnEvent", function(_, event, ...)
     end
 
     if event == "QUEST_DATA_LOAD_RESULT" then
-        QueueInteractionSnapshotPasses()
+        if IsMissionFrameVisible() or huntInteractionActive or IsOptionsPreviewVisible() then
+            QueueInteractionSnapshotPasses()
+        end
         return
     end
 end)

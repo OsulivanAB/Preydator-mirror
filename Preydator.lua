@@ -371,6 +371,7 @@ local state = {
     preyTargetDifficulty = nil,
     ambushAlertUntil = 0,
     lastAmbushSystemMessage = nil,
+    lastNotifiedPreyEndQuestID = nil,
 }
 
 local UPDATE_INTERVAL_SECONDS = 0.5
@@ -4258,6 +4259,7 @@ end
 local function ResetStateForNewQuest(questID)
     if state.activeQuestID ~= questID then
         state.activeQuestID = questID
+        state.lastNotifiedPreyEndQuestID = nil
         state.progressState = nil
         state.progressPercent = nil
         state.stageSoundPlayed = {}
@@ -4291,6 +4293,21 @@ local function UpdatePreyState()
 
     local questStillActive = IsQuestStillActive(questID)
     if (not hasActiveQuest and not ((state.killStageUntil or 0) > now)) or questCompleted or (hasActiveQuest and not questStillActive and not hasWidgetData) then
+        local endingQuestID = effectiveQuestID or state.activeQuestID or questID
+        local completedTransition = questCompleted or (((not hasActiveQuest) or (not questStillActive)) and tonumber(state.stage) == MAX_STAGE)
+        if endingQuestID and endingQuestID > 0 then
+            if completedTransition ~= true or state.lastNotifiedPreyEndQuestID ~= endingQuestID then
+                RunModuleHook("OnPreyQuestEnded", {
+                    questID = endingQuestID,
+                    completed = completedTransition == true,
+                    stage = tonumber(state.stage),
+                    difficulty = state.preyTargetDifficulty,
+                })
+                if completedTransition == true then
+                    state.lastNotifiedPreyEndQuestID = endingQuestID
+                end
+            end
+        end
         DebugLogPreyState("clear", questID, hasWidgetData, state.progressState, state.progressPercent, state.inPreyZone)
         ClearPreyStateAndDisplay()
         ApplyDefaultPreyIconVisibility()
