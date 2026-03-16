@@ -1,0 +1,14 @@
+# Dependencies and build artifacts
+*.zip
+*.tar.gz
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
