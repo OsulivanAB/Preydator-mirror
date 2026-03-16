@@ -26,7 +26,7 @@ name: Sync Upstream Preydator
 on:
   # Run approximately every 30 minutes
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/4 * * * *'
   # Allow manual trigger at any time
   workflow_dispatch:
 
