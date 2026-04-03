@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.14 - 2026-04-02
+
+### Fixed
+- Added canonical map-ID equivalence for the new prey-zone sub-map mismatch case so player map `2444` is treated as zone map `2405` in prey-zone checks (`2405` -> `2405`, `2444` -> `2405`).
+- Hardened stage-4 prey map-open flow against protected quest/map payloads by sanitizing active quest IDs before map/super-track API calls.
+- Hardened map/value coercion paths to avoid direct numeric conversion on protected payload values by switching to fail-closed token parsing in `SafeToNumber(...)`.
+- Fixed protected-call map taint (`Button:SetPassThroughButtons`) by removing Preydator runtime mouse/drag mutations on Blizzard-owned prey widget frames.
+- Fixed remaining world-map delve tooltip taint path (`AreaPoiUtil.lua:SetPadding` secret-value restriction) by disabling runtime suppression/click hook mutations on Blizzard prey widget frames and keeping Preydator in read-only prey-widget state capture mode.
+
 ## 2.1.13 - 2026-04-01
 
 ### Fixed

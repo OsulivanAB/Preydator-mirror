@@ -24,6 +24,8 @@ local MAP_ID_EQUIVALENTS = {
     [2536] = 2437,
     [2413] = 2413,
     [2576] = 2413,
+    [2405] = 2405,
+    [2444] = 2405,
 }
 
 local function CanonicalizeMapID(mapID)
@@ -35,8 +37,19 @@ local function CanonicalizeMapID(mapID)
 end
 
 local function SafeToNumber(value)
-    local ok, result = pcall(tonumber, value)
-    if ok and type(result) == "number" then
+    local okString, asString = pcall(tostring, value)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, result = pcall(tonumber, numericToken)
+    if okNumber and type(result) == "number" then
         return result
     end
     return nil

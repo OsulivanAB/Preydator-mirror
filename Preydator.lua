@@ -2517,9 +2517,6 @@ local function ApplyWidgetFrameSuppression(frameRef, suppress)
         end
     end
 
-    if frameRef.EnableMouse then
-        pcall(frameRef.EnableMouse, frameRef, not suppress)
-    end
 end
 
 local function ScheduleSuppressionRetry()
@@ -2745,18 +2742,8 @@ local function EnsurePreyHuntMixinSuppressionHook()
         else
             preyWidgetInfoCache = nil
         end
-        AttachStageFourMapClick(self)
-        EnsureWidgetSuppressionHook(self)
-
-        if ShouldSuppressEncounterNow() then
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
-                state.pendingWidgetSuppressionAfterCombat = true
-                return
-            end
-            ApplyWidgetFrameSuppression(self, true)
-        else
-            ApplyWidgetFrameSuppression(self, false)
-        end
+        -- Taint-safe mode: do not hook or mutate Blizzard-owned prey widget
+        -- frames here. We only read state for our own bar rendering.
     end)
 
     if ok then
@@ -2786,8 +2773,21 @@ local function SafeFieldRead(tbl, key)
 end
 
 local function SafeToNumber(value)
-    local ok, result = pcall(tonumber, value)
-    if ok and type(result) == "number" then
+    -- Some Blizzard APIs can return protected "secret number" values.
+    -- Converting those directly via tonumber taints and can error in map UI.
+    local okString, asString = pcall(tostring, value)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, result = pcall(tonumber, numericToken)
+    if okNumber and type(result) == "number" then
         return result
     end
 
@@ -2867,11 +2867,11 @@ local function TryGetPreyQuestWaypoint(questID)
 end
 
 TryOpenPreyQuestOnMap = function()
-    if not IsValidQuestID(state and state.activeQuestID) then
+    local questID = SafeToNumber(state and state.activeQuestID)
+    if not IsValidQuestID(questID) then
         return false
     end
 
-    local questID = state.activeQuestID
     local superTrackedQuest = false
 
     if C_SuperTrack and type(C_SuperTrack.SetSuperTrackedQuestID) == "function" then
@@ -2916,12 +2916,6 @@ AttachStageFourMapClick = function(frameRef)
     end
 
     STAGE_FOUR_CLICK_HOOKED[frameRef] = true
-    if frameRef.RegisterForDrag then
-        pcall(frameRef.RegisterForDrag, frameRef)
-    end
-    if frameRef.EnableMouse then
-        pcall(frameRef.EnableMouse, frameRef, true)
-    end
 
     if frameRef.HookScript then
         pcall(frameRef.HookScript, frameRef, "OnMouseUp", function(_, button)
@@ -2957,26 +2951,11 @@ ApplyDefaultPreyIconVisibility = function()
         return
     end
 
-    local suppressEncounter = settings.disableDefaultPreyIcon == true and ShouldSuppressDefaultPreyEncounter()
-
-    if preyHuntIconFrame then
-        PREY_WIDGET_FRAMES[preyHuntIconFrame] = true
-    end
-
-    local suppressedAnyFrame = false
-
-    for frameRef in pairs(PREY_WIDGET_FRAMES) do
-        AttachStageFourMapClick(frameRef)
-        EnsureWidgetSuppressionHook(frameRef)
-        ApplyWidgetFrameSuppression(frameRef, suppressEncounter)
-        suppressedAnyFrame = true
-    end
-
-    if suppressEncounter and not suppressedAnyFrame then
-        ScheduleSuppressionRetry()
-    elseif not suppressEncounter then
-        suppressionRetryCount = 0
-    end
+    -- Taint-safe mode: avoid all runtime mutations to Blizzard prey widget
+    -- frames (mouse scripts, suppression, alpha/show state toggles).
+    suppressionRetryPending = false
+    suppressionRetryCount = 0
+    state.pendingWidgetSuppressionAfterCombat = false
 end
 
 NormalizeSoundSettings = function()
