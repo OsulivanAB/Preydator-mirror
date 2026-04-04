@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.15 - 2026-04-03
+
+### Fixed
+- Fixed prey icon suppression regression in 2.1.14 where the "Disable Default Prey Icon" option stopped working. Icon suppression hook is now properly applied when the option is enabled.
+
 ## 2.1.14 - 2026-04-02
 
 ### Fixed

@@ -2951,11 +2951,22 @@ ApplyDefaultPreyIconVisibility = function()
         return
     end
 
-    -- Taint-safe mode: avoid all runtime mutations to Blizzard prey widget
-    -- frames (mouse scripts, suppression, alpha/show state toggles).
+    -- Set up OnShow hook to suppress the icon when it appears, if suppression is enabled.
+    if preyHuntIconFrame and settings.disableDefaultPreyIcon == true then
+        EnsureWidgetSuppressionHook(preyHuntIconFrame)
+        -- Re-apply suppression to any currently-shown frame.
+        if type(_G.InCombatLockdown) ~= "function" or not _G.InCombatLockdown() then
+            ApplyWidgetFrameSuppression(preyHuntIconFrame, true)
+        else
+            state.pendingWidgetSuppressionAfterCombat = true
+        end
+    elseif preyHuntIconFrame then
+        -- Restore the icon if suppression is disabled.
+        ApplyWidgetFrameSuppression(preyHuntIconFrame, false)
+    end
+
     suppressionRetryPending = false
     suppressionRetryCount = 0
-    state.pendingWidgetSuppressionAfterCombat = false
 end
 
 NormalizeSoundSettings = function()
