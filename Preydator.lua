@@ -2659,11 +2659,13 @@ local function EnsureWidgetSuppressionHook(frameRef)
     frameRef:HookScript("OnShow", function(self)
         local ok = pcall(function()
             if ShouldSuppressEncounterNow() then
-                if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
-                    state.pendingWidgetSuppressionAfterCombat = true
-                    return
-                end
                 ApplyWidgetFrameSuppression(self, true)
+
+                -- In some combat transitions, frame mutations can be deferred/ignored.
+                -- Queue a post-combat pass only when the icon is still shown.
+                if self.IsShown and self:IsShown() then
+                    state.pendingWidgetSuppressionAfterCombat = true
+                end
             end
         end)
 
@@ -2955,9 +2957,8 @@ ApplyDefaultPreyIconVisibility = function()
     if preyHuntIconFrame and settings.disableDefaultPreyIcon == true then
         EnsureWidgetSuppressionHook(preyHuntIconFrame)
         -- Re-apply suppression to any currently-shown frame.
-        if type(_G.InCombatLockdown) ~= "function" or not _G.InCombatLockdown() then
-            ApplyWidgetFrameSuppression(preyHuntIconFrame, true)
-        else
+        ApplyWidgetFrameSuppression(preyHuntIconFrame, true)
+        if preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown() then
             state.pendingWidgetSuppressionAfterCombat = true
         end
     elseif preyHuntIconFrame then

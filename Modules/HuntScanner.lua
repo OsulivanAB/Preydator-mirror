@@ -223,16 +223,38 @@ end
 
 IsInRestrictedInstance = function()
     if type(IsInInstance) ~= "function" then
-        return false
+        -- Continue with fallback checks below.
+    else
+        local ok, inInstance, instanceType = pcall(IsInInstance)
+        if ok and inInstance then
+            return instanceType == "pvp"
+                or instanceType == "arena"
+                or instanceType == "party"
+                or instanceType == "raid"
+                or instanceType == "scenario"
+                or instanceType == "delve"
+        end
     end
-    local ok, inInstance, instanceType = pcall(IsInInstance)
-    if ok and inInstance then
-        return instanceType == "pvp"
-            or instanceType == "arena"
-            or instanceType == "party"
-            or instanceType == "raid"
-            or instanceType == "scenario"
-            or instanceType == "delve"
+
+    -- Some campaign scenarios can briefly report odd instance-type values.
+    -- Treat explicit scenario APIs as authoritative when available.
+    if type(IsInScenario) == "function" then
+        local okScenario, inScenario = pcall(IsInScenario)
+        if okScenario and inScenario == true then
+            return true
+        end
+    end
+
+    if C_ScenarioInfo and type(C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okInfo, scenarioInfo = pcall(C_ScenarioInfo.GetScenarioInfo)
+        if okInfo and type(scenarioInfo) == "table" then
+            local stage = SafeToNumber(scenarioInfo.currentStage)
+            local stages = SafeToNumber(scenarioInfo.numStages)
+            local hasScenarioName = type(scenarioInfo.name) == "string" and scenarioInfo.name ~= ""
+            if hasScenarioName and (stage ~= nil or stages ~= nil) then
+                return true
+            end
+        end
     end
 
     -- Fallback for short transition windows where IsInInstance lags behind map state.
@@ -256,6 +278,45 @@ IsInRestrictedInstance = function()
     end
 
     return false
+end
+
+local function GetRestrictedInstanceDebugSummary()
+    local parts = {}
+
+    local instancePart = "instance=n/a"
+    if type(IsInInstance) == "function" then
+        local okInst, inInstance, instanceType = pcall(IsInInstance)
+        if okInst then
+            instancePart = "instance=" .. SafeToString(inInstance) .. "/" .. SafeToString(instanceType)
+        else
+            instancePart = "instance=error"
+        end
+    end
+    parts[#parts + 1] = instancePart
+
+    if type(IsInScenario) == "function" then
+        local okScenario, inScenario = pcall(IsInScenario)
+        if okScenario then
+            parts[#parts + 1] = "inScenario=" .. SafeToString(inScenario)
+        else
+            parts[#parts + 1] = "inScenario=error"
+        end
+    end
+
+    if C_ScenarioInfo and type(C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okInfo, info = pcall(C_ScenarioInfo.GetScenarioInfo)
+        if okInfo and type(info) == "table" then
+            parts[#parts + 1] = "scenarioName=" .. SafeToString(info.name)
+            parts[#parts + 1] = "scenarioStage=" .. SafeToString(info.currentStage)
+            parts[#parts + 1] = "scenarioStages=" .. SafeToString(info.numStages)
+        elseif okInfo then
+            parts[#parts + 1] = "scenarioInfo=nil"
+        else
+            parts[#parts + 1] = "scenarioInfo=error"
+        end
+    end
+
+    return table.concat(parts, " ")
 end
 
 IsOptionsPreviewVisible = function()
@@ -3567,6 +3628,7 @@ HandleInteractionSnapshot = function()
 
     if not ok then
         print("Preydator HuntScanner: snapshot error: " .. SafeToString(err))
+        print("Preydator HuntScanner: snapshot context: " .. GetRestrictedInstanceDebugSummary())
     end
 
     isHandlingSnapshot = false

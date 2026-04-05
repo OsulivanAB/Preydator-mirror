@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.16 - 2026-04-04
+
+### Fixed
+- Hardened HuntScanner restricted-instance gating for scenario edge cases by treating explicit scenario API state as restricted even when `IsInInstance()` returns transient/nonstandard values.
+- Added safe HuntScanner snapshot-error context logging (`instance` / `scenario` state summary) so any remaining restricted-content snapshot failures can be diagnosed from user reports without exposing protected payloads.
+- Fixed prey icon suppression intermittently showing during hunt progression in combat by attempting immediate suppression on prey-widget `OnShow` and only deferring to post-combat retry when the frame remains visible.
+
 ## 2.1.15 - 2026-04-03
 
 ### Fixed
