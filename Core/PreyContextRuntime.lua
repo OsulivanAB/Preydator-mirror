@@ -6,17 +6,6 @@ end
 local PreyContextRuntime = {}
 Preydator:RegisterModule("PreyContextRuntime", PreyContextRuntime)
 
-local QUEST_ZONE_MAP_OVERRIDES = {
-    -- Keep explicit known fallback for clients where task-zone map lookup
-    -- intermittently returns nil.
-    [91260] = 2437,
-
-    -- Task-zone map lookup can be nil for this prey family on some clients.
-    [91106] = 2413,
-    [91232] = 2413,
-    [91233] = 2413,
-}
-
 local MAP_ID_EQUIVALENTS = {
     -- Canonicalize equivalent map pairs to one stable ID so comparisons
     -- succeed regardless of which side returns parent vs sub-map.
@@ -61,16 +50,27 @@ local function ResolveExpectedQuestMapID(questID, ctx)
         return nil
     end
 
-    local fromOverride = CanonicalizeMapID(QUEST_ZONE_MAP_OVERRIDES[numericQuestID])
-    if fromOverride then
-        return fromOverride
-    end
-
     local taskQuestApi = ctx and ctx.taskQuestApi
     if taskQuestApi and type(taskQuestApi.GetQuestZoneID) == "function" then
         local okZoneMapID, rawZoneMapID = pcall(taskQuestApi.GetQuestZoneID, numericQuestID)
         if okZoneMapID then
-            return CanonicalizeMapID(SafeToNumber(rawZoneMapID))
+            local zoneMapID = CanonicalizeMapID(SafeToNumber(rawZoneMapID))
+            if zoneMapID then
+                return zoneMapID
+            end
+        end
+    end
+
+    -- Fallback: waypoint map often exists even when GetQuestZoneID is nil.
+    local questLog = ctx and ctx.questLog
+    if questLog and type(questLog.GetNextWaypoint) == "function" then
+        local okWaypoint, waypoint = pcall(questLog.GetNextWaypoint, numericQuestID)
+        if okWaypoint and type(waypoint) == "table" then
+            local waypointMapID = SafeToNumber(waypoint.uiMapID) or SafeToNumber(waypoint.mapID)
+            local canonicalWaypointMapID = CanonicalizeMapID(waypointMapID)
+            if canonicalWaypointMapID then
+                return canonicalWaypointMapID
+            end
         end
     end
 
@@ -78,9 +78,22 @@ local function ResolveExpectedQuestMapID(questID, ctx)
 end
 
 function PreyContextRuntime:GetPreyZoneInfo(questID, ctx)
-    -- Taint-safe: avoid task-quest and map-ID probing here. These APIs can
-    -- return protected numbers that later poison Blizzard Area POI/tooltips.
-    return nil, nil
+    -- Get the quest's zone map ID using safe numeric coercion to avoid taint.
+    local mapID = ResolveExpectedQuestMapID(questID, ctx)
+    if not mapID then
+        return nil, nil
+    end
+
+    -- Fetch zone name safely via pcall wrapper to prevent taint propagation.
+    local mapApi = ctx and ctx.mapApi
+    if mapApi and type(mapApi.GetMapInfo) == "function" then
+        local okMapInfo, mapInfo = pcall(mapApi.GetMapInfo, mapID)
+        if okMapInfo and type(mapInfo) == "table" and mapInfo.name then
+            return mapInfo.name, mapID
+        end
+    end
+
+    return nil, mapID
 end
 
 function PreyContextRuntime:GetCurrentActivePreyQuest(ctx)
@@ -97,44 +110,35 @@ function PreyContextRuntime:IsPlayerInPreyZone(preyMapID, state, ctx)
 end
 
 function PreyContextRuntime:IsPreyQuestOnCurrentMap(questID, ctx)
+    local numericQuestID = SafeToNumber(questID)
+    if not numericQuestID then
+        return nil
+    end
+
+    -- Prefer explicit map ID matching when available.
+    local expectedMapID = ResolveExpectedQuestMapID(numericQuestID, ctx)
+    local mapApi = ctx and ctx.mapApi
     local questLog = ctx and ctx.questLog
-    if not (questID and questLog and questLog.GetLogIndexForQuestID and questLog.GetInfo) then
-        return nil
+    local playerMapID = nil
+    if mapApi and type(mapApi.GetBestMapForUnit) == "function" then
+        local okMapID, rawMapID = pcall(mapApi.GetBestMapForUnit, "player")
+        playerMapID = okMapID and CanonicalizeMapID(SafeToNumber(rawMapID)) or nil
     end
 
-    local logIndex = questLog.GetLogIndexForQuestID(questID)
-    if not logIndex then
-        return nil
-    end
-
-    local info = questLog.GetInfo(logIndex)
-    if type(info) ~= "table" then
-        return nil
-    end
-
-    if info.isOnMap == nil then
-        return nil
-    end
-
-    if info.isOnMap == true then
-        return true
-    end
-
-    -- Generic fallback for sub-map mismatches: compare canonicalized player
-    -- map ID against canonicalized quest-zone map ID.
-    local expectedMapID = ResolveExpectedQuestMapID(questID, ctx)
     if expectedMapID ~= nil then
-        local mapApi = ctx and ctx.mapApi
-        if mapApi and type(mapApi.GetBestMapForUnit) == "function" then
-            local okMapID, rawMapID = pcall(mapApi.GetBestMapForUnit, "player")
-            local playerMapID = okMapID and CanonicalizeMapID(SafeToNumber(rawMapID)) or nil
-            if playerMapID and playerMapID == expectedMapID then
-                return true
-            end
+        if playerMapID and playerMapID == expectedMapID then
+            return true
+        else
+            return false
         end
     end
 
-    return false
+    -- No reliable zone map ID available yet (common during reload/login races).
+    -- Return nil (unknown) instead of false so callers do not hard-mark the player
+    -- out of zone before widget/mixin signals have a chance to initialize.
+    -- We still never fall back to isOnMap because that flag is true across the
+    -- world map hierarchy and causes cross-zone false positives.
+    return nil
 end
 
 function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
@@ -150,28 +154,41 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
 
     local getTime = ctx and ctx.getTime
     local now = (type(getTime) == "function" and getTime()) or 0
-    -- Recheck false-zone state quickly so zone entry reflects without long delays.
-    local staleFalseCheck = state.inPreyZone == false
-        and (now - (state.lastZoneStatusRefreshAt or 0)) >= 0.5
-    local staleTrueCheck = state.inPreyZone == true
-        and (now - (state.lastZoneStatusRefreshAt or 0)) >= 2.0
-
-    if staleFalseCheck or staleTrueCheck then
-        -- Force a map hierarchy rebuild during retry checks so we do not stay
-        -- stuck on a stale map snapshot after loading-screen transitions.
-        state.zoneCacheDirty = true
-    end
 
     local shouldRefresh = force == true
         or state.inPreyZone == nil
         or state.zoneCacheDirty == true
-        or staleFalseCheck
-        or staleTrueCheck
     if not shouldRefresh then
         return state.inPreyZone
     end
 
-    local inPreyZone = self:IsPreyQuestOnCurrentMap(questID, ctx)
+    local mapApi = ctx and ctx.mapApi
+    local playerMapID = nil
+    if mapApi and type(mapApi.GetBestMapForUnit) == "function" then
+        local okMapID, rawMapID = pcall(mapApi.GetBestMapForUnit, "player")
+        playerMapID = okMapID and CanonicalizeMapID(SafeToNumber(rawMapID)) or nil
+    end
+
+    local questMapID = ResolveExpectedQuestMapID(questID, ctx)
+    if questMapID then
+        state.preyZoneMapID = questMapID
+    else
+        questMapID = CanonicalizeMapID(SafeToNumber(state.preyZoneMapID))
+    end
+
+    if not questMapID then
+        questMapID = CanonicalizeMapID(SafeToNumber(state.confirmedPreyZoneMapID))
+    end
+
+    local inPreyZone = nil
+    if questMapID and playerMapID then
+        inPreyZone = (playerMapID == questMapID)
+    end
+
+    if inPreyZone == true then
+        state.confirmedPreyZoneMapID = questMapID
+    end
+
     state.playerMapID = nil
     state.playerMapHierarchy = nil
     state.zoneCacheDirty = false

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.1.17 - 2026-04-08
+
+### Fixed
+- Fixed `Blizzard_UIWidgetTemplateTextWithState.lua:35` tooltip widget taint cascade (`attempt to perform arithmetic on local 'textHeight' (a secret number value tainted by 'Preydator')`). Root cause: multiple widget and frame introspection paths executed during event processing were reading Blizzard frame properties (via `ResolvePreyFieldsFromFrame`, `CaptureLivePreyHuntFrames`, mixin hook via `hooksecurefunc`), which returned values tainted by the widget system. These tainted reads occurred in addon execution contexts that cascaded into simultaneous tooltip widget processing, corrupting unrelated widgets like TextWithState. Fixed by disabling ALL widget/frame introspection paths and obtaining prey state exclusively from pure quest APIs and tracked state. Prey icon suppression and frame suppression hooks are now disabled; prey progression is tracked entirely from `QUEST_ACCEPTED`, `QUEST_COMPLETE`, and quest data events without frame reads.
+- Fixed `Blizzard_SharedXML/SharedTooltipTemplates.lua:213` world-map tooltip taint (`attempt to compare local 'frameWidth' (a secret number value tainted by 'Preydator')`). Root cause: the `EnsureWidgetSuppressionHook` OnShow script was calling `ApplyWidgetFrameSuppression` inside a pcall, establishing a taint context that propagated to downstream Blizzard layout code. Fixed by disabling frame suppression in the OnShow hook entirely; suppression now happens exclusively through the state/settings update handlers outside the widget event context, preventing taint spillover into tooltip/layout rendering.
+- Fixed stage-4 "find location" map-open flow to avoid protected world-map pin mutation during combat lockdown (`Button:SetPassThroughButtons` action blocked path).
+- Removed forced `QuestMapFrame_OpenToQuestDetails(...)` call from the stage-4 helper and rely on quest super-track / waypoint behavior instead.
+- Fixed `Blizzard_UIWidgetTemplateTextWithState.lua:35` world-map tooltip taint (`attempt to perform arithmetic on local 'textHeight' (a secret number value tainted by 'Preydator')`). Root cause: the `UIWidgetTemplatePreyHuntProgressMixin.Setup` hook was reading `widgetInfo.shownState` and `widgetInfo.progressState` directly while in a tainted execution context, storing the raw secret-number values in `preyWidgetInfoCache`. Those tainted values later propagated into bar display arithmetic and corrupted Blizzard's tooltip widget layout. Fixed by sanitizing both values via string-roundtrip coercion (`tostring` → `tonumber`) inside the hook, producing a clean plain integer before storage and breaking the taint chain.
+- Fixed additional world-map tooltip taint path (`Blizzard_SharedXML/LayoutFrame.lua:491` secret-number compare) by enforcing the same numeric sanitization barrier on prey-widget frame fallback reads and on all widget-derived progress values before writing to addon state/cache (`newProgressState`, `newProgressPercent`, objective percent).
+- Added a broader taint-hardening pass for numeric extraction/parsing in prey progress/objective percent math and HuntScanner map fallback/debug-event capture, while preserving all existing addon behavior and user-facing features.
+
+### Localization
+- Updated `esES` (Spanish - EU) localization strings for Preydator prey labels and difficulty terms.
+- Added/confirmed contributor credit in the Spanish locale file. Thank you `jaestevan` for the translation help.
+
+### Notes
+- Confirmed `AreaPoiUtil.lua:SetPadding` taint can be reproduced with Preydator disabled; issue does not originate from this addon.
+
 ## 2.1.16 - 2026-04-04
 
 ### Fixed

@@ -55,7 +55,29 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         or event == "ZONE_CHANGED"
         or event == "ZONE_CHANGED_INDOORS"
         or event == "ZONE_CHANGED_NEW_AREA" then
-        state.zoneCacheDirty = true
+        if event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
+            if event ~= "ZONE_CHANGED_NEW_AREA" or state.inPreyZone ~= true or state.confirmedPreyZoneMapID == nil then
+                -- Hard reset on login/enter-world, or ZONE_CHANGED_NEW_AREA without a
+                -- mixin-confirmed zone: mixin must re-fire before inPreyZone can be true.
+                state.inPreyZone = nil
+                state.confirmedPreyZoneMapID = nil
+                state.zoneCacheDirty = true
+            else
+                -- ZONE_CHANGED_NEW_AREA fired while the mixin has confirmed the prey
+                -- zone. WoW fires this event for sub-areas within the same outdoor zone
+                -- (terrain sections, camps, etc.) even when the map ID has not changed.
+                -- Treat it as a sub-area event and let the confirmedMapID latch in
+                -- RefreshInPreyZoneStatus verify the player is still on the same map;
+                -- that will clear inPreyZone if the map actually changed.
+                state.zoneCacheDirty = true
+            end
+        elseif state.inPreyZone ~= true then
+            -- Sub-zone change (ZONE_CHANGED / ZONE_CHANGED_INDOORS) while not yet
+            -- confirmed: mark dirty so the check runs on next tick.
+            state.zoneCacheDirty = true
+        end
+        -- Sub-zone changes while inPreyZone=true are intentionally ignored: moving
+        -- within the same prey zone must not clear the mixin-confirmed status.
         if event == "PLAYER_ENTERING_WORLD" and ui.barFrame and type(ctx.applyBarSettings) == "function" then
             ctx.applyBarSettings()
         end

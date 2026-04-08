@@ -549,7 +549,7 @@ local function UpdateBarDisplay()
     local forceKillStage = now < (state.killStageUntil or 0)
     local forceAmbushAlert = now < (state.ambushAlertUntil or 0)
     local forceBloodyCommandAlert = now < (state.bloodyCommandAlertUntil or 0)
-    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone == false
+    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
     local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
     local function IsEditModePreviewEnabled()
         if settings.showInEditMode ~= true then

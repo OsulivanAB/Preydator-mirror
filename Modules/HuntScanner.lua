@@ -162,6 +162,21 @@ local function SafeToString(value)
 end
 
 local function SafeToNumber(value)
+    if type(value) == "number" then
+        local okString, asString = pcall(tostring, value)
+        if okString and type(asString) == "string" then
+            local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+                or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+            if numericToken then
+                local okNumber, result = pcall(tonumber, numericToken)
+                if okNumber and type(result) == "number" then
+                    return result
+                end
+            end
+        end
+        return nil
+    end
+
     local ok, result = pcall(tonumber, value)
     if ok and type(result) == "number" then
         return result
@@ -260,17 +275,13 @@ IsInRestrictedInstance = function()
     -- Fallback for short transition windows where IsInInstance lags behind map state.
     if C_Map and C_Map.GetBestMapForUnit and C_Map.GetMapInfo then
         local okPlayerMapID, rawPlayerMapID = pcall(C_Map.GetBestMapForUnit, "player")
-        local okNumericMapID, playerMapID = pcall(function()
-            return tonumber(rawPlayerMapID)
-        end)
-        playerMapID = (okPlayerMapID and okNumericMapID and playerMapID and playerMapID > 0) and playerMapID or nil
+        local playerMapID = okPlayerMapID and SafeToNumber(rawPlayerMapID) or nil
+        playerMapID = (playerMapID and playerMapID > 0) and playerMapID or nil
         if playerMapID then
             local okMapInfo, mapInfo = pcall(C_Map.GetMapInfo, playerMapID)
             mapInfo = okMapInfo and mapInfo or nil
-            local okMapType, mapType = pcall(function()
-                return tonumber(mapInfo and mapInfo.mapType)
-            end)
-            mapType = (okMapType and mapType and mapType > 0) and mapType or nil
+            local mapType = SafeToNumber(mapInfo and mapInfo.mapType)
+            mapType = (mapType and mapType > 0) and mapType or nil
             if mapType == 4 then
                 return true
             end
@@ -2618,9 +2629,9 @@ local function RecordEvent(event, ...)
     recentEvents[#recentEvents + 1] = {
         t = GetTime and GetTime() or 0,
         event = event,
-        a1 = select(1, ...),
-        a2 = select(2, ...),
-        a3 = select(3, ...),
+        a1 = SafeToString(select(1, ...)),
+        a2 = SafeToString(select(2, ...)),
+        a3 = SafeToString(select(3, ...)),
     }
 
     while #recentEvents > 30 do

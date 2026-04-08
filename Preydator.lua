@@ -436,10 +436,12 @@ local state = {
     stage = 1,
     preyZoneName = nil,
     preyZoneMapID = nil,
+    confirmedPreyZoneMapID = nil,
     inPreyZone = nil,
     preyTooltipText = nil,
     elapsedSinceUpdate = 0,
     lastWidgetSeenAt = 0,
+    lastWidgetSetupAt = 0,
     lastStateDebugSnapshot = nil,
     lastDisplayPct = 0,
     lastDisplayReason = "init",
@@ -465,6 +467,7 @@ local state = {
 }
 
 local UPDATE_INTERVAL_SECONDS = 0.5
+local WIDGET_SETUP_FRESH_SECONDS = 2.0
 local ExtractWidgetQuestID
 local FindPreyWidgetProgressState
 
@@ -1153,6 +1156,23 @@ local function NormalizeAmbushSettings()
     settings.ambushCustomSoundPath = nil
 end
 
+local FALLBACK_MAP_ID_EQUIVALENTS = {
+    [2437] = 2437,
+    [2536] = 2437,
+    [2413] = 2413,
+    [2576] = 2413,
+    [2405] = 2405,
+    [2444] = 2405,
+}
+
+local function CanonicalizeFallbackMapID(mapID)
+    mapID = tonumber(mapID)
+    if not mapID or mapID < 1 then
+        return nil
+    end
+    return FALLBACK_MAP_ID_EQUIVALENTS[mapID] or mapID
+end
+
 local function IsPreyQuestOnCurrentMap(questID)
     local runtime = GetRuntimeModule("PreyContextRuntime")
     if runtime and type(runtime.IsPreyQuestOnCurrentMap) == "function" then
@@ -1201,22 +1221,42 @@ local function RefreshInPreyZoneStatus(questID, force)
     end
 
     local now = GetTime and GetTime() or 0
-    -- Recheck false-zone state quickly so zone entry reflects without long delays.
-    local staleFalseCheck = state.inPreyZone == false
-        and (now - (state.lastZoneStatusRefreshAt or 0)) >= 0.5
 
-    if staleFalseCheck then
-        -- Force a map hierarchy rebuild during retry checks so we do not stay
-        -- stuck on a stale map snapshot after loading-screen transitions.
-        state.zoneCacheDirty = true
-    end
-
-    local shouldRefresh = force == true or state.inPreyZone == nil or state.zoneCacheDirty == true or staleFalseCheck
+    local shouldRefresh = force == true or state.inPreyZone == nil or state.zoneCacheDirty == true
     if not shouldRefresh then
         return state.inPreyZone
     end
 
-    local inPreyZone = IsPreyQuestOnCurrentMap(questID)
+    local playerMapID = nil
+    if C_Map and C_Map.GetBestMapForUnit then
+        local okMapID, rawMapID = pcall(C_Map.GetBestMapForUnit, "player")
+        playerMapID = okMapID and CanonicalizeFallbackMapID(rawMapID) or nil
+    end
+
+    local questMapID = CanonicalizeFallbackMapID(state.preyZoneMapID)
+    if not questMapID then
+        local zoneName, resolvedMapID = GetPreyZoneInfo(questID)
+        if zoneName ~= nil then
+            state.preyZoneName = zoneName
+        end
+        if resolvedMapID ~= nil then
+            state.preyZoneMapID = resolvedMapID
+            questMapID = CanonicalizeFallbackMapID(resolvedMapID)
+        end
+    end
+
+    if not questMapID then
+        questMapID = CanonicalizeFallbackMapID(state.confirmedPreyZoneMapID)
+    end
+
+    local inPreyZone = nil
+    if questMapID and playerMapID then
+        inPreyZone = (playerMapID == questMapID)
+    end
+    if inPreyZone == true then
+        state.confirmedPreyZoneMapID = questMapID
+    end
+
     state.playerMapID = nil
     state.playerMapHierarchy = nil
     state.zoneCacheDirty = false
@@ -1968,13 +2008,34 @@ local function GetStageFromState(progressState)
     return 1
 end
 
+local function CoerceSafeNumeric(value)
+    local okString, asString = pcall(tostring, value)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, asNumber = pcall(tonumber, numericToken)
+    if okNumber and type(asNumber) == "number" then
+        return asNumber
+    end
+
+    return nil
+end
+
 local function ExtractProgressPercentFromInfoScan(info)
     if type(info) ~= "table" then
         return nil
     end
 
     for key, value in pairs(info) do
-        if type(value) == "number" then
+        value = CoerceSafeNumeric(value)
+        if value ~= nil then
             local keyText = string.lower(tostring(key))
             if string.find(keyText, "percent", 1, true) then
                 local pct = nil
@@ -1993,7 +2054,8 @@ local function ExtractProgressPercentFromInfoScan(info)
     local currentValues = {}
     local maxValues = {}
     for key, value in pairs(info) do
-        if type(value) == "number" and value >= 0 then
+        value = CoerceSafeNumeric(value)
+        if value ~= nil and value >= 0 then
             local keyText = string.lower(tostring(key))
             if string.find(keyText, "current", 1, true)
                 or string.find(keyText, "value", 1, true)
@@ -2040,9 +2102,9 @@ local function ExtractProgressPercent(info, tooltipText)
         }
 
         for _, fieldName in ipairs(directFields) do
-            local rawValue = info[fieldName]
+            local rawValue = CoerceSafeNumeric(info[fieldName])
             local pct = nil
-            if type(rawValue) == "number" then
+            if rawValue ~= nil then
                 if rawValue >= 0 and rawValue <= 1 then
                     pct = Clamp(rawValue * 100, 0, 100)
                 else
@@ -2057,11 +2119,11 @@ local function ExtractProgressPercent(info, tooltipText)
         local valueFields = { "barValue", "value", "currentValue" }
         local maxFields = { "barMax", "maxValue", "totalValue", "total", "max" }
         for _, valueField in ipairs(valueFields) do
-            local current = info[valueField]
-            if type(current) == "number" then
+            local current = CoerceSafeNumeric(info[valueField])
+            if current ~= nil then
                 for _, maxField in ipairs(maxFields) do
-                    local maxValue = info[maxField]
-                    if type(maxValue) == "number" and maxValue > 0 then
+                    local maxValue = CoerceSafeNumeric(info[maxField])
+                    if maxValue ~= nil and maxValue > 0 then
                         return Clamp((current / maxValue) * 100, 0, 100)
                     end
                 end
@@ -2076,7 +2138,7 @@ local function ExtractProgressPercent(info, tooltipText)
 
     if type(tooltipText) == "string" then
         local pctText = tooltipText:match("(%d+)%s*%%")
-        local pctValue = tonumber(pctText)
+        local pctValue = CoerceSafeNumeric(tonumber(pctText))
         if pctValue then
             return Clamp(pctValue, 0, 100)
         end
@@ -2093,7 +2155,7 @@ local function ExtractQuestObjectivePercent(questID)
     local questBarPct = nil
     if GetQuestProgressBarPercent then
         local okQuestBarPct, rawQuestBarPct = pcall(function()
-            return tonumber(GetQuestProgressBarPercent(questID))
+            return CoerceSafeNumeric(GetQuestProgressBarPercent(questID))
         end)
         if not okQuestBarPct then
             rawQuestBarPct = nil
@@ -2119,10 +2181,10 @@ local function ExtractQuestObjectivePercent(questID)
     for _, objective in ipairs(objectives) do
         if type(objective) == "table" then
             local okFulfilled, fulfilled = pcall(function()
-                return tonumber(objective.numFulfilled)
+                return CoerceSafeNumeric(objective.numFulfilled)
             end)
             local okRequired, required = pcall(function()
-                return tonumber(objective.numRequired)
+                return CoerceSafeNumeric(objective.numRequired)
             end)
 
             if not okFulfilled then
@@ -2134,7 +2196,7 @@ local function ExtractQuestObjectivePercent(questID)
 
             if fulfilled == nil then
                 local okLegacyFulfilled, legacyFulfilled = pcall(function()
-                    return tonumber(objective.fulfilled)
+                    return CoerceSafeNumeric(objective.fulfilled)
                 end)
                 if okLegacyFulfilled then
                     fulfilled = legacyFulfilled
@@ -2142,7 +2204,7 @@ local function ExtractQuestObjectivePercent(questID)
             end
             if required == nil then
                 local okLegacyRequired, legacyRequired = pcall(function()
-                    return tonumber(objective.required)
+                    return CoerceSafeNumeric(objective.required)
                 end)
                 if okLegacyRequired then
                     required = legacyRequired
@@ -2162,15 +2224,15 @@ local function ExtractQuestObjectivePercent(questID)
                 local text = objective.text
                 if type(text) == "string" and text ~= "" then
                     local curText, maxText = text:match("(%d+)%s*/%s*(%d+)")
-                    local curValue = tonumber(curText)
-                    local maxValue = tonumber(maxText)
+                    local curValue = CoerceSafeNumeric(tonumber(curText))
+                    local maxValue = CoerceSafeNumeric(tonumber(maxText))
                     if curValue and maxValue and maxValue > 0 then
                         anyNumericObjective = true
                         totalFulfilled = totalFulfilled + math.max(0, curValue)
                         totalRequired = totalRequired + math.max(0, maxValue)
                     else
                         local pctText = text:match("(%d+)%s*%%")
-                        local pctValue = tonumber(pctText)
+                        local pctValue = CoerceSafeNumeric(tonumber(pctText))
                         if pctValue then
                             return Clamp(pctValue, 0, 100)
                         end
@@ -2252,6 +2314,7 @@ local function ClearPreyStateAndDisplay()
     state.progressPercent = 0
     state.preyZoneName = nil
     state.preyZoneMapID = nil
+    state.confirmedPreyZoneMapID = nil
     state.inPreyZone = nil
     state.preyTooltipText = nil
     state.stage = 1
@@ -2371,8 +2434,6 @@ local function IsPreyHuntProgressFrame(frameRef)
         and type(frameRef.AnimIn) == "function"
 end
 
--- Enumerates children of the PowerBar container without reading any secret values.
--- Used to capture frames that were created before the mixin hook was installed.
 local function CaptureLivePreyHuntFrames()
     local container = _G.UIWidgetPowerBarContainerFrame
     if not container or not container.GetChildren then
@@ -2507,12 +2568,13 @@ local function ApplyWidgetFrameSuppression(frameRef, suppress)
         elseif frameRef.SetAlpha then
             pcall(frameRef.SetAlpha, frameRef, 1)
         end
-        if wasShown then
-            WIDGET_SUPPRESSION_WAS_SHOWN[frameRef] = nil
-            if frameRef.Show then
-                pcall(frameRef.Show, frameRef)
-            end
-        elseif wasShown ~= nil then
+        if wasShown == true
+            and state
+            and state.inPreyZone == true
+            and frameRef.Show then
+            pcall(frameRef.Show, frameRef)
+        end
+        if wasShown ~= nil then
             WIDGET_SUPPRESSION_WAS_SHOWN[frameRef] = nil
         end
     end
@@ -2612,6 +2674,28 @@ local function ReadPreyValueFromObject(obj, keyName)
     return nil
 end
 
+local function CoerceSanitizedNumber(value)
+    -- Accept number-like protected values too (secret-number wrappers).
+    -- Always sanitize via string-token roundtrip before tonumber.
+    local okString, asString = pcall(tostring, value)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, asNumber = pcall(tonumber, numericToken)
+    if okNumber and type(asNumber) == "number" then
+        return asNumber
+    end
+
+    return nil
+end
+
 local function ResolvePreyFieldsFromFrame(self)
     if type(self) ~= "table" then
         return nil, nil, nil, nil
@@ -2628,8 +2712,8 @@ local function ResolvePreyFieldsFromFrame(self)
     for _, source in ipairs(sources) do
         local obj = source.value
         if type(obj) == "table" then
-            local shownState = ReadPreyValueFromObject(obj, "shownState")
-            local progressState = ReadPreyValueFromObject(obj, "progressState")
+            local shownState = CoerceSanitizedNumber(ReadPreyValueFromObject(obj, "shownState"))
+            local progressState = CoerceSanitizedNumber(ReadPreyValueFromObject(obj, "progressState"))
             local tooltip = ReadPreyValueFromObject(obj, "tooltip")
             if type(tooltip) ~= "string" then
                 tooltip = nil
@@ -2657,22 +2741,80 @@ local function EnsureWidgetSuppressionHook(frameRef)
 
     WIDGET_SUPPRESSION_HOOKED[frameRef] = true
     frameRef:HookScript("OnShow", function(self)
-        local ok = pcall(function()
-            if ShouldSuppressEncounterNow() then
-                ApplyWidgetFrameSuppression(self, true)
-
-                -- In some combat transitions, frame mutations can be deferred/ignored.
-                -- Queue a post-combat pass only when the icon is still shown.
-                if self.IsShown and self:IsShown() then
-                    state.pendingWidgetSuppressionAfterCombat = true
-                end
-            end
-        end)
-
-        if not ok then
-            -- Keep gameplay stable even if Blizzard updates widget internals.
-        end
+        -- DISABLED: Calling SetAlpha/Hide in this hook creates a taint context that
+        -- propagates to downstream Blizzard code (e.g., tooltip layout math), causing
+        -- "attempt to compare secret number" errors in SharedTooltipTemplates.lua
+        -- and other layout code. Suppression is handled exclusively in the 
+        -- settings/state update handlers outside the widget event context.
+        --
+        -- local ok = pcall(function()
+        --   if ShouldSuppressEncounterNow() then
+        --       ApplyWidgetFrameSuppression(self, true)
+        --       if self.IsShown and self:IsShown() then
+        --           state.pendingWidgetSuppressionAfterCombat = true
+        --       end
+        --   end
+        -- end)
     end)
+end
+
+ApplyDefaultPreyIconVisibility = function()
+    if not settings then
+        return
+    end
+
+    CaptureLivePreyHuntFrames()
+
+    if settings.disableDefaultPreyIcon ~= true then
+        if preyHuntIconFrame then
+            ApplyWidgetFrameSuppression(preyHuntIconFrame, false)
+            if state
+                and state.inPreyZone == true
+                and preyHuntIconFrame.IsShown
+                and not preyHuntIconFrame:IsShown()
+                and preyHuntIconFrame.Show then
+                pcall(preyHuntIconFrame.Show, preyHuntIconFrame)
+            end
+        end
+        state.pendingWidgetSuppressionAfterCombat = false
+        suppressionRetryPending = false
+        suppressionRetryCount = 0
+        return
+    end
+
+    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+        state.pendingWidgetSuppressionAfterCombat = true
+        return
+    end
+
+    local touchedAnyFrame = false
+
+    if preyHuntIconFrame then
+        touchedAnyFrame = true
+        EnsureWidgetSuppressionHook(preyHuntIconFrame)
+        ApplyWidgetFrameSuppression(preyHuntIconFrame, true)
+        if preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown() then
+            state.pendingWidgetSuppressionAfterCombat = true
+        end
+    end
+
+    for frameRef in pairs(PREY_WIDGET_FRAMES) do
+        if frameRef and frameRef ~= preyHuntIconFrame then
+            touchedAnyFrame = true
+            EnsureWidgetSuppressionHook(frameRef)
+            ApplyWidgetFrameSuppression(frameRef, true)
+            if frameRef.IsShown and frameRef:IsShown() then
+                state.pendingWidgetSuppressionAfterCombat = true
+            end
+        end
+    end
+
+    if not touchedAnyFrame then
+        ScheduleSuppressionRetry()
+    else
+        suppressionRetryPending = false
+        suppressionRetryCount = 0
+    end
 end
 
 local function EnsurePreyHuntMixinSuppressionHook()
@@ -2685,51 +2827,23 @@ local function EnsurePreyHuntMixinSuppressionHook()
         return
     end
 
-    -- hooksecurefunc fires AFTER Blizzard's Setup() runs AnimIn/ResetAnimState/SetAlpha(1)/Show(),
-    -- so re-hiding here lands at the right point in the sequence.
-    -- IMPORTANT: Never read widgetID, widgetSetID, or geometry fields from the widget payload.
-    -- Those are secret numbers; reading them here and passing to Blizzard layout APIs taints
-    -- layout arithmetic. Game-state fields (progressState, shownState, tooltip) are safe to
-    -- read inside pcall for our own display use only.
     local ok = pcall(hooksecurefunc, mixin, "Setup", function(self, widgetInfo)
         preyHuntIconFrame = self
         PREY_WIDGET_FRAMES[self] = true
 
-        -- Capture only game-state fields for stage tracking.
-        -- widgetID, widgetSetID, and geometry fields are secret numbers; never read those.
-        -- progressState/shownState are plain enum ints, not layout-identity values, so they
-        -- do not propagate taint into Blizzard's layout paths.
         local shownState = nil
         local progressState = nil
         local tooltipText = nil
         local captureSource = "none"
 
         if type(widgetInfo) == "table" then
-            shownState = widgetInfo.shownState
-            progressState = widgetInfo.progressState
+            shownState = CoerceSanitizedNumber(widgetInfo.shownState)
+            progressState = CoerceSanitizedNumber(widgetInfo.progressState)
             if type(widgetInfo.tooltip) == "string" then
                 tooltipText = widgetInfo.tooltip
             end
             if shownState ~= nil or progressState ~= nil or tooltipText ~= nil then
                 captureSource = "widgetInfo"
-            end
-        end
-
-        -- Some clients deliver sparse Setup payloads; if so, read the same fields
-        -- from post-Setup frame containers without touching widget identity values.
-        if shownState == nil or progressState == nil or tooltipText == nil then
-            local frameShownState, frameProgressState, frameTooltip, frameSource = ResolvePreyFieldsFromFrame(self)
-            if shownState == nil then
-                shownState = frameShownState
-            end
-            if progressState == nil then
-                progressState = frameProgressState
-            end
-            if tooltipText == nil then
-                tooltipText = frameTooltip
-            end
-            if frameSource ~= nil and (shownState ~= nil or progressState ~= nil or tooltipText ~= nil) then
-                captureSource = frameSource
             end
         end
 
@@ -2741,16 +2855,36 @@ local function EnsurePreyHuntMixinSuppressionHook()
                 captureSource = captureSource,
                 argType = type(widgetInfo),
             }
+            state.lastWidgetSetupAt = (GetTime and GetTime()) or 0
+            -- Mixin Setup fires only when Blizzard is actively rendering the widget,
+            -- which only happens when the player is physically in the prey zone.
+            -- This is the authoritative zone-entry signal.
+            if C_Map and type(C_Map.GetBestMapForUnit) == "function" then
+                local okMapID, rawMapID = pcall(C_Map.GetBestMapForUnit, "player")
+                if okMapID then
+                    local mapID = CoerceSanitizedNumber(rawMapID)
+                    state.confirmedPreyZoneMapID = mapID
+                    state.preyZoneMapID = mapID
+                end
+            end
+            state.inPreyZone = true
+            state.zoneCacheDirty = false
         else
             preyWidgetInfoCache = nil
         end
-        -- Taint-safe mode: do not hook or mutate Blizzard-owned prey widget
-        -- frames here. We only read state for our own bar rendering.
+
+        -- Hide immediately after Blizzard Setup when the option is enabled.
+        if settings and settings.disableDefaultPreyIcon == true then
+            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+                state.pendingWidgetSuppressionAfterCombat = true
+            else
+                ApplyWidgetFrameSuppression(self, true)
+            end
+        end
     end)
 
     if ok then
         preyHuntMixinHooked = true
-        -- Capture any prey hunt frame that was already set up before our hook installed.
         CaptureLivePreyHuntFrames()
     end
 end
@@ -2874,11 +3008,19 @@ TryOpenPreyQuestOnMap = function()
         return false
     end
 
+    -- Avoid protected world-map pin mutations while in combat lockdown.
+    -- We still attempt to set quest super-track so the objective is tracked.
+    local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
+
     local superTrackedQuest = false
 
     if C_SuperTrack and type(C_SuperTrack.SetSuperTrackedQuestID) == "function" then
         local ok = pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
         superTrackedQuest = ok == true
+    end
+
+    if inCombat then
+        return superTrackedQuest
     end
 
     if _G.OpenQuestMap then
@@ -2889,10 +3031,6 @@ TryOpenPreyQuestOnMap = function()
         pcall(_G.WorldMapFrame.Show, _G.WorldMapFrame)
     end
 
-    if _G.QuestMapFrame_OpenToQuestDetails then
-        pcall(_G.QuestMapFrame_OpenToQuestDetails, questID)
-    end
-
     -- Prefer quest super-tracking (same behavior as clicking the default icon).
     -- Fall back to user waypoint only when quest super-track API is unavailable.
     if not superTrackedQuest then
@@ -2900,43 +3038,17 @@ TryOpenPreyQuestOnMap = function()
         if mapID and x and y and C_Map and C_Map.SetUserWaypoint and _G.UiMapPoint and _G.UiMapPoint.CreateFromCoordinates then
             local okWaypoint, waypointPoint = pcall(_G.UiMapPoint.CreateFromCoordinates, mapID, x, y)
             waypointPoint = okWaypoint and waypointPoint or nil
-            if waypointPoint then
-                pcall(C_Map.SetUserWaypoint, waypointPoint)
-                if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
-                    pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
-                end
+            pcall(C_Map.SetUserWaypoint, waypointPoint)
+            if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+                pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
             end
         end
     end
-
+    
     return true
 end
 
-AttachStageFourMapClick = function(frameRef)
-    if not frameRef or STAGE_FOUR_CLICK_HOOKED[frameRef] then
-        return
-    end
-
-    STAGE_FOUR_CLICK_HOOKED[frameRef] = true
-
-    if frameRef.HookScript then
-        pcall(frameRef.HookScript, frameRef, "OnMouseUp", function(_, button)
-            if button ~= "LeftButton" then
-                return
-            end
-
-            if settings and settings.disableDefaultPreyIcon == true then
-                return
-            end
-
-            if state and state.stage == MAX_STAGE then
-                TryOpenPreyQuestOnMap()
-            end
-        end)
-    end
-end
-
-ApplyDefaultPreyIconVisibility = function()
+local function UpdatePreyDisplay()
     if not settings then
         return
     end
@@ -3249,12 +3361,14 @@ local function ResetStateForNewQuest(questID)
             state.preyZoneName, state.preyZoneMapID = runtime:GetPreyZoneInfo(questID, {
                 taskQuestApi = C_TaskQuest,
                 mapApi = C_Map,
+                questLog = C_QuestLog,
             })
         else
             state.preyZoneName = nil
             state.preyZoneMapID = nil
         end
         state.inPreyZone = nil
+        state.confirmedPreyZoneMapID = nil
         RefreshInPreyZoneStatus(questID, true)
         state.preyTooltipText = nil
         state.preyTargetName, state.preyTargetDifficulty = ExtractPreyTargetFromQuestTitle(questID)
@@ -3316,6 +3430,13 @@ local function UpdatePreyState()
 
     if hasWidgetData then
         state.lastWidgetSeenAt = now
+        -- Guard against stale widget cache after zone exits: only treat widget
+        -- data as in-zone confirmation if a recent mixin Setup fired.
+        local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
+        if setupFresh then
+            state.inPreyZone = true
+            state.zoneCacheDirty = false
+        end
     end
 
     local effectiveQuestID = hasActiveQuest and questID or nil
@@ -3349,26 +3470,23 @@ local function UpdatePreyState()
         return
     end
 
-    if hasWidgetData then
-        state.inPreyZone = true
-    end
-
     local oldProgressState = state.progressState
     local percentSource = "none"
+    newProgressState = CoerceSanitizedNumber(newProgressState)
+    newProgressPercent = CoerceSanitizedNumber(newProgressPercent)
     if newProgressState ~= nil then
         state.progressState = newProgressState
-        state.inPreyZone = true
     end
     if newProgressPercent ~= nil then
-        state.progressPercent = newProgressPercent
+        state.progressPercent = Clamp(newProgressPercent, 0, 100)
         percentSource = "widget"
     elseif newProgressState == nil then
         -- When live widget stage exists but widget percent is absent, stay on
         -- stage-gate fallback percent. Objective text percent can lag behind and
         -- produce misleading mid-stage values (e.g., 50% while widget is stage 3/4).
-        local objectivePercent = ExtractQuestObjectivePercent(questID)
+        local objectivePercent = CoerceSanitizedNumber(ExtractQuestObjectivePercent(questID))
         if objectivePercent ~= nil and (objectivePercent > 0 or newProgressState == PREY_PROGRESS_FINAL) then
-            state.progressPercent = objectivePercent
+            state.progressPercent = Clamp(objectivePercent, 0, 100)
             percentSource = "objective"
         end
     end
