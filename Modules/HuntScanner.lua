@@ -1639,12 +1639,16 @@ local function SetTextColor(fontString, color)
 end
 
 local function ParseTargetNPCID()
+    if IsInRestrictedInstance() then
+        return nil
+    end
+
     if not UnitGUID then
         return nil
     end
 
-    local guid = UnitGUID("target")
-    if type(guid) ~= "string" then
+    local okGUID, guid = pcall(UnitGUID, "target")
+    if not okGUID or type(guid) ~= "string" or guid == "" then
         return nil
     end
 
@@ -2750,6 +2754,10 @@ local function SendLinesToBugSack(lines)
 end
 
 local function RefreshDebugSnapshotFromLiveAPI()
+    if IsInRestrictedInstance() then
+        return false
+    end
+
     local options = GetGossipOptionsSafe()
 
     local _, npcID = IsHuntTableContext(options)
@@ -3787,6 +3795,11 @@ function HuntScannerModule:SetThemePreviewEnabled(enabled)
 end
 
 function HuntScannerModule:PrintDebugSnapshot()
+    if IsInRestrictedInstance() then
+        print("Preydator HuntDebug: unavailable in restricted instances.")
+        return
+    end
+
     if (not lastSnapshot) or (not lastSnapshot.npcID and #(lastSnapshot.available or {}) == 0 and #(lastSnapshot.active or {}) == 0 and #(lastSnapshot.options or {}) == 0) then
         RefreshDebugSnapshotFromLiveAPI()
     end
@@ -3805,6 +3818,11 @@ end
 
 function HuntScannerModule:OnSlashCommand(text, rest)
     if text == "huntdebug" then
+        if IsInRestrictedInstance() then
+            print("Preydator HuntDebug: unavailable in restricted instances.")
+            return true
+        end
+
         if (not lastSnapshot) or (not lastSnapshot.npcID and #(lastSnapshot.available or {}) == 0 and #(lastSnapshot.active or {}) == 0 and #(lastSnapshot.options or {}) == 0) then
             RefreshDebugSnapshotFromLiveAPI()
         end

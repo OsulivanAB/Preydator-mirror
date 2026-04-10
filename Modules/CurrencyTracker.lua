@@ -3463,15 +3463,8 @@ function CurrencyTrackerModule:OnAddonLoaded()
     EnsureDB()
     EnsureTrackerSettings()
     CheckAndProcessWeeklyReset()
-    eventFrame:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
-    eventFrame:RegisterEvent("CHAT_MSG_CURRENCY")
     eventFrame:RegisterEvent("CHAT_MSG_LOOT")
-    eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    -- Currency refresh is event-driven; no QUEST_LOG_UPDATE polling needed.
+    -- Idle mode is loot-driven: keep only loot currency refresh on the dedicated frame.
     sessionStart = {}
     sessionBaselineReady = false
     UpdateLastKnownQuantities()

@@ -15,6 +15,29 @@ local GetTime = _G.GetTime
 local GetZoneText = _G.GetZoneText
 local GetQuestLink = _G.GetQuestLink
 
+local function IsRestrictedInstance()
+    if type(IsInInstance) == "function" then
+        local ok, inInstance, instanceType = pcall(IsInInstance)
+        if ok and inInstance == true then
+            return instanceType == "pvp"
+                or instanceType == "arena"
+                or instanceType == "party"
+                or instanceType == "raid"
+                or instanceType == "scenario"
+                or instanceType == "delve"
+        end
+    end
+
+    if type(_G.IsInScenario) == "function" then
+        local okScenario, inScenario = pcall(_G.IsInScenario)
+        if okScenario and inScenario == true then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function GetAddonVersionSafe()
     if C_AddOns and type(C_AddOns.GetAddOnMetadata) == "function" then
         local ok, version = pcall(C_AddOns.GetAddOnMetadata, "Preydator", "Version")
@@ -448,6 +471,11 @@ function DebugInspectModule:OnSlashCommand(text, rest)
         and text ~= "inspectquest" and text ~= "inspectquestbug" and text ~= "inspectquestbs" and text ~= "inspectquestboth"
         and text ~= "qinspect" then
         return false
+    end
+
+    if IsRestrictedInstance() then
+        print("Preydator: inspect is unavailable in restricted instances.")
+        return true
     end
 
     local isQuestInspect = (text == "inspectquest" or text == "inspectquestbug" or text == "inspectquestbs" or text == "inspectquestboth" or text == "qinspect")

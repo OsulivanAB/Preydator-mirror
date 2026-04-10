@@ -137,7 +137,7 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
     end
 
     if event == "NAME_PLATE_UNIT_ADDED" then
-        if type(ctx.tryHandleEchoOfPredationNameplate) == "function" then
+        if (not isRestrictedInstance) and type(ctx.tryHandleEchoOfPredationNameplate) == "function" then
             ctx.tryHandleEchoOfPredationNameplate(arg1, event)
         end
         return true

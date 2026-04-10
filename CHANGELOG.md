@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.1 - 2026-04-10
+
+### Changed
+- Added an idle-off runtime mode for core prey tracking events. With no active prey quest, Preydator now unregisters prey runtime event listeners and keeps only bootstrap/quest-accept detection active until a live prey quest exists.
+- Reduced CurrencyTracker idle event subscriptions to loot-only refresh on its dedicated event frame.
+
+### Fixed
+- Fixed an Echo of Predation nameplate taint path in restricted instances introduced in 2.2.0. Nameplate Echo processing is now blocked unless prey runtime is active and context-valid.
+- Hardened debug slash handlers (`/pd huntdebug`, `/pd inspect`) to fail closed in restricted instances instead of running broad snapshot/inspect reads. These paths were exposed by the expanded slash-command surface added in 2.2.0.
+
 ## 2.2.0 - 2026-04-10
 
 ### Added

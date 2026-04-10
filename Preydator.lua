@@ -629,6 +629,7 @@ local state = {
     pollingActive = false,
     nextPollingEligibilityCheckAt = 0,
     pendingWidgetSuppressionAfterCombat = false,
+    corePreyEventsRegistered = false,
 }
 
 local UPDATE_INTERVAL_SECONDS = 0.5
@@ -1712,6 +1713,15 @@ end
 TryHandleEchoOfPredationNameplate = function(unitToken, source)
     local unitGUID = _G.UnitGUID
     if type(unitToken) ~= "string" or unitToken == "" or type(unitGUID) ~= "function" then
+        return false
+    end
+
+    if IsRestrictedInstanceForPreyBar() then
+        return false
+    end
+
+    local activeQuestID = GetCurrentActivePreyQuestCached(0)
+    if not IsValidQuestID(activeQuestID) then
         return false
     end
 
@@ -5411,6 +5421,67 @@ local function HandleSlashCommand(message)
     print("Preydator: Slash command module is unavailable.")
 end
 
+state.coreAlwaysEvents = {
+    "ADDON_LOADED",
+    "PLAYER_LOGIN",
+    "QUEST_ACCEPTED",
+}
+
+state.corePreyRuntimeEvents = {
+    "PLAYER_ENTERING_WORLD",
+    "UPDATE_UI_WIDGET",
+    "UPDATE_ALL_UI_WIDGETS",
+    "QUEST_TURNED_IN",
+    "QUEST_REMOVED",
+    "CHAT_MSG_SYSTEM",
+    "CHAT_MSG_MONSTER_SAY",
+    "CHAT_MSG_MONSTER_YELL",
+    "CHAT_MSG_MONSTER_EMOTE",
+    "RAID_BOSS_EMOTE",
+    "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
+    "QUEST_DETAIL",
+    "NAME_PLATE_UNIT_ADDED",
+    "ZONE_CHANGED",
+    "ZONE_CHANGED_INDOORS",
+    "ZONE_CHANGED_NEW_AREA",
+    "PLAYER_REGEN_ENABLED",
+}
+
+function Preydator:SetCorePreyRuntimeEventsRegistered(enabled)
+    local shouldRegister = enabled == true
+    for _, eventName in ipairs(state.corePreyRuntimeEvents or {}) do
+        if shouldRegister then
+            frame:RegisterEvent(eventName)
+        else
+            frame:UnregisterEvent(eventName)
+        end
+    end
+end
+
+function Preydator:ShouldEnableCorePreyRuntimeEvents()
+    local trackedQuestID = state and state.activeQuestID or nil
+    if IsValidQuestID(trackedQuestID) and IsQuestStillActive(trackedQuestID) then
+        return true
+    end
+
+    local liveQuestID = GetCurrentActivePreyQuestCached(0)
+    if IsValidQuestID(liveQuestID) and IsQuestStillActive(liveQuestID) then
+        return true
+    end
+
+    return false
+end
+
+function Preydator:SyncCorePreyRuntimeEvents()
+    local shouldEnable = self:ShouldEnableCorePreyRuntimeEvents()
+    if shouldEnable == (state.corePreyEventsRegistered == true) then
+        return
+    end
+
+    self:SetCorePreyRuntimeEventsRegistered(shouldEnable)
+    state.corePreyEventsRegistered = shouldEnable
+end
+
 frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     -- Taint safety: nil widget event payload args before any cross-boundary call.
     -- UPDATE_UI_WIDGET args are secret-number widget IDs; passing them as function
@@ -5456,6 +5527,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
                 return TryHandleEchoOfPredationNameplate(unitToken, source)
             end,
         })
+        Preydator:SyncCorePreyRuntimeEvents()
         return
     end
 
@@ -5467,27 +5539,14 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == "Blizzard_UIWidgets" then
         OnBlizzardWidgetsLoaded()
     end
+
+    Preydator:SyncCorePreyRuntimeEvents()
 end)
 
 -- Register addon events once during file load so we do not call RegisterEvent from runtime initialization paths.
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:RegisterEvent("UPDATE_UI_WIDGET")
-frame:RegisterEvent("UPDATE_ALL_UI_WIDGETS")
-frame:RegisterEvent("QUEST_TURNED_IN")
-frame:RegisterEvent("QUEST_REMOVED")
-frame:RegisterEvent("CHAT_MSG_SYSTEM")
-frame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
-frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
-frame:RegisterEvent("CHAT_MSG_MONSTER_EMOTE")
-frame:RegisterEvent("RAID_BOSS_EMOTE")
-frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
-frame:RegisterEvent("QUEST_DETAIL")
 frame:RegisterEvent("QUEST_ACCEPTED")
-frame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-frame:RegisterEvent("ZONE_CHANGED")
-frame:RegisterEvent("ZONE_CHANGED_INDOORS")
-frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+
+Preydator:SetCorePreyRuntimeEventsRegistered(false)
 
