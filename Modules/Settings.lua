@@ -97,6 +97,7 @@ local CHANNEL_OPTIONS = {
     SFX = { text = L["SFX"] },
     Dialog = { text = L["Dialog"] },
     Ambience = { text = L["Ambience"] },
+    Music = { text = L["Music"] },
 }
 
 local BAR_ACCESSIBILITY_OPTIONS = {
@@ -2321,7 +2322,7 @@ local function BuildSoundsPage(owner, parent)
 
     local content = CreateFrame("Frame", nil, contentViewport)
     content:SetPoint("TOPLEFT", contentViewport, "TOPLEFT", 0, 0)
-    content:SetSize(PANEL_WIDTH - 160, 560)
+    content:SetSize(PANEL_WIDTH - 160, 620)
     contentViewport:SetScrollChild(content)
 
     local contentScrollSlider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
@@ -2405,6 +2406,12 @@ local function BuildSoundsPage(owner, parent)
         db.bloodyCommandVisualEnabled = value and true or false
         api.NormalizeAmbushSettings()
     end))
+    TrackSoundsControl(CreateCheckbox(content, COLUMN_RIGHT_X, -66, L["Silence Arator (Astalor Bloodsworn)"], function()
+        return db.silenceArator == true
+    end, function(value)
+        db.silenceArator = value and true or false
+        api.ApplyAratorSilencing()
+    end))
 
     TrackSoundsControl(CreateDropdown(content, COLUMN_LEFT_X, -82, L["Sound Channel"], 170, function()
         return CHANNEL_OPTIONS
@@ -2465,10 +2472,14 @@ local function BuildSoundsPage(owner, parent)
         db.bloodyCommandSoundPath = key
         api.NormalizeAmbushSettings()
     end))
-    TrackSoundsControl(CreateSlider(content, COLUMN_LEFT_X, -484, L["Enhance Sounds"], 0, 100, 5, function() return db.soundEnhance or 0 end, function(value)
-        db.soundEnhance = math.floor(value + 0.5)
-    end, function(value) return tostring(math.floor(value + 0.5)) end))
-
+    TrackSoundsControl(CreateDropdown(content, COLUMN_LEFT_X, -484, L["Echo of Predation Sound"], 170, function()
+        return api.BuildSoundDropdownOptions()
+    end, function()
+        return db.echoOfPredationSoundPath
+    end, function(key)
+        db.echoOfPredationSoundPath = key
+        api.NormalizeAmbushSettings()
+    end))
     CreateSectionTitle(content, COLUMN_RIGHT_X, -102, L["Custom Files / Tests"])
     local customSoundInput = CreateTextInput(content, COLUMN_RIGHT_X, -132, L["Custom Sound File"], 220, function()
         return ""
@@ -2505,7 +2516,9 @@ local function BuildSoundsPage(owner, parent)
     end)
     TrackSoundsControl(removeFileButton)
 
-    local testStage1Button = CreateActionButton(content, COLUMN_RIGHT_X, -222, 140, string.format(L["Test Stage %d"], 1), function()
+    local TEST_SOUND_BUTTON_WIDTH = 190
+
+    local testStage1Button = CreateActionButton(content, COLUMN_RIGHT_X, -222, TEST_SOUND_BUTTON_WIDTH, string.format(L["Test Stage %d"], 1), function()
         local path = api.ResolveStageSoundPath(1)
         if not path then
             print(string.format(L["Preydator: No stage %d sound configured."], 1))
@@ -2517,7 +2530,7 @@ local function BuildSoundsPage(owner, parent)
     end)
     TrackSoundsControl(testStage1Button)
 
-    local testStage2Button = CreateActionButton(content, COLUMN_RIGHT_X, -252, 140, string.format(L["Test Stage %d"], 2), function()
+    local testStage2Button = CreateActionButton(content, COLUMN_RIGHT_X, -252, TEST_SOUND_BUTTON_WIDTH, string.format(L["Test Stage %d"], 2), function()
         local path = api.ResolveStageSoundPath(2)
         if not path then
             print(string.format(L["Preydator: No stage %d sound configured."], 2))
@@ -2529,7 +2542,7 @@ local function BuildSoundsPage(owner, parent)
     end)
     TrackSoundsControl(testStage2Button)
 
-    local testStage3Button = CreateActionButton(content, COLUMN_RIGHT_X, -282, 140, string.format(L["Test Stage %d"], 3), function()
+    local testStage3Button = CreateActionButton(content, COLUMN_RIGHT_X, -282, TEST_SOUND_BUTTON_WIDTH, string.format(L["Test Stage %d"], 3), function()
         local path = api.ResolveStageSoundPath(3)
         if not path then
             print(string.format(L["Preydator: No stage %d sound configured."], 3))
@@ -2541,7 +2554,7 @@ local function BuildSoundsPage(owner, parent)
     end)
     TrackSoundsControl(testStage3Button)
 
-    local testStage4Button = CreateActionButton(content, COLUMN_RIGHT_X, -312, 140, string.format(L["Test Stage %d"], 4), function()
+    local testStage4Button = CreateActionButton(content, COLUMN_RIGHT_X, -312, TEST_SOUND_BUTTON_WIDTH, string.format(L["Test Stage %d"], 4), function()
         local path = api.ResolveStageSoundPath(4)
         if not path then
             print(string.format(L["Preydator: No stage %d sound configured."], 4))
@@ -2553,7 +2566,7 @@ local function BuildSoundsPage(owner, parent)
     end)
     TrackSoundsControl(testStage4Button)
 
-    local testAmbushButton = CreateActionButton(content, COLUMN_RIGHT_X, -342, 140, L["Test Ambush"], function()
+    local testAmbushButton = CreateActionButton(content, COLUMN_RIGHT_X, -342, TEST_SOUND_BUTTON_WIDTH, L["Test Ambush"], function()
         local path = api.ResolveAmbushSoundPath()
         if not path then
             print("Preydator: No ambush sound configured.")
@@ -2564,7 +2577,7 @@ local function BuildSoundsPage(owner, parent)
         end
     end)
     TrackSoundsControl(testAmbushButton)
-    local testBloodyCommandButton = CreateActionButton(content, COLUMN_RIGHT_X, -372, 140, L["Test Bloody Command"], function()
+    local testBloodyCommandButton = CreateActionButton(content, COLUMN_RIGHT_X, -372, TEST_SOUND_BUTTON_WIDTH, L["Test Bloody Command"], function()
         local path = api.ResolveBloodyCommandSoundPath()
         if not path then
             print("Preydator: No Bloody Command sound configured.")
@@ -2575,12 +2588,27 @@ local function BuildSoundsPage(owner, parent)
         end
     end)
     TrackSoundsControl(testBloodyCommandButton)
+    local testEchoOfPredationButton = CreateActionButton(content, COLUMN_RIGHT_X, -402, TEST_SOUND_BUTTON_WIDTH, L["Test Echo of Predation"], function()
+        local path = api.ResolveEchoOfPredationSoundPath()
+        if not path then
+            print("Preydator: No Echo of Predation sound configured.")
+            return
+        end
+        if not api.PlayTestSound(path) then
+            print("Preydator: Echo of Predation sound file failed to play. Ensure this file exists as .ogg: " .. tostring(path))
+        end
+    end)
+    TrackSoundsControl(testEchoOfPredationButton)
     local note = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    note:SetPoint("TOPLEFT", content, "TOPLEFT", COLUMN_RIGHT_X, -412)
+    note:SetPoint("TOPLEFT", content, "TOPLEFT", COLUMN_RIGHT_X, -442)
     note:SetWidth(250)
     note:SetJustifyH("LEFT")
     note:SetWordWrap(true)
     note:SetText(L["HINT_AUDIO_SLIDER"])
+
+    TrackSoundsControl(CreateSlider(content, COLUMN_RIGHT_X, -484, L["Enhance Sounds"], 0, 100, 5, function() return db.soundEnhance or 0 end, function(value)
+        db.soundEnhance = math.floor(value + 0.5)
+    end, function(value) return tostring(math.floor(value + 0.5)) end))
 
     RegisterRefresher(owner, {
         PreydatorRefresh = function()
@@ -3409,6 +3437,12 @@ local function BuildAdvancedPage(owner, parent)
 
     CreateActionButton(parent, ADV_LEFT_X, -234, ADV_BUTTON_WIDTH, L["Show What's New"], function()
         db.currencyWhatsNewSeenVersion = nil
+        db.soundDefaultsPromptSeenVersion = nil
+
+        if type(Preydator.ShowSoundDefaultsPromptIfNeeded) == "function" then
+            Preydator:ShowSoundDefaultsPromptIfNeeded()
+        end
+
         local tracker = Preydator:GetModule("CurrencyTracker")
         if tracker and type(tracker.ShowCurrencyWhatsNew) == "function" then
             tracker:ShowCurrencyWhatsNew(true)
@@ -3466,6 +3500,9 @@ local function BuildAdvancedPage(owner, parent)
         db.bloodyCommandSoundEnabled = defaults.bloodyCommandSoundEnabled
         db.bloodyCommandVisualEnabled = defaults.bloodyCommandVisualEnabled
         db.bloodyCommandSoundPath = defaults.bloodyCommandSoundPath
+        db.echoOfPredationSoundPath = defaults.echoOfPredationSoundPath
+        db.silenceArator = defaults.silenceArator
+        api.ApplyAratorSilencing()
         db.soundFileNames = {}
         for _, fileName in ipairs(constants.DEFAULT_SOUND_FILENAMES) do
             db.soundFileNames[#db.soundFileNames + 1] = fileName

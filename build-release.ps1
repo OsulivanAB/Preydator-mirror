@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "2.1.17",
+    [string]$Version = "2.2.0",
     [string]$OutputDirectory
 )
 
@@ -28,16 +28,25 @@ $stagingAddonDir = Join-Path $stagingDir $addonName
 try {
     New-Item -ItemType Directory -Path $stagingAddonDir -Force | Out-Null
 
-    Get-ChildItem -LiteralPath $addonRoot -Force | Where-Object {
-        $_.Name -ne ".release-staging" -and
-        $_.Name -ne "issues" -and
-        $_.Name -ne "CURSEFORGE_DESCRIPTION.md" -and
-        $_.Name -ne ".gitattributes" -and
-        $_.Name -ne ".git" -and
-        $_.Name -ne ".vscode" -and
-        $_.Name -ne "build-release.ps1"
-    } | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $stagingAddonDir -Recurse -Force
+    $releaseInclude = @(
+        "Preydator.toc",
+        "Preydator.lua",
+        "README.md",
+        "CHANGELOG.md",
+        "Core",
+        "Modules",
+        "Locales",
+        "media",
+        "sounds"
+    )
+
+    foreach ($entry in $releaseInclude) {
+        $sourcePath = Join-Path $addonRoot $entry
+        if (-not (Test-Path -LiteralPath $sourcePath)) {
+            throw ("Release include is missing: {0}" -f $entry)
+        }
+
+        Copy-Item -LiteralPath $sourcePath -Destination $stagingAddonDir -Recurse -Force
     }
 
     [System.IO.Compression.ZipFile]::CreateFromDirectory(

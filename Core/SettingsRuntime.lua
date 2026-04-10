@@ -362,18 +362,25 @@ function SettingsRuntime:NormalizeAmbushSettings(settings, ctx)
     settings.bloodyCommandSoundEnabled = settings.bloodyCommandSoundEnabled ~= false
     settings.bloodyCommandVisualEnabled = settings.bloodyCommandVisualEnabled ~= false
 
-    local killSoundPath = (ctx and ctx.killSoundPath) or ""
+    local legacyFallbackPath = (ctx and ctx.killSoundPath) or ""
+    local ambushDefaultSoundPath = (ctx and ctx.ambushDefaultSoundPath) or legacyFallbackPath
+    local bloodyDefaultSoundPath = (ctx and ctx.bloodyDefaultSoundPath) or legacyFallbackPath
+    local echoSoundPath = (ctx and ctx.echoSoundPath) or bloodyDefaultSoundPath
     if type(settings.ambushSoundPath) ~= "string" or settings.ambushSoundPath == "" then
         local legacySoundKey = settings.ambushSoundKey
         if ctx and type(ctx.getSoundPathForKey) == "function" then
-            settings.ambushSoundPath = ctx.getSoundPathForKey(legacySoundKey, killSoundPath)
+            settings.ambushSoundPath = ctx.getSoundPathForKey(legacySoundKey, ambushDefaultSoundPath)
         else
-            settings.ambushSoundPath = killSoundPath
+            settings.ambushSoundPath = ambushDefaultSoundPath
         end
     end
 
     if type(settings.bloodyCommandSoundPath) ~= "string" or settings.bloodyCommandSoundPath == "" then
-        settings.bloodyCommandSoundPath = killSoundPath
+        settings.bloodyCommandSoundPath = bloodyDefaultSoundPath
+    end
+
+    if type(settings.echoOfPredationSoundPath) ~= "string" or settings.echoOfPredationSoundPath == "" then
+        settings.echoOfPredationSoundPath = echoSoundPath
     end
 
     settings.ambushSoundKey = nil

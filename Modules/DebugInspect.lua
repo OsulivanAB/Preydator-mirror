@@ -289,6 +289,65 @@ local function BuildInspectReport()
         .. " | onlyShowInPreyZone=" .. tostring(settings and settings.onlyShowInPreyZone == true)
         .. " | disableDefaultPreyIcon=" .. tostring(settings and settings.disableDefaultPreyIcon == true))
 
+    local preyWidgetVisible = suppressionDebug and suppressionDebug.preyIconShown == true
+    local onlyShowInPreyZone = settings and settings.onlyShowInPreyZone == true
+    local forceShowBar = state and state.forceShowBar == true
+    local forceKillStage = now < ((state and state.killStageUntil) or 0)
+    local forceAmbushAlert = now < ((state and state.ambushAlertUntil) or 0)
+    local forceBloodyCommandAlert = now < ((state and state.bloodyCommandAlertUntil) or 0)
+    local isOutOfPreyZone = hasActiveQuest and state and state.inPreyZone == false
+    local inStageFourInZone = state and state.stage == 4
+        and (state.inPreyZone == true or (state.inPreyZone == nil and preyWidgetVisible))
+    local editModePreview = settings and settings.showInEditMode == true and _G.EditModeManagerFrame and _G.EditModeManagerFrame.IsShown and _G.EditModeManagerFrame:IsShown()
+    local isRestrictedInstance = inInstance == true and (
+        instanceType == "pvp"
+        or instanceType == "arena"
+        or instanceType == "party"
+        or instanceType == "raid"
+        or instanceType == "scenario"
+        or instanceType == "delve"
+    )
+
+    local shouldShowBar = false
+    local visibilityReason = "default"
+    if isRestrictedInstance and not editModePreview then
+        shouldShowBar = false
+        visibilityReason = "restricted-instance"
+    elseif forceShowBar then
+        shouldShowBar = true
+        visibilityReason = "forceShowBar"
+    elseif forceKillStage then
+        shouldShowBar = true
+        visibilityReason = "killStage"
+    elseif forceAmbushAlert then
+        shouldShowBar = true
+        visibilityReason = "ambushAlert"
+    elseif forceBloodyCommandAlert then
+        shouldShowBar = true
+        visibilityReason = "bloodyCommandAlert"
+    elseif editModePreview then
+        shouldShowBar = true
+        visibilityReason = "editModePreview"
+    elseif onlyShowInPreyZone then
+        shouldShowBar = (hasActiveQuest and state and state.inPreyZone == true) or inStageFourInZone
+        visibilityReason = shouldShowBar and "onlyShowInPreyZone-pass" or "onlyShowInPreyZone-block"
+    else
+        shouldShowBar = true
+        visibilityReason = "always-show"
+    end
+
+    add("- visibility shouldShowBar=" .. tostring(shouldShowBar)
+        .. " | reason=" .. tostring(visibilityReason)
+        .. " | forceShowBar=" .. tostring(forceShowBar)
+        .. " | forceKillStage=" .. tostring(forceKillStage)
+        .. " | forceAmbushAlert=" .. tostring(forceAmbushAlert)
+        .. " | forceBloodyCommandAlert=" .. tostring(forceBloodyCommandAlert)
+        .. " | outOfPreyZone=" .. tostring(isOutOfPreyZone)
+        .. " | stage4InZone=" .. tostring(inStageFourInZone)
+        .. " | preyWidgetVisible=" .. tostring(preyWidgetVisible)
+        .. " | restricted=" .. tostring(isRestrictedInstance)
+        .. " | editModePreview=" .. tostring(editModePreview))
+
     local suppressionDebug = nil
     if type(Preydator.GetWidgetSuppressionDebug) == "function" then
         local okSuppression, data = pcall(Preydator.GetWidgetSuppressionDebug)

@@ -73,7 +73,7 @@ FILL_DIRECTION_UP = "up"
 FILL_DIRECTION_DOWN = "down"
 local FILL_INSET = 3
 local AMBUSH_ALERT_DURATION_SECONDS = 6
-local AMBUSH_SOUND_COOLDOWN_SECONDS = 45
+local AMBUSH_SOUND_COOLDOWN_SECONDS = 80
 local QUEST_LISTEN_BURST_SECONDS = 6
 local ACTIVE_PREY_QUEST_CACHE_SECONDS = 0.75
 local AMBUSH_SOUND_ALERT = "alert"
@@ -84,14 +84,22 @@ local SOUND_FOLDER_PREFIX = "Interface\\AddOns\\Preydator\\sounds\\"
 local DEFAULT_SOUND_FILENAMES = {
     "predator-alert.ogg",
     "predator-ambush.ogg",
+    "predator-snarl-01.ogg",
     "predator-torment.ogg",
     "predator-kill.ogg",
+    "well-we-ve-prepared-a-trap-for-this-predator.ogg",
+    "predator-kills-its-prey-to-survive.ogg",
+    "echo-of-predation.ogg",
 }
 local PROTECTED_SOUND_FILENAMES = {
     ["predator-alert.ogg"] = true,
     ["predator-ambush.ogg"] = true,
+    ["predator-snarl-01.ogg"] = true,
     ["predator-torment.ogg"] = true,
     ["predator-kill.ogg"] = true,
+    ["well-we-ve-prepared-a-trap-for-this-predator.ogg"] = true,
+    ["predator-kills-its-prey-to-survive.ogg"] = true,
+    ["echo-of-predation.ogg"] = true,
 }
 local DEFAULT_STAGE_LABELS = {
     [1] = _G.PreydatorL["Scent in the Wind"],
@@ -128,11 +136,32 @@ local FONT_PRESETS = {
     morpheus = "Fonts\\MORPHEUS.TTF",
 }
 
+-- Astalor Bloodsworn (Bloody Command) sound file IDs sourced from Blizzard game data.
+-- Applied via MuteSoundFile / UnmuteSoundFile to suppress ambient dialogue during hunts.
+local ARATOR_SOUND_IDS = {
+    7507693, 7507690, 7507696, 7507699, 7507702, 7507712, 7507722,
+    7525928, 7525931, 7525934, 7525937, 7525940,
+    7250945, 7250953, 7250960, 7250968, 7250975, 7250984, 7250991, 7250998,
+    7263657,
+    7372781, 7372784, 7372787, 7372790, 7372793, 7372796, 7372802,
+    7507617, 7507629, 7507632, 7507637, 7507641, 7507656, 7507659, 7507663, 7507666,
+    7250819, 7250822, 7250825, 7250828, 7250831, 7250835, 7250840, 7250843,
+    7250849, 7250855, 7250861, 7250864, 7250867, 7250870, 7250873, 7250879,
+    7250883, 7250888, 7250895, 7250902, 7250907, 7250912, 7250919, 7250931, 7250938,
+    7250657, 7250661, 7250670, 7250676, 7250681, 7250686, 7250691, 7250700,
+    7250705, 7250720, 7250747, 7250753, 7250760, 7250766, 7250771, 7250774,
+    7250777, 7250780, 7250783, 7250786, 7250792, 7250795, 7250798, 7250801, 7250816,
+    7250516, 7250520, 7250526, 7250532, 7250535, 7250538, 7250541, 7250544,
+    7250550, 7250559, 7250562, 7250577, 7250583, 7250586, 7250591, 7250599,
+    7250608, 7250614, 7250618, 7250629, 7250635, 7250642, 7250646, 7250652,
+}
+
 -- Forward declaration for helpers used before their implementation block.
 local NormalizeSoundSettings
 local GetSoundPathForKey
 local IsValidQuestID
 local ShouldSuppressDefaultPreyEncounter
+local ApplyAratorSilencing
 
 local DEFAULTS = {
     point = { anchor = "CENTER", relativePoint = "CENTER", x = 0, y = 472 },
@@ -172,19 +201,24 @@ local DEFAULTS = {
         [4] = DEFAULT_STAGE_LABELS[4],
     },
     stageSounds = {
-        [1] = ALERT_SOUND_PATH,
-        [2] = AMBUSH_SOUND_PATH,
+        [1] = AMBUSH_SOUND_PATH,
+        [2] = "Interface\\AddOns\\Preydator\\sounds\\predator-snarl-01.ogg",
         [3] = TORMENT_SOUND_PATH,
         [4] = KILL_SOUND_PATH,
     },
     soundsEnabled = true,
     soundChannel = "SFX",
+    silenceArator = false,
     soundEnhance = 0,
     soundFileNames = {
         "predator-alert.ogg",
         "predator-ambush.ogg",
+        "predator-snarl-01.ogg",
         "predator-torment.ogg",
         "predator-kill.ogg",
+        "well-we-ve-prepared-a-trap-for-this-predator.ogg",
+        "predator-kills-its-prey-to-survive.ogg",
+        "echo-of-predation.ogg",
     },
     debugSounds = false,
     debugBloodyCommand = false,
@@ -267,10 +301,12 @@ local DEFAULTS = {
     huntScannerAchievementTooltip = true,
     ambushSoundEnabled = true,
     ambushVisualEnabled = true,
-    ambushSoundPath = KILL_SOUND_PATH,
+    ambushSoundPath = "Interface\\AddOns\\Preydator\\sounds\\well-we-ve-prepared-a-trap-for-this-predator.ogg",
     bloodyCommandSoundEnabled = true,
     bloodyCommandVisualEnabled = true,
-    bloodyCommandSoundPath = KILL_SOUND_PATH,
+    bloodyCommandSoundPath = "Interface\\AddOns\\Preydator\\sounds\\predator-kills-its-prey-to-survive.ogg",
+    echoOfPredationSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg",
+    soundDefaultsPromptSeenVersion = nil,
     showTicks = true,
     showSparkLine = false,
     tickLayerMode = LAYER_MODE_ABOVE,
@@ -407,6 +443,8 @@ local ExtractWidgetQuestID
 local AddDebugLog
 local TryPlaySound
 local TryPlayStageSound
+local TryPlayEchoOfPredationEncounter
+local TryHandleEchoOfPredationNameplate
 local UpdateBarDisplay
 local ApplyBarSettings
 local ApplyDefaultPreyIconVisibility
@@ -415,6 +453,132 @@ local BarRuntimeApplyHandler
 local BarRuntimeUpdateHandler
 local OnBlizzardWidgetsLoaded
 local OnPlayerRegenEnabled
+function Preydator:ApplyNewSoundDefaults()
+    if type(settings) ~= "table" then
+        return false
+    end
+
+    settings.stageSounds = settings.stageSounds or {}
+    settings.stageSounds[1] = AMBUSH_SOUND_PATH
+    settings.stageSounds[2] = "Interface\\AddOns\\Preydator\\sounds\\predator-snarl-01.ogg"
+    settings.stageSounds[3] = TORMENT_SOUND_PATH
+    settings.stageSounds[4] = KILL_SOUND_PATH
+
+    settings.ambushSoundPath = "Interface\\AddOns\\Preydator\\sounds\\well-we-ve-prepared-a-trap-for-this-predator.ogg"
+    settings.bloodyCommandSoundPath = "Interface\\AddOns\\Preydator\\sounds\\predator-kills-its-prey-to-survive.ogg"
+    settings.echoOfPredationSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg"
+
+    settings.soundFileNames = settings.soundFileNames or {}
+    local seen = {}
+    for _, fileName in ipairs(settings.soundFileNames) do
+        if type(fileName) == "string" and fileName ~= "" then
+            seen[string.lower(fileName)] = true
+        end
+    end
+    for _, fileName in ipairs(DEFAULT_SOUND_FILENAMES) do
+        local key = string.lower(fileName)
+        if not seen[key] then
+            settings.soundFileNames[#settings.soundFileNames + 1] = fileName
+            seen[key] = true
+        end
+    end
+
+    NormalizeSoundSettings()
+    if self and self.API and type(self.API.NormalizeAmbushSettings) == "function" then
+        self.API.NormalizeAmbushSettings()
+    end
+    UpdateBarDisplay()
+    return true
+end
+
+function Preydator:EnsureSoundDefaultsPromptFrame()
+    if self and self._soundDefaultsPromptFrame then
+        return self._soundDefaultsPromptFrame
+    end
+
+    local frame = CreateFrame("Frame", "PreydatorSoundDefaultsPromptFrame", UIParent, "BackdropTemplate")
+    frame:SetSize(560, 230)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+    end)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    frame:SetBackdropColor(0.05, 0.04, 0.03, 0.96)
+    frame:SetBackdropBorderColor(0.78, 0.62, 0.20, 1)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -18)
+    title:SetText("Preydator Audio Defaults (2.2.0)")
+
+    local body = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    body:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -52)
+    body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -52)
+    body:SetJustifyH("LEFT")
+    body:SetJustifyV("TOP")
+    body:SetWordWrap(true)
+    body:SetText("We have created new default sounds. To move to these defaults, click New Defaults.\n\nTo keep your current defaults, just close this message.")
+
+    local newDefaultsButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    newDefaultsButton:SetSize(140, 24)
+    newDefaultsButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 16)
+    newDefaultsButton:SetText("New Defaults")
+
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    closeButton:SetSize(120, 24)
+    closeButton:SetPoint("RIGHT", newDefaultsButton, "LEFT", -8, 0)
+    closeButton:SetText("Close")
+
+    newDefaultsButton:SetScript("OnClick", function()
+        if Preydator:ApplyNewSoundDefaults() then
+            print("Preydator: Applied 2.2.0 audio defaults.")
+        end
+        if settings then
+            settings.soundDefaultsPromptSeenVersion = "2.2.0-sound-defaults"
+        end
+        frame:Hide()
+    end)
+
+    closeButton:SetScript("OnClick", function()
+        if settings then
+            settings.soundDefaultsPromptSeenVersion = "2.2.0-sound-defaults"
+        end
+        frame:Hide()
+    end)
+
+    frame:Hide()
+    self._soundDefaultsPromptFrame = frame
+    return frame
+end
+
+function Preydator:ShowSoundDefaultsPromptIfNeeded()
+    if type(settings) ~= "table" then
+        return
+    end
+
+    if settings.soundDefaultsPromptSeenVersion == "2.2.0-sound-defaults" then
+        return
+    end
+
+    local frame = self:EnsureSoundDefaultsPromptFrame()
+    if frame and frame.Show then
+        frame:Show()
+    end
+end
 
 local function RunModuleHook(hookName, ...)
     for _, module in pairs(Preydator.modules) do
@@ -450,6 +614,7 @@ local state = {
     preyTargetDifficulty = nil,
     ambushAlertUntil = 0,
     lastAmbushSoundAt = 0,
+    lastEchoOfPredationSoundAt = 0,
     lastAmbushSystemMessage = nil,
     bloodyCommandAlertUntil = 0,
     bloodyCommandSourceName = nil,
@@ -1132,7 +1297,9 @@ local function NormalizeAmbushSettings()
     local runtime = GetRuntimeModule("SettingsRuntime")
     if runtime and type(runtime.NormalizeAmbushSettings) == "function" then
         runtime:NormalizeAmbushSettings(settings, {
-            killSoundPath = KILL_SOUND_PATH,
+            ambushDefaultSoundPath = "Interface\\AddOns\\Preydator\\sounds\\well-we-ve-prepared-a-trap-for-this-predator.ogg",
+            bloodyDefaultSoundPath = "Interface\\AddOns\\Preydator\\sounds\\predator-kills-its-prey-to-survive.ogg",
+            echoSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg",
             getSoundPathForKey = GetSoundPathForKey,
         })
         return
@@ -1145,11 +1312,15 @@ local function NormalizeAmbushSettings()
 
     if type(settings.ambushSoundPath) ~= "string" or settings.ambushSoundPath == "" then
         local legacySoundKey = settings.ambushSoundKey
-        settings.ambushSoundPath = GetSoundPathForKey(legacySoundKey, KILL_SOUND_PATH)
+        settings.ambushSoundPath = GetSoundPathForKey(legacySoundKey, "Interface\\AddOns\\Preydator\\sounds\\well-we-ve-prepared-a-trap-for-this-predator.ogg")
     end
 
     if type(settings.bloodyCommandSoundPath) ~= "string" or settings.bloodyCommandSoundPath == "" then
-        settings.bloodyCommandSoundPath = KILL_SOUND_PATH
+        settings.bloodyCommandSoundPath = "Interface\\AddOns\\Preydator\\sounds\\predator-kills-its-prey-to-survive.ogg"
+    end
+
+    if type(settings.echoOfPredationSoundPath) ~= "string" or settings.echoOfPredationSoundPath == "" then
+        settings.echoOfPredationSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg"
     end
 
     settings.ambushSoundKey = nil
@@ -1475,6 +1646,98 @@ local function TriggerBloodyCommandAlert(spellID, sourceName, source)
     UpdateBarDisplay()
 end
 
+local function IsNightmarePreyQuest(questID)
+    local huntScanner = Preydator and Preydator.GetModule and Preydator:GetModule("HuntScanner")
+    if huntScanner and type(huntScanner.GetQuestMetadata) == "function" then
+        local metadata = huntScanner:GetQuestMetadata(questID)
+        if metadata and metadata.difficulty == "nightmare" then
+            return true
+        end
+    end
+
+    local fallbackDifficulty = state and state.preyTargetDifficulty
+    if type(fallbackDifficulty) == "string" then
+        return string.find(string.lower(fallbackDifficulty), "nightmare", 1, true) ~= nil
+    end
+
+    return false
+end
+
+TryPlayEchoOfPredationEncounter = function(npcID, source)
+    local numericNPCID = tonumber(npcID)
+    if numericNPCID ~= 248365 then
+        return false
+    end
+
+    local activeQuestID = GetCurrentActivePreyQuestCached(0)
+    if not IsValidQuestID(activeQuestID) then
+        AddDebugLog("EchoOfPredation", "rejected | no active prey quest | source=" .. tostring(source), false)
+        return false
+    end
+
+    if not IsNightmarePreyQuest(activeQuestID) then
+        AddDebugLog("EchoOfPredation", "rejected | active prey quest is not nightmare | questID=" .. tostring(activeQuestID), false)
+        return false
+    end
+
+    local inPreyZone = RefreshInPreyZoneStatus(activeQuestID, true)
+    if inPreyZone ~= true then
+        AddDebugLog("EchoOfPredation", "rejected | not in prey zone | questID=" .. tostring(activeQuestID), false)
+        return false
+    end
+
+    local now = GetTime and GetTime() or 0
+    local nextSoundAt = (state.lastEchoOfPredationSoundAt or 0) + 30
+    if now < nextSoundAt then
+        AddDebugLog("EchoOfPredation", "rejected | cooldown active | secondsRemaining=" .. tostring(math.max(0, math.floor(nextSoundAt - now))), false)
+        return false
+    end
+
+    local path = Preydator.API.ResolveEchoOfPredationSoundPath()
+    if not path then
+        AddDebugLog("EchoOfPredation", "rejected | no sound configured", true)
+        return false
+    end
+
+    if TryPlaySound(path, false) then
+        state.lastEchoOfPredationSoundAt = now
+        AddDebugLog("EchoOfPredation", "accepted | npcID=" .. tostring(numericNPCID) .. " | questID=" .. tostring(activeQuestID) .. " | source=" .. tostring(source), true)
+        return true
+    end
+
+    AddDebugLog("EchoOfPredation", "failed | npcID=" .. tostring(numericNPCID) .. " | path=" .. tostring(path), true)
+    return false
+end
+
+TryHandleEchoOfPredationNameplate = function(unitToken, source)
+    local unitGUID = _G.UnitGUID
+    if type(unitToken) ~= "string" or unitToken == "" or type(unitGUID) ~= "function" then
+        return false
+    end
+
+    local guid = unitGUID(unitToken)
+    if type(guid) ~= "string" or guid == "" then
+        return false
+    end
+
+    local npcID = nil
+    if strsplit then
+        local _, _, _, _, _, parsedNPCID = strsplit("-", guid)
+        npcID = tonumber(parsedNPCID)
+    end
+
+    if not npcID then
+        local parsedNPCID = guid:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
+        npcID = tonumber(parsedNPCID)
+    end
+
+    if npcID ~= 248365 then
+        return false
+    end
+
+    return TryPlayEchoOfPredationEncounter(npcID, source)
+end
+
 local function IsQuestStillActive(questID)
     if not questID or questID < 1 then
         return false
@@ -1569,6 +1832,8 @@ TryPlaySound = function(path, ignoreSoundToggle)
         channel = "Dialog"
     elseif lowerChannel == "ambience" then
         channel = "Ambience"
+    elseif lowerChannel == "music" then
+        channel = "Music"
     end
 
     local validChannels = {
@@ -1576,6 +1841,7 @@ TryPlaySound = function(path, ignoreSoundToggle)
         SFX = true,
         Dialog = true,
         Ambience = true,
+        Music = true,
     }
 
     local channelsToTry = {}
@@ -1756,6 +2022,18 @@ ApplyBarSettings = function()
     end
 end
 
+ApplyAratorSilencing = function()
+    if settings and settings.silenceArator then
+        for _, soundID in ipairs(ARATOR_SOUND_IDS) do
+            MuteSoundFile(soundID)
+        end
+    else
+        for _, soundID in ipairs(ARATOR_SOUND_IDS) do
+            UnmuteSoundFile(soundID)
+        end
+    end
+end
+
 local function EnsureBar()
     local customizationV2 = Preydator:GetModule("CustomizationStateV2")
     local barEnabled = true
@@ -1838,7 +2116,6 @@ local function EnsureBar()
         local editModeFrame = _G.EditModeManagerFrame
         local isEditModePreview = editModeFrame and editModeFrame.IsShown and editModeFrame:IsShown()
         local allowStageFourMapClickFallback = settings
-            and settings.disableDefaultPreyIcon == true
             and state
             and state.stage == MAX_STAGE
 
@@ -1906,7 +2183,6 @@ local function EnsureBar()
 
         if button == "LeftButton"
             and settings
-            and settings.disableDefaultPreyIcon == true
             and state
             and state.stage == MAX_STAGE
         then
@@ -2328,6 +2604,7 @@ local function ClearPreyStateAndDisplay()
     state.preyTargetDifficulty = nil
     state.ambushAlertUntil = 0
     state.lastAmbushSoundAt = 0
+    state.lastEchoOfPredationSoundAt = 0
     state.lastAmbushSystemMessage = nil
     state.bloodyCommandAlertUntil = 0
     state.bloodyCommandSourceName = nil
@@ -2453,6 +2730,20 @@ local function CaptureLivePreyHuntFrames()
             preyHuntIconFrame = child
         end
     end
+end
+
+local function IsAnyTrackedPreyWidgetShown()
+    if preyHuntIconFrame and preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown() then
+        return true
+    end
+
+    for frameRef in pairs(PREY_WIDGET_FRAMES) do
+        if frameRef and frameRef.IsShown and frameRef:IsShown() then
+            return true
+        end
+    end
+
+    return false
 end
 
 local function IsLikelyAnimatedVisualRegion(region)
@@ -2766,16 +3057,29 @@ ApplyDefaultPreyIconVisibility = function()
     CaptureLivePreyHuntFrames()
 
     if settings.disableDefaultPreyIcon ~= true then
-        if preyHuntIconFrame then
-            ApplyWidgetFrameSuppression(preyHuntIconFrame, false)
-            if state
-                and state.inPreyZone == true
-                and preyHuntIconFrame.IsShown
-                and not preyHuntIconFrame:IsShown()
-                and preyHuntIconFrame.Show then
-                pcall(preyHuntIconFrame.Show, preyHuntIconFrame)
+        local function restoreFrame(frameRef)
+            if not frameRef then
+                return
+            end
+
+            ApplyWidgetFrameSuppression(frameRef, false)
+            if frameRef.IsShown
+                and not frameRef:IsShown()
+                and frameRef.Show then
+                pcall(frameRef.Show, frameRef)
             end
         end
+
+        if preyHuntIconFrame then
+            restoreFrame(preyHuntIconFrame)
+        end
+
+        for frameRef in pairs(PREY_WIDGET_FRAMES) do
+            if frameRef and frameRef ~= preyHuntIconFrame then
+                restoreFrame(frameRef)
+            end
+        end
+
         state.pendingWidgetSuppressionAfterCombat = false
         suppressionRetryPending = false
         suppressionRetryCount = 0
@@ -2930,122 +3234,20 @@ local function SafeToNumber(value)
     return nil
 end
 
-local function TryGetPreyQuestWaypoint(questID)
-    if not IsValidQuestID(questID) then
-        return nil, nil, nil
-    end
-
-    if C_QuestLog and C_QuestLog.GetNextWaypoint then
-        local okWaypoint, waypoint = pcall(C_QuestLog.GetNextWaypoint, questID)
-        waypoint = okWaypoint and waypoint or nil
-        if type(waypoint) == "table" then
-            local waypointPosition = SafeFieldRead(waypoint, "position")
-            local waypointMapID = SafeToNumber(SafeFieldRead(waypoint, "uiMapID")) or SafeToNumber(SafeFieldRead(waypoint, "mapID"))
-            local waypointX = SafeToNumber(type(waypointPosition) == "table" and SafeFieldRead(waypointPosition, "x") or nil)
-                or SafeToNumber(SafeFieldRead(waypoint, "x"))
-            local waypointY = SafeToNumber(type(waypointPosition) == "table" and SafeFieldRead(waypointPosition, "y") or nil)
-                or SafeToNumber(SafeFieldRead(waypoint, "y"))
-            if waypointMapID and waypointMapID > 0 and waypointX and waypointY then
-                return waypointMapID, waypointX, waypointY
-            end
-        end
-    end
-
-    local mapCandidates = {}
-    local seenMapIDs = {}
-
-    local function addMapCandidate(mapID)
-        mapID = SafeToNumber(mapID)
-        if mapID and mapID > 0 and not seenMapIDs[mapID] then
-            seenMapIDs[mapID] = true
-            mapCandidates[#mapCandidates + 1] = mapID
-        end
-    end
-
-    addMapCandidate(state and state.preyZoneMapID)
-    if C_Map and C_Map.GetBestMapForUnit then
-        local okPlayerMapID, playerMapID = pcall(C_Map.GetBestMapForUnit, "player")
-        addMapCandidate(okPlayerMapID and playerMapID or nil)
-    end
-
-    if C_TaskQuest and C_TaskQuest.GetQuestLocation then
-        for _, mapID in ipairs(mapCandidates) do
-            local okCoords, x, y = pcall(C_TaskQuest.GetQuestLocation, questID, mapID)
-            if not okCoords then
-                x, y = nil, nil
-            end
-            x = SafeToNumber(x)
-            y = SafeToNumber(y)
-            if x and y then
-                return mapID, x, y
-            end
-        end
-    end
-
-    if C_QuestLog and C_QuestLog.GetQuestsOnMap then
-        for _, mapID in ipairs(mapCandidates) do
-            local okQuests, questsOnMap = pcall(C_QuestLog.GetQuestsOnMap, mapID)
-            questsOnMap = okQuests and questsOnMap or nil
-            if type(questsOnMap) == "table" then
-                for _, questInfo in ipairs(questsOnMap) do
-                    local infoQuestID = SafeToNumber(SafeFieldRead(questInfo, "questID"))
-                    local infoX = SafeToNumber(SafeFieldRead(questInfo, "x"))
-                    local infoY = SafeToNumber(SafeFieldRead(questInfo, "y"))
-                    if infoQuestID == questID and infoX and infoY then
-                        return mapID, infoX, infoY
-                    end
-                end
-            end
-        end
-    end
-
-    return nil, nil, nil
-end
-
 TryOpenPreyQuestOnMap = function()
     local questID = SafeToNumber(state and state.activeQuestID)
     if not IsValidQuestID(questID) then
         return false
     end
 
-    -- Avoid protected world-map pin mutations while in combat lockdown.
-    -- We still attempt to set quest super-track so the objective is tracked.
-    local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
-
-    local superTrackedQuest = false
-
+    -- Stage 4 bar click behavior: only super-track the active prey quest.
+    -- Do not open the world map or set user waypoints here.
     if C_SuperTrack and type(C_SuperTrack.SetSuperTrackedQuestID) == "function" then
         local ok = pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
-        superTrackedQuest = ok == true
+        return ok == true
     end
 
-    if inCombat then
-        return superTrackedQuest
-    end
-
-    if _G.OpenQuestMap then
-        pcall(_G.OpenQuestMap)
-    elseif _G.ToggleWorldMap then
-        pcall(_G.ToggleWorldMap)
-    elseif _G.WorldMapFrame and _G.WorldMapFrame.Show then
-        pcall(_G.WorldMapFrame.Show, _G.WorldMapFrame)
-    end
-
-    -- Prefer quest super-tracking (same behavior as clicking the default icon).
-    -- Fall back to user waypoint only when quest super-track API is unavailable.
-    if not superTrackedQuest then
-        local mapID, x, y = TryGetPreyQuestWaypoint(questID)
-        if mapID and x and y and C_Map and C_Map.SetUserWaypoint and _G.UiMapPoint and _G.UiMapPoint.CreateFromCoordinates then
-            local okWaypoint, waypointPoint = pcall(_G.UiMapPoint.CreateFromCoordinates, mapID, x, y)
-            waypointPoint = okWaypoint and waypointPoint or nil
-            pcall(C_Map.SetUserWaypoint, waypointPoint)
-            if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
-                pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
-            end
-        end
-    end
-    
-    return true
+    return false
 end
 
 local function UpdatePreyDisplay()
@@ -3099,6 +3301,8 @@ NormalizeSoundSettings = function()
         settings.soundChannel = "Dialog"
     elseif channelLower == "ambience" then
         settings.soundChannel = "Ambience"
+    elseif channelLower == "music" then
+        settings.soundChannel = "Music"
     else
         settings.soundChannel = "SFX"
     end
@@ -3154,6 +3358,14 @@ NormalizeSoundSettings = function()
         })
     end
     pushFileName(extractedAmbush)
+
+    local extractedEchoOfPredation = nil
+    if runtime and type(runtime.ExtractAddonSoundFileName) == "function" then
+        extractedEchoOfPredation = runtime:ExtractAddonSoundFileName(settings.echoOfPredationSoundPath, {
+            soundFolderPrefix = SOUND_FOLDER_PREFIX,
+        })
+    end
+    pushFileName(extractedEchoOfPredation)
     settings.soundFileNames = mergedNames
 
     local allowedPathLower = {}
@@ -3215,6 +3427,12 @@ NormalizeSoundSettings = function()
         and (type(settings.bloodyCommandSoundPath) ~= "string" or not allowedPathLower[string.lower(settings.bloodyCommandSoundPath)])
     then
         settings.bloodyCommandSoundPath = KILL_SOUND_PATH
+    end
+
+    if settings.echoOfPredationSoundPath ~= "__NONE__"
+        and (type(settings.echoOfPredationSoundPath) ~= "string" or not allowedPathLower[string.lower(settings.echoOfPredationSoundPath)])
+    then
+        settings.echoOfPredationSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg"
     end
 
     settings.stageSounds[5] = nil
@@ -3374,6 +3592,7 @@ local function ResetStateForNewQuest(questID)
         state.preyTargetName, state.preyTargetDifficulty = ExtractPreyTargetFromQuestTitle(questID)
         state.ambushAlertUntil = 0
         state.lastAmbushSoundAt = 0
+        state.lastEchoOfPredationSoundAt = 0
         state.lastAmbushSystemMessage = nil
     end
 end
@@ -3996,6 +4215,8 @@ local function OnAddonLoaded()
     end
 
     Preydator:ApplyRuntimeSettings(settings, false, false)
+    ApplyAratorSilencing()
+    Preydator:ShowSoundDefaultsPromptIfNeeded()
     AddDebugLog("OnAddonLoaded", "debug=" .. tostring(debugDB.enabled) .. " | stage" .. tostring(MAX_STAGE) .. "=" .. tostring(settings.stageSounds[MAX_STAGE]), true)
 
     state.pollingActive = false
@@ -4877,6 +5098,9 @@ Preydator.API = {
     NormalizeSoundSettings = function()
         NormalizeSoundSettings()
     end,
+    ApplyAratorSilencing = function()
+        ApplyAratorSilencing()
+    end,
     NormalizeLabelSettings = function()
         NormalizeLabelSettings()
     end,
@@ -5024,8 +5248,22 @@ Preydator.API = {
 
         return KILL_SOUND_PATH
     end,
+    ResolveEchoOfPredationSoundPath = function()
+        local path = settings and settings.echoOfPredationSoundPath
+        if path == "__NONE__" then
+            return nil
+        end
+        if type(path) == "string" and path ~= "" then
+            return path
+        end
+
+        return "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg"
+    end,
     PlayTestSound = function(path)
         return TryPlaySound(path, true)
+    end,
+    TryPlayEchoOfPredationSound = function(npcID, source)
+        return TryPlayEchoOfPredationEncounter(npcID, source)
     end,
     TryPlayStageSound = function(stageIndex, force)
         return TryPlayStageSound(stageIndex, force)
@@ -5123,6 +5361,7 @@ Preydator.API = {
             maxStage = MAX_STAGE,
             getCurrentActivePreyQuestCached = GetCurrentActivePreyQuestCached,
             refreshInPreyZoneStatus = RefreshInPreyZoneStatus,
+            isAnyTrackedPreyWidgetShown = IsAnyTrackedPreyWidgetShown,
             isValidQuestID = IsValidQuestID,
             barPositionUtil = barPositionUtil,
         }
@@ -5193,6 +5432,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
             ensureOptionsPanel = EnsureOptionsPanel,
             handleSlashCommand = HandleSlashCommand,
             applyBarSettings = ApplyBarSettings,
+            applyAratorSilencing = ApplyAratorSilencing,
             updateBarDisplay = UpdateBarDisplay,
             runModuleHook = RunModuleHook,
             ensureBar = EnsureBar,
@@ -5211,6 +5451,9 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
             end,
             shouldUseActivePolling = function()
                 return Preydator:ShouldUseActivePolling()
+            end,
+            tryHandleEchoOfPredationNameplate = function(unitToken, source)
+                return TryHandleEchoOfPredationNameplate(unitToken, source)
             end,
         })
         return
@@ -5233,6 +5476,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("UPDATE_UI_WIDGET")
 frame:RegisterEvent("UPDATE_ALL_UI_WIDGETS")
 frame:RegisterEvent("QUEST_TURNED_IN")
+frame:RegisterEvent("QUEST_REMOVED")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_MONSTER_SAY")
 frame:RegisterEvent("CHAT_MSG_MONSTER_YELL")
@@ -5241,6 +5485,7 @@ frame:RegisterEvent("RAID_BOSS_EMOTE")
 frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
 frame:RegisterEvent("QUEST_DETAIL")
 frame:RegisterEvent("QUEST_ACCEPTED")
+frame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 frame:RegisterEvent("ZONE_CHANGED")
 frame:RegisterEvent("ZONE_CHANGED_INDOORS")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")

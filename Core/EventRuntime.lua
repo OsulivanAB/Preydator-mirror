@@ -81,6 +81,9 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         if event == "PLAYER_ENTERING_WORLD" and ui.barFrame and type(ctx.applyBarSettings) == "function" then
             ctx.applyBarSettings()
         end
+        if event == "PLAYER_ENTERING_WORLD" and type(ctx.applyAratorSilencing) == "function" then
+            ctx.applyAratorSilencing()
+        end
     end
 
     if event == "PLAYER_REGEN_ENABLED" and type(ctx.onPlayerRegenEnabled) == "function" then
@@ -110,6 +113,7 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         or event == "QUEST_DETAIL"
         or event == "QUEST_ACCEPTED"
         or event == "QUEST_TURNED_IN"
+        or event == "QUEST_REMOVED"
 
     if isNoisyEvent then
         now = type(ctx.getTime) == "function" and ctx.getTime() or 0
@@ -130,6 +134,13 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         if (not (isRestrictedInstance and isPreySignalEvent)) and type(ctx.runModuleHook) == "function" then
             ctx.runModuleHook("OnEvent", event, arg1, arg2)
         end
+    end
+
+    if event == "NAME_PLATE_UNIT_ADDED" then
+        if type(ctx.tryHandleEchoOfPredationNameplate) == "function" then
+            ctx.tryHandleEchoOfPredationNameplate(arg1, event)
+        end
+        return true
     end
 
     if isRestrictedInstance and event ~= "PLAYER_LOGIN" then
@@ -177,6 +188,16 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
     end
 
     if event == "QUEST_TURNED_IN" and state.activeQuestID and arg1 == state.activeQuestID then
+        -- Clear cached zone identity at turn-in boundary so next prey hunt
+        -- always resolves a fresh map target.
+        state.preyZoneName = nil
+        state.preyZoneMapID = nil
+        state.confirmedPreyZoneMapID = nil
+        state.inPreyZone = nil
+        state.zoneCacheDirty = true
+        state.cachedActivePreyQuestID = nil
+        state.cachedActivePreyQuestAt = 0
+
         state.killStageUntil = (type(ctx.getTime) == "function" and ctx.getTime() or 0) + 8
         state.progressState = ctx.preyProgressFinal
         state.progressPercent = 100
@@ -186,6 +207,17 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         if type(ctx.setPollingActive) == "function" then
             ctx.setPollingActive(true)
         end
+    end
+
+    if event == "QUEST_REMOVED" and state.activeQuestID and arg1 == state.activeQuestID then
+        -- Abandon/removal boundary: clear prey-zone cache immediately.
+        state.preyZoneName = nil
+        state.preyZoneMapID = nil
+        state.confirmedPreyZoneMapID = nil
+        state.inPreyZone = nil
+        state.zoneCacheDirty = true
+        state.cachedActivePreyQuestID = nil
+        state.cachedActivePreyQuestAt = 0
     end
 
     now = now or (type(ctx.getTime) == "function" and ctx.getTime() or 0)

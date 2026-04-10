@@ -549,8 +549,14 @@ local function UpdateBarDisplay()
     local forceKillStage = now < (state.killStageUntil or 0)
     local forceAmbushAlert = now < (state.ambushAlertUntil or 0)
     local forceBloodyCommandAlert = now < (state.bloodyCommandAlertUntil or 0)
-    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone ~= true
+    -- Treat only explicit false as out-of-zone. Nil means unknown/not yet resolved,
+    -- and should not hard-hide or zero-out active hunt display.
+    local isOutOfPreyZone = hasActiveQuest and state.inPreyZone == false
     local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
+    local preyWidgetVisible = type(ctx.isAnyTrackedPreyWidgetShown) == "function"
+        and ctx.isAnyTrackedPreyWidgetShown() == true
+    local inStageFourInZone = (state.stage == constants.MAX_STAGE)
+        and (state.inPreyZone == true or (state.inPreyZone == nil and preyWidgetVisible))
     local function IsEditModePreviewEnabled()
         if settings.showInEditMode ~= true then
             return false
@@ -569,7 +575,7 @@ local function UpdateBarDisplay()
     elseif state.forceShowBar or forceKillStage or forceAmbushAlert or forceBloodyCommandAlert or editModePreview then
         shouldShow = true
     elseif onlyShowInPreyZone then
-        shouldShow = hasActiveQuest and not isOutOfPreyZone
+        shouldShow = (hasActiveQuest and state.inPreyZone == true) or inStageFourInZone
     else
         shouldShow = true
     end

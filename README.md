@@ -2,7 +2,7 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v2.1.16`
+Current release: `v2.2.0`
 
 ## What Preydator tracks
 
@@ -89,25 +89,41 @@ Important: Blizzard does not expose a true percent completion for Prey Hunts. Pr
 
 - Stage 1-4 sound selection
 - Ambush sound selection
+- Echo of Predation sound selection (Nightmare prey encounter)
 - Sound channel selection
 - Sound enhancement control
-- Stage sound test buttons (1-4) and Ambush test button
+- Stage sound test buttons (1-4), Ambush test, Bloody Command test, and Echo of Predation test button
 - Custom sound file add/remove in settings UI
 - Protected default sound files cannot be removed
+- Bloody Command alert trigger: Nightmare prey only, stages 1-3
+- One-time 2.2.0 audio migration prompt with `New Defaults` button; close keeps your current sounds
 
 Bundled default files:
 
 - `predator-alert.ogg`
 - `predator-ambush.ogg`
+- `predator-snarl-01.ogg`
 - `predator-torment.ogg`
 - `predator-kill.ogg`
+- `well-we-ve-prepared-a-trap-for-this-predator.ogg`
+- `predator-kills-its-prey-to-survive.ogg`
+- `echo-of-predation.ogg`
+
+2.2.0 default mapping:
+
+- Stage 1: `predator-ambush.ogg`
+- Stage 2: `predator-snarl-01.ogg`
+- Stage 3: `predator-torment.ogg`
+- Stage 4: `predator-kill.ogg`
+- Ambush trigger: `well-we-ve-prepared-a-trap-for-this-predator.ogg`
+- Bloody Command trigger: `predator-kills-its-prey-to-survive.ogg`
+- Echo of Predation: `echo-of-predation.ogg`
 
 ## Visibility and icon behavior
 
 - `Only show in prey zone`
 - `Show in Edit Mode preview`
 - `Disable Default Prey Icon`
-- Stage 4 map-open fallback behavior when icon is disabled
 
 ## Diagnostics and debug
 

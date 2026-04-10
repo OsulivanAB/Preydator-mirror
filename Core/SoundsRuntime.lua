@@ -288,6 +288,8 @@ function SoundsRuntime:TryPlaySound(path, ignoreSoundToggle, settings, ctx)
         channel = "Dialog"
     elseif lowerChannel == "ambience" then
         channel = "Ambience"
+    elseif lowerChannel == "music" then
+        channel = "Music"
     end
 
     local validChannels = {
@@ -295,6 +297,7 @@ function SoundsRuntime:TryPlaySound(path, ignoreSoundToggle, settings, ctx)
         SFX = true,
         Dialog = true,
         Ambience = true,
+        Music = true,
     }
 
     local channelsToTry = {}

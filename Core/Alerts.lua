@@ -7,6 +7,7 @@ local Alerts = {}
 Preydator:RegisterModule("Alerts", Alerts)
 
 local BLOODY_COMMAND_CHAT_PHRASE = "kill for me. now!"
+local BLOODY_COMMAND_CHAT_PHRASE_2 = "drain their anguish!"
 local BLOODY_COMMAND_CHAT_SOURCE = "astalor bloodsworn"
 
 local function IsAmbushRuntimeEnabled(api)
@@ -162,7 +163,7 @@ local function IsBloodyCommandStageAndDifficultyMatch(ctx)
     end
 
     local stage = tonumber(state.stage) or 0
-    if stage <= 1 then
+    if stage < 1 or stage > 3 then
         return false
     end
 
@@ -185,16 +186,26 @@ local function IsBloodyCommandChatMessage(message, sender)
         return true
     end
 
+    if string.find(loweredMessage, BLOODY_COMMAND_CHAT_PHRASE_2, 1, true) then
+        return true
+    end
+
     -- Some chat payloads include the full speaker prefix in arg1.
     if string.find(loweredMessage, BLOODY_COMMAND_CHAT_SOURCE .. " says: " .. BLOODY_COMMAND_CHAT_PHRASE, 1, true) then
         return true
     end
 
+    if string.find(loweredMessage, BLOODY_COMMAND_CHAT_SOURCE .. " says: " .. BLOODY_COMMAND_CHAT_PHRASE_2, 1, true) then
+        return true
+    end
+
     if type(sender) == "string" and sender ~= "" then
         local loweredSender = string.lower(sender)
-        if string.find(loweredSender, BLOODY_COMMAND_CHAT_SOURCE, 1, true)
-            and string.find(loweredMessage, BLOODY_COMMAND_CHAT_PHRASE, 1, true) then
-            return true
+        if string.find(loweredSender, BLOODY_COMMAND_CHAT_SOURCE, 1, true) then
+            if string.find(loweredMessage, BLOODY_COMMAND_CHAT_PHRASE, 1, true)
+                or string.find(loweredMessage, BLOODY_COMMAND_CHAT_PHRASE_2, 1, true) then
+                return true
+            end
         end
     end
 

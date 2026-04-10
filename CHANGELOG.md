@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.2.0 - 2026-04-10
+
+### Added
+- Added a new `Echo of Predation` encounter sound path and runtime trigger for `npc=248365`.
+- Added Nightmare-only encounter gating for Echo of Predation playback.
+- Added prey-zone gating for Echo of Predation playback so alerts only fire in the active hunt zone.
+- Added a dedicated Echo of Predation sound selector in Audio settings.
+- Added a dedicated `Test Echo of Predation` button in Audio settings.
+- Added an Audio checkbox to silence Astalor Bloodsworn encounter lines (`Silence Arator (Astalor Bloodsworn)`) using sound-file ID mute/unmute handling.
+- Added re-apply handling for Astalor silencing on login/enter-world so the muted state remains consistent across reloads.
+- Added support for a second Bloody Command chat phrase trigger: `Drain their anguish!`.
+- Added a one-time `Preydator Audio Defaults (2.2.0)` prompt with a `New Defaults` action so existing installs can opt into the new sound mapping without forcing changes.
+
+### Changed
+- Increased Audio test-button widths to fit longer labels cleanly.
+- Updated Bloody Command gating to stages 1, 2, and 3 only (Nightmare difficulty required).
+- Expanded default/protected bundled sound filename lists to include `predator-snarl-01.ogg`, `well-we-ve-prepared-a-trap-for-this-predator.ogg`, `predator-kills-its-prey-to-survive.ogg`, and `echo-of-predation.ogg`.
+- Updated release packaging script to use an explicit runtime include list (`Preydator.toc`, `Preydator.lua`, `Core`, `Modules`, `Locales`, `media`, `sounds`) so commit-only/docs/dev files are not shipped in release zips.
+- Bumped addon version to `2.2.0` in both `Preydator.toc` and `build-release.ps1` default version.
+- Added `Music` as a valid Audio sound channel option and normalized/validated it across playback/runtime paths.
+- Moved `Silence Arator` control into the primary Audio checkbox area (above `Custom Files / Tests`) and removed the extra section title.
+- Moved `Enhance Sounds` to the right column under the Audio hint text and aligned it to the `Echo of Predation Sound` row.
+- Increased Ambush sound cooldown from `45s` to `80s`.
+- Simplified stage-4 bar click behavior to only set the active prey quest as super-tracked.
+- Removed stage-4 bar click dependence on `Disable Default Prey Icon`; quest super-track click now works whether the default icon is shown or hidden.
+- Updated new-install/default sound mapping to: stage1 `predator-ambush.ogg`, stage2 `predator-snarl-01.ogg`, stage3 `predator-torment.ogg`, stage4 `predator-kill.ogg`, ambush `well-we-ve-prepared-a-trap-for-this-predator.ogg`, bloody command `predator-kills-its-prey-to-survive.ogg`, echo `echo-of-predation.ogg`.
+- Updated Advanced `Show What's New` to re-show the 2.2.0 audio-defaults prompt for repeat close/apply testing.
+
+### Fixed
+- Removed stage-4 map-open and waypoint fallback behavior (`OpenQuestMap`/`ToggleWorldMap`/user waypoint placement) from bar-click handling to reduce taint-risky map/widget interaction paths.
+- Cleared prey-zone/active-quest cache state explicitly on prey quest lifecycle boundaries (`QUEST_TURNED_IN`, `QUEST_REMOVED`/abandon) so each new prey quest resolves a fresh zone map target and avoids stale-zone carryover.
+- Fixed 2.2.0 audio-defaults prompt runtime error on reload caused by early-scope frame cache writes resolving `state` as nil.
+- Fixed 2.2.0 `New Defaults` click runtime error caused by direct `NormalizeAmbushSettings` call resolving to nil in early method scope.
+
 ## 2.1.17 - 2026-04-08
 
 ### Fixed
