@@ -27,6 +27,8 @@
 - Removed stage-4 bar click dependence on `Disable Default Prey Icon`; quest super-track click now works whether the default icon is shown or hidden.
 - Updated new-install/default sound mapping to: stage1 `predator-ambush.ogg`, stage2 `predator-snarl-01.ogg`, stage3 `predator-torment.ogg`, stage4 `predator-kill.ogg`, ambush `well-we-ve-prepared-a-trap-for-this-predator.ogg`, bloody command `predator-kills-its-prey-to-survive.ogg`, echo `echo-of-predation.ogg`.
 - Updated Advanced `Show What's New` to re-show the 2.2.0 audio-defaults prompt for repeat close/apply testing.
+- Hardened localized difficulty detection to be case-insensitive across clients while preserving canonical internal keys.
+- Added explicit ruRU difficulty initials override (`О/В/К`) for Warband prey header display.
 
 ### Fixed
 - Removed stage-4 map-open and waypoint fallback behavior (`OpenQuestMap`/`ToggleWorldMap`/user waypoint placement) from bar-click handling to reduce taint-risky map/widget interaction paths.

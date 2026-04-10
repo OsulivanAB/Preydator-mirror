@@ -1841,15 +1841,20 @@ local function ParseDifficulty(description)
         return DIFFICULTY_NORMAL
     end
 
-    if SafeFindLiteral(description, "Nightmare") or SafeFindLiteral(description, L["Nightmare"]) then
+    local loweredDescription = string.lower(description)
+    local localizedNightmare = type(L["Nightmare"]) == "string" and string.lower(L["Nightmare"]) or nil
+    local localizedHard = type(L["Hard"]) == "string" and string.lower(L["Hard"]) or nil
+    local localizedNormal = type(L["Normal"]) == "string" and string.lower(L["Normal"]) or nil
+
+    if SafeFindLiteral(loweredDescription, "nightmare") or SafeFindLiteral(loweredDescription, localizedNightmare) then
         return DIFFICULTY_NIGHTMARE
     end
 
-    if SafeFindLiteral(description, "Hard") or SafeFindLiteral(description, L["Hard"]) then
+    if SafeFindLiteral(loweredDescription, "hard") or SafeFindLiteral(loweredDescription, localizedHard) then
         return DIFFICULTY_HARD
     end
 
-    if SafeFindLiteral(description, "Normal") or SafeFindLiteral(description, L["Normal"]) then
+    if SafeFindLiteral(loweredDescription, "normal") or SafeFindLiteral(loweredDescription, localizedNormal) then
         return DIFFICULTY_NORMAL
     end
 
