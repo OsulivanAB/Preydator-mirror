@@ -40,7 +40,16 @@ Preydator is a focused, Midnight‑specific companion designed to enhance the hu
 *   Prey Currency Tracker with session deltas, themes, and layout controls
 *   Warband currency table with sorting, grouping, and tracked‑currency visibility
 *   Hunt Table companion panel with reward icons, grouping/sorting, and direct accept/open actions
-*   Debug and diagnostics tools (`/pd inspect`, `/pd inspectquest`, `/pd mem`, `/pd debug`)
+*   Debug and diagnostics tools (`/pd inspect`, `/pd qinspect`, `/pd hinspect`, `/pd debug`)
+
+### Slash Commands
+
+*   Entry point: `/pd`
+*   UI and bar controls: `/pd options`, `/pd show`, `/pd hide`, `/pd toggle`
+*   Debug logs: `/pd debug on`, `/pd debug off`, `/pd debug show`, `/pd debug clear`
+*   Live inspect: `/pd inspect`, `/pd inspect bs`
+*   Quest inspect: `/pd qinspect`, `/pd qinspect <questID>`, `/pd qinspect bs`, `/pd qinspect <questID> bs`
+*   Hunt snapshot inspect: `/pd hinspect`, `/pd hinspect bs`, `/pd hinspectcopy`, `/pd hinspectcopy bs`
 
 ### Coming Soon
 

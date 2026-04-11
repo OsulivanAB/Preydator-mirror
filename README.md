@@ -128,7 +128,8 @@ Bundled default files:
 ## Diagnostics and debug
 
 - `/pd inspect` live diagnostic output
-- `/pd mem` memory snapshot
+- `/pd qinspect` quest-focused diagnostic output
+- `/pd hinspect` hunt snapshot diagnostic output
 - Debug system defaults to off
 - Advanced tab `Enable Debug` toggle
 - Slash debug controls remain available:
@@ -147,14 +148,38 @@ Bundled default files:
 
 ## Slash commands
 
-- `/pd options` or `/preydator options` - open settings
-- `/pd inspect` - print live diagnostics
-- `/pd inspect bs` - send inspect diagnostics to BugSack
-- `/pd show` - force show bar
-- `/pd hide` - return to auto visibility
-- `/pd toggle` - toggle force show
-- `/pd mem` - print memory usage snapshot
-- `/pd debug <on|off|show|clear>` - debug logging tools
+- Entry point:
+	- `/pd`
+
+- UI / bar controls:
+	- `/pd options` - open the Preydator options panel.
+	- `/pd show` - force the progress bar visible.
+	- `/pd hide` - return the progress bar to automatic visibility.
+	- `/pd toggle` - toggle forced visibility on/off.
+
+- Debug log controls:
+	- `/pd debug on` - enable debug logging.
+	- `/pd debug off` - disable debug logging.
+	- `/pd debug show` - print the latest debug log lines.
+	- `/pd debug clear` - clear stored debug log lines.
+
+- Inspect diagnostics:
+	- `/pd inspect` - print live addon diagnostics to chat.
+	- `/pd inspect bs` - send live addon diagnostics to BugSack.
+
+- Quest inspect diagnostics:
+	- `/pd qinspect` - inspect the active prey quest.
+	- `/pd qinspect <questID>` - inspect a specific quest ID.
+	- `/pd qinspect bs` - send active prey quest diagnostics to BugSack.
+	- `/pd qinspect <questID> bs` - send specific quest diagnostics to BugSack.
+
+- Hunt snapshot diagnostics:
+	- `/pd hinspect` - print the current hunt snapshot to chat.
+	- `/pd hinspect bs` - send the current hunt snapshot to BugSack.
+	- `/pd hinspectcopy` - print the last captured hunt payload.
+	- `/pd hinspectcopy bs` - send the last captured hunt payload to BugSack.
+
+Removed legacy aliases: `/preydator`, `/pd open`, `/pd mem`, `/pd memory`, `inspectquest*`, and `huntdebug*`.
 
 ## Optional custom audio
 

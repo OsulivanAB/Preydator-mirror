@@ -1,4 +1,4 @@
----@diagnostic disable
+﻿---@diagnostic disable
 -- Preydator: enUS (English) localization reference.
 -- English strings are the keys, so no assignments are strictly required here.
 -- This file exists as the authoritative translation guide for other locales.
@@ -10,6 +10,8 @@
 --[[  TRANSLATION GUIDE
      Fill in each value with the translated text. Remove the comment markers.
      Entries left empty or commented out will fall back to the English key.
+  Do not include Blizzard-static proper names (zone names, NPC names, dungeon/raid names)
+  unless the addon itself owns the label text.
 
 ---- Stage defaults (displayed in the progress bar; players can override in Options > Text)
   L["No Sign in These Fields"]   = ""
@@ -21,27 +23,13 @@
   L["Feast of the Fang"]         = ""
 
 ---- Options panel tabs
-  L["General"]    = ""
-  L["Display"]    = ""
   L["Vertical"]   = ""
-  L["Text"]       = ""
-  L["Audio"]      = ""
-  L["Currencies"] = ""
-  L["Advanced"]   = ""
 
 ---- Section headers
-  L["Visibility"]            = ""
-  L["Behavior"]              = ""
-  L["Hunt Table"]            = ""
-  L["Currencies"]            = ""
-  L["Bar Size"]              = ""
-  L["Progress Display"]      = ""
   L["Visual Style"]          = ""
   L["Vertical Mode"]         = ""
   L["Vertical Dimensions"]   = ""
-  L["Label Mode"]            = ""
   L["Prefix Labels"]         = ""
-  L["Label Placement"]       = ""
   L["Suffix Labels"]         = ""
   L["Sound Selection"]       = ""
   L["Custom Files / Tests"]  = ""
@@ -52,26 +40,20 @@
   L["Lock Bar"]                          = ""
   L["Only show in prey zone"]            = ""
   L["Disable Default Prey Icon"]         = ""
-  L["Show in Edit Mode preview"]         = ""
   L["Enable Hunt Table Tracker"]         = ""
   L["Enable sounds"]                     = ""
   L["Ambush sound alert"]                = ""
   L["Ambush visual alert"]               = ""
   L["Bloody Command sound alert"]        = ""
   L["Bloody Command visual alert"]       = ""
-  L["Show tick marks"]                   = ""
   L["Display Spark Line"]                = ""
   L["Link border color to fill"]         = ""
   L["Show Percentage at Tick Marks"]     = ""
   L["Enable Debug"]                      = ""
   L["Currency Debug Events"]             = ""
-  L["Show Minimap Button"]               = ""
-  L["Show Affordable Hunts In Tracker"]  = ""
-  L["Show Group By Realm In Warband"]    = ""
   L["Show bar during Edit Mode"]         = ""
 
 ---- Dropdown field titles
-  L["Currency Theme"]           = ""
   L["Progress Segments"]        = ""
   L["Sound Channel"]            = ""
   L["Hunt Panel Side"]          = ""
@@ -128,30 +110,30 @@
   L["Test Bloody Command"]     = ""
   L["Show What's New"]         = ""
 
----- Dropdown option values — Texture
+---- Dropdown option values â€” Texture
   L["Default"]          = ""
   L["Flat"]             = ""
   L["Raid HP Fill"]     = ""
   L["Classic Skill Bar"] = ""
 
----- Dropdown option values — Font
+---- Dropdown option values â€” Font
   L["Friz Quadrata"]  = ""
   L["Arial Narrow"]   = ""
   L["Skurri"]         = ""
   L["Morpheus"]       = ""
 
----- Dropdown option values — Sound channel
+---- Dropdown option values â€” Sound channel
   L["Master"]   = ""
   L["SFX"]      = ""
   L["Dialog"]   = ""
   L["Ambience"] = ""
 
----- Dropdown option values — Currency theme
+---- Dropdown option values â€” Currency theme
   L["Light"]  = ""
   L["Brown"]  = ""
   L["Dark"]   = ""
 
----- Dropdown option values — Percent display
+---- Dropdown option values â€” Percent display
   L["In Bar"]      = ""
   L["Above Bar"]   = ""
   L["Above Ticks"] = ""
@@ -159,15 +141,15 @@
   L["Below Bar"]   = ""
   L["Off"]         = ""
 
----- Dropdown option values — Tick layer
+---- Dropdown option values â€” Tick layer
   L["Above Fill"] = ""
   L["Below Fill"] = ""
 
----- Dropdown option values — Progress segments
+---- Dropdown option values â€” Progress segments
   L["Quarters (25/50/75/100)"] = ""
   L["Thirds (33/66/100)"]      = ""
 
----- Dropdown option values — Label mode
+---- Dropdown option values â€” Label mode
   L["Centered"]                 = ""
   L["Left (Prefix only)"]       = ""
   L["Left (Prefix + Suffix)"]   = ""
@@ -178,24 +160,24 @@
   L["Separate (Prefix + Suffix)"] = ""
   L["No Text"]                  = ""
 
----- Dropdown option values — Label row
+---- Dropdown option values â€” Label row
   L["Above Bar"] = ""   -- shared key
   L["Below Bar"] = ""   -- shared key
 
----- Dropdown option values — Orientation
+---- Dropdown option values â€” Orientation
   L["Horizontal"] = ""
   L["Vertical"]   = ""
 
----- Dropdown option values — Vertical fill
+---- Dropdown option values â€” Vertical fill
   L["Fill Up"]   = ""
   L["Fill Down"] = ""
 
----- Dropdown option values — Sides
+---- Dropdown option values â€” Sides
   L["Left"]   = ""
   L["Right"]  = ""
   L["Center"] = ""
 
----- Dropdown option values — Vertical text align
+---- Dropdown option values â€” Vertical text align
   L["Top Align"]           = ""
   L["Middle Align"]        = ""
   L["Bottom Align"]        = ""
@@ -205,14 +187,13 @@
   L["Bottom Suffix Only"]  = ""
   L["Separate Prefix/Suffix"] = ""
 
----- Dropdown option values — Vertical percent display (short form)
+---- Dropdown option values â€” Vertical percent display (short form)
   L["Above"]  = ""
   L["Inside"] = ""
   L["Below"]  = ""
 
 ---- Hint/note blocks
   L["HINT_VERTICAL_PERCENT_OFFSET"] = "Vertical Percent Offset applies to vertical side/tick-mark side placements. Use tick marks to replace the single percent value."
-  L["HINT_VERTICAL_LOCK"]           = "In Vertical mode, only Label Mode and Prefix/Suffix Row are locked here. Stage names and custom labels remain editable."
   L["HINT_AUDIO_SLIDER"]            = "Slider values can be dragged or typed directly. Custom sound input accepts bare names, .ogg, or full addon paths."
   L["HINT_ADVANCED_NOTES"]          = "Existing installs keep their current saved values. New settings are only applied when a key is missing in PreydatorDB. This panel replaces the old long-form options page but uses the same database. The Inspect feature is compatible with BugSack."
   L["HINT_PANEL_SUBTITLE"]          = "Tabbed options layout with two-column pages. Slider values can be dragged or typed directly."
@@ -230,15 +211,10 @@
 ---- Currency Tracker windows
   L["Preydator Currency"]        = ""
   L["Preydator Warband"]         = ""
-  L["Currency Tracker"]          = ""
   L["Preydator Updates: New in 2.1.1"] = ""
   L["WHATS_NEW_BODY"]            = "Preydator 2.1.1 is live.\n\n- Hunt Tracker now shows achievement guidance on hunts that advance incomplete Prey achievements\n- Achievement marker layout, scaling, and count display were refined for the Hunt Table\n- Hunt reward display now supports icon + text, text only, or compact icon + count styles\n- Loot-triggered currency refreshes were trimmed to reduce unnecessary CPU spikes\n\nIf you already have windows placed, your saved layout stays intact."
   L["Got It"]                    = ""
   L["Open Settings"]             = ""
-  L["Toggle Tracker"]            = ""
-  L["Toggle Warband"]            = ""
-  L["Open Tracker"]              = ""
-  L["Close Tracker"]             = ""
   L["Open Warband"]              = ""
   L["Close Warband"]             = ""
   L["Gain Color"]                = ""
@@ -246,42 +222,29 @@
 
 ---- Hunt Table companion panel
   L["Preydator Hunt Tracker"]                          = ""
-  L["Available Hunts"]                                 = ""
   L["Rewards unknown"]                                 = ""
   L["Reward data pending"]                             = ""
   L["No available hunts"]                              = ""
-  L["Use /pd huntdebug at a hunt table to print payload data."] = ""
 
 ---- Currency config page labels
-  L["Currencies to Track"]          = ""
-  L["Random Hunt Cost (Anguish)"]   = ""
-  L["Panel Layout"]                 = ""
-  L["Adjust"]                       = ""
   L["Delta Preview"]                = ""
   L["Normal"]                       = ""
   L["Hard"]                         = ""
   L["Nightmare"]                    = ""
-  L["Currency Window"]              = ""
   L["Warband Window"]               = ""
 
 ---- Warband column headers
   L["Realm"]     = ""
   L["Character"] = ""
   L["Anguish"]   = ""
-  L["Voidlight"] = ""
-  L["Adv"]       = ""
-  L["Vet"]       = ""
-  L["Champ"]     = ""
   L["N/H/Ni"]    = ""   -- Difficulty abbreviation (Normal/Hard/Nightmare); translators may provide their own
 
 ---- Warband dynamic row labels
   L["Total"]     = ""
   L["All Realms"] = ""
   L["Totals"]    = ""
-  L["Subtotal"]  = ""
 
 ---- Currency tracker summary format
-  L["Normal %d | Hard %d | Nightmare %s"] = ""
 
 ---- Modules page
   L["Module Status"]                                                                                    = ""
@@ -295,16 +258,206 @@
   L["Controls hunt table data, sorting, and panel features."]                                          = ""
   L["Warband Module"]                                                                                   = ""
   L["Controls the warband currency panel and roster view."]                                            = ""
-  L["Achievement Module"]                                                                              = ""
-  L["Coming soon: achievement tracking is not available yet."]                                         = ""
   L["Reload"]                                                                                           = ""
-  L["Module changes require a reload to fully apply. Achievement module remains disabled until it is released."] = ""
 
 ---- Minimap / LDB tooltip
   L["Left Click: Toggle Currency Window"]  = ""
   L["Right Click: Toggle Warband Window"]  = ""
   L["Shift + Right Click: Open Options"]   = ""
-  L["Preydator Currency Tracker"]          = ""
+---- Audit-discovered keys (code-referenced, missing from enUS guide)
+  L["(no saved themes)"] = ""
+  L["Accept"] = ""
+  L["Accessibility"] = ""
+  L["Achievement Badge Color"] = ""
+  L["Achievement Icon Size"] = ""
+  L["Achievement Progress"] = ""
+  L["Achievement Signal Style"] = ""
+  L["Achievements"] = ""
+  L["Achievements Theme"] = ""
+  L["Active Profile"] = ""
+  L["Anchor Align"] = ""
+  L["Ascending"] = ""
+  L["Bar"] = ""
+  L["Bloody Command Prefix"] = ""
+  L["Bloody Command Suffix"] = ""
+  L["Border"] = ""
+  L["Both"] = ""
+  L["Bottom"] = ""
+  L["Category"] = ""
+  L["Champ. Crest"] = ""
+  L["Change active profile, create a new one, copy settings between profiles, reset the current profile, or delete an unused profile."] = ""
+  L["Characters in Tracker"] = ""
+  L["Choose where each currency appears: Currency panel, Warband panel, or both. Category checkboxes apply to all currencies in that section."] = ""
+  L["Class color Names"] = ""
+  L["Clear Achievement Cache"] = ""
+  L["Click to toggle."] = ""
+  L["Close Currency"] = ""
+  L["Copy another profile into the current one."] = ""
+  L["Copy current settings"] = ""
+  L["Copy From"] = ""
+  L["Copy Into Current"] = ""
+  L["Crafting"] = ""
+  L["Create Profile"] = ""
+  L["Currency"] = ""
+  L["Currency Font Size"] = ""
+  L["Currency Height"] = ""
+  L["Currency Panel"] = ""
+  L["Currency Panel Theme"] = ""
+  L["Currency Scale"] = ""
+  L["Currency Selection"] = ""
+  L["Currency Width"] = ""
+  L["Current Profile"] = ""
+  L["Current Profile:"] = ""
+  L["Custom Theme Editor"] = ""
+  L["Debug"] = ""
+  L["Default Settings"] = ""
+  L["Delete"] = ""
+  L["Delete Profile"] = ""
+  L["Delete Saved Theme"] = ""
+  L["Descending"] = ""
+  L["Deuteranopia"] = ""
+  L["Developer logging toggles for diagnostics and currency event traces."] = ""
+  L["Difficulty"] = ""
+  L["Dimensions"] = ""
+  L["Disable Minimap Button"] = ""
+  L["Echo of Predation Sound"] = ""
+  L["Enable Global Theme"] = ""
+  L["Enter a name and optionally copy your current settings into the new profile."] = ""
+  L["Expansion"] = ""
+  L["Experience"] = ""
+  L["Global Panel Theme"] = ""
+  L["Global Theme"] = ""
+  L["Group"] = ""
+  L["Group Hunts By"] = ""
+  L["Hard Difficulty"] = ""
+  L["Header BG"] = ""
+  L["Hide Currency in Instance"] = ""
+  L["Hide Low Level Alts (78)"] = ""
+  L["Hide Preview Pane"] = ""
+  L["Hide Prey Icon"] = ""
+  L["Hide Warband in Instance"] = ""
+  L["Horizontal Dimensions"] = ""
+  L["Horizontal Text Alignment"] = ""
+  L["Horizontal Text Placement"] = ""
+  L["Hunt Panel Font Size"] = ""
+  L["Hunt Panel Height"] = ""
+  L["Hunt Panel Scale"] = ""
+  L["Hunt Panel Width"] = ""
+  L["Hunt Table Panel"] = ""
+  L["Hunt Table Theme"] = ""
+  L["Hunt Tracker drives achievement indicators and tooltips in the hunt list. Use preview to test icon style, icon size, and tooltip names with sample achievement data."] = ""
+  L["Icon + Count"] = ""
+  L["Icon + Text"] = ""
+  L["Icon Only"] = ""
+  L["In combat it stays hidden until out of combat."] = ""
+  L["Keys"] = ""
+  L["Load from Preset"] = ""
+  L["Lock Frame"] = ""
+  L["Maintenance"] = ""
+  L["Manage Profiles"] = ""
+  L["Middle"] = ""
+  L["Module changes require a reload to fully apply. Hunt Table also controls achievement tracking behavior."] = ""
+  L["Modules"] = ""
+  L["Mouseover Hide"] = ""
+  L["Music"] = ""
+  L["Muted Color"] = ""
+  L["New Profile"] = ""
+  L["Nightmare Difficulty"] = ""
+  L["No active prey"] = ""
+  L["No cached characters yet. Log into alts to populate this list."] = ""
+  L["No removable profile is available."] = ""
+  L["No tracked rewards"] = ""
+  L["None"] = ""
+  L["Normal Difficulty"] = ""
+  L["On"] = ""
+  L["Open Currency"] = ""
+  L["Panel hides until moused over."] = ""
+  L["Panels"] = ""
+  L["Per-Module Themes"] = ""
+  L["Per-module themes are ignored while Global Theme is enabled."] = ""
+  L["Please enter a profile name."] = ""
+  L["Please enter a theme name before saving."] = ""
+  L["Position Reset"] = ""
+  L["Preview Cache Reward"] = ""
+  L["Preview Trinket"] = ""
+  L["Preview Weapon"] = ""
+  L["Preview: Hard Hunt"] = ""
+  L["Preview: Nightmare Hunt"] = ""
+  L["Preview: Normal Hunt"] = ""
+  L["Prey Track Shows Completed"] = ""
+  L["Profile Name:"] = ""
+  L["Profiles"] = ""
+  L["Protanopia"] = ""
+  L["Random Hunts: %d"] = ""
+  L["Refresh Hunt Cache"] = ""
+  L["Refresh Hunt Table Now"] = ""
+  L["Remove Unchecked Characters"] = ""
+  L["Reset Bar Position"] = ""
+  L["Reset frame anchors if windows are off-screen or misplaced."] = ""
+  L["Reset the active profile or delete another unused profile."] = ""
+  L["Reset to Defaults"] = ""
+  L["Reset Tracker Positions"] = ""
+  L["Restore text and audio defaults, or fully reset all profile settings."] = ""
+  L["Reward Display Style"] = ""
+  L["Row Alt BG"] = ""
+  L["Row BG"] = ""
+  L["Save Theme"] = ""
+  L["Saved themes appear in all theme dropdowns."] = ""
+  L["Season Color"] = ""
+  L["Seasonal"] = ""
+  L["Section BG"] = ""
+  L["Select a source profile first."] = ""
+  L["Select All Characters"] = ""
+  L["Shards"] = ""
+  L["Show Achievement Names On Mouseover"] = ""
+  L["Show Achievement Signals In Hunt Tracker"] = ""
+  L["Show Only In Zone"] = ""
+  L["Show Preview Pane"] = ""
+  L["Show Prey Track (Alts) in Warband"] = ""
+  L["Show Prey Weekly Completed"] = ""
+  L["Show Random Hunts Available"] = ""
+  L["Show Realm"] = ""
+  L["Show Realm in Warband"] = ""
+  L["Silence Arator (Astalor Bloodsworn)"] = ""
+  L["Sort"] = ""
+  L["Sort Direction"] = ""
+  L["Sort Hunts By"] = ""
+  L["Sounds"] = ""
+  L["Source Profile"] = ""
+  L["Stage Text"] = ""
+  L["Stage Title Color"] = ""
+  L["Switch profiles to load a different saved setup immediately."] = ""
+  L["Test Echo of Predation"] = ""
+  L["Text Color"] = ""
+  L["Text Only"] = ""
+  L["Theme"] = ""
+  L["Theme '%s' deleted."] = ""
+  L["Theme '%s' saved."] = ""
+  L["Theme Font"] = ""
+  L["Theme is missing color elements. Load a preset first."] = ""
+  L["Theme Name"] = ""
+  L["Theme Preview Pane"] = ""
+  L["This hunt helps:"] = ""
+  L["Title"] = ""
+  L["Top"] = ""
+  L["Track Alts Weekly"] = ""
+  L["Tracked in Warband"] = ""
+  L["Unknown"] = ""
+  L["Use Hunt Table controls here to manage sorting, grouping, panel size, and reward cache behavior."] = ""
+  L["Use Icons for Warband Currencies"] = ""
+  L["Utility actions for release notes and hunt scanner cache maintenance."] = ""
+  L["Verbose Bloody Command Debug"] = ""
+  L["Voidlight Marl"] = ""
+  L["Warband"] = ""
+  L["Warband Font Size"] = ""
+  L["Warband Height"] = ""
+  L["Warband Panel"] = ""
+  L["Warband Scale"] = ""
+  L["Warband Theme"] = ""
+  L["Warband Width"] = ""
+  L["When enabled, all panels use the global theme. Disable to set themes per-module below."] = ""
+  L["Zone"] = ""
+
 --]]
 
 -- Runtime defaults for semantic keys. These are not English-as-key labels,
@@ -315,9 +468,11 @@ if not L then
 end
 
 L["HINT_VERTICAL_PERCENT_OFFSET"] = "Vertical Percent Offset applies to vertical side/tick-mark side placements. Use tick marks to replace the single percent value."
-L["HINT_VERTICAL_LOCK"] = "In Vertical mode, only Label Mode and Prefix/Suffix Row are locked here. Stage names and custom labels remain editable."
 L["HINT_AUDIO_SLIDER"] = "Slider values can be dragged or typed directly. Custom sound input accepts bare names, .ogg, or full addon paths."
 L["HINT_ADVANCED_NOTES"] = "Existing installs keep their current saved values. New settings are only applied when a key is missing in PreydatorDB. This panel replaces the old long-form options page but uses the same database. The Inspect feature is compatible with BugSack."
 L["HINT_PANEL_SUBTITLE"] = "Tabbed options layout with two-column pages. Slider values can be dragged or typed directly."
 L["HINT_EDITMODE_SUBTITLE"] = "Quick layout controls while Blizzard Edit Mode is open. Full Options can be found in Options > Addons > Preydator."
 L["WHATS_NEW_BODY"] = "Preydator 2.1.1 is live.\n\n- Hunt Tracker now shows achievement guidance on hunts that advance incomplete Prey achievements\n- Achievement marker layout, scaling, and count display were refined for the Hunt Table\n- Hunt reward display now supports icon + text, text only, or compact icon + count styles\n- Loot-triggered currency refreshes were trimmed to reduce unnecessary CPU spikes\n\nIf you already have windows placed, your saved layout stays intact."
+
+
+

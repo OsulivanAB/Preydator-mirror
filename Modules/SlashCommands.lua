@@ -13,7 +13,6 @@ function SlashCommandsModule:HandleSlashCommand(message, ctx)
     local state = ctx and ctx.state
     local updateBarDisplay = ctx and ctx.updateBarDisplay
     local openOptionsPanel = ctx and ctx.openOptionsPanel
-    local printMemoryUsage = ctx and ctx.printMemoryUsage
     local modules = (ctx and ctx.modules) or {}
     local printFn = (ctx and ctx.printFn) or print
 
@@ -110,16 +109,9 @@ function SlashCommandsModule:HandleSlashCommand(message, ctx)
         return
     end
 
-    if text == "options" or text == "open" then
+    if text == "options" then
         if type(openOptionsPanel) == "function" then
             openOptionsPanel()
-        end
-        return
-    end
-
-    if text == "mem" or text == "memory" then
-        if type(printMemoryUsage) == "function" then
-            printMemoryUsage()
         end
         return
     end
@@ -140,5 +132,5 @@ function SlashCommandsModule:HandleSlashCommand(message, ctx)
         return
     end
 
-    printFn("Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear> | inspect[ bug|both] | inspectquest [questID] [bug|both]")
+    printFn("Preydator commands: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs]")
 end

@@ -3821,7 +3821,7 @@ function HuntScannerModule:PrintDebugSnapshot()
 end
 
 function HuntScannerModule:OnSlashCommand(text, rest)
-    if text == "huntdebug" then
+    if text == "hinspect" then
         if IsInRestrictedInstance() then
             print("Preydator HuntDebug: unavailable in restricted instances.")
             return true
@@ -3832,7 +3832,7 @@ function HuntScannerModule:OnSlashCommand(text, rest)
         end
 
         local mode = string.lower((rest or ""):match("^%s*(.-)%s*$") or "")
-        if mode == "bugsack" or mode == "bs" then
+        if mode == "bs" then
             local snapshot = SelectBestSnapshotForDebug()
             if not snapshot then
                 print("Preydator HuntDebug: no hunt snapshot captured yet.")
@@ -3850,15 +3850,38 @@ function HuntScannerModule:OnSlashCommand(text, rest)
                 end
             end
             return true
+        elseif mode ~= "" then
+            return false
         end
 
         self:PrintDebugSnapshot()
         return true
     end
 
-    if text == "huntdebugcopy" then
+    if text == "hinspectcopy" then
+        local mode = string.lower((rest or ""):match("^%s*(.-)%s*$") or "")
         if type(lastDebugPayload) == "string" and lastDebugPayload ~= "" then
-            print(lastDebugPayload)
+            if mode == "bs" then
+                local lines = {}
+                for line in string.gmatch(lastDebugPayload, "([^\n]+)") do
+                    lines[#lines + 1] = line
+                end
+                if #lines == 0 then
+                    lines[1] = lastDebugPayload
+                end
+
+                local sent, reason = SendLinesToBugSack(lines)
+                if sent then
+                    print("Preydator HuntDebug: sent to BugSack via error handler.")
+                else
+                    print("Preydator HuntDebug: Could not send to BugSack: " .. tostring(reason))
+                    print(lastDebugPayload)
+                end
+            elseif mode == "" then
+                print(lastDebugPayload)
+            else
+                return false
+            end
         else
             print("Preydator HuntDebug: no payload captured yet.")
         end

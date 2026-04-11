@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.3 - 2026-04-11
+
+### Changed
+- Removed the unused `/preydator` slash entrypoint and kept `/pd` as the sole command entrypoint.
+- Removed unused core slash aliases: `/pd open`, `/pd mem`, and `/pd memory`.
+- Narrowed inspect command aliases to `/pd inspect` and `/pd inspect bs`; removed unused `bug`, `bugsack`, `both`, and concatenated inspect aliases.
+- Renamed quest inspect command family from `inspectquest` to `qinspect`, with support for `/pd qinspect [questID] [bs]`.
+- Renamed hunt debug command family from `huntdebug` to `hinspect`, with support for `/pd hinspect [bs]` and `/pd hinspectcopy [bs]`.
+
 ## 2.2.2 - 2026-04-10
 
 ### Fixed

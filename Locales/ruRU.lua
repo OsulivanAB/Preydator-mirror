@@ -18,4 +18,4 @@ local L = _G.PreydatorL
 L["Normal"]    = "обычная"
 L["Hard"]      = "высокая"
 L["Nightmare"] = "кошмарная"
-L["N/H/Ni"]    = "О/В/К"
+L["N/H/Ni"]    = "о/в/к"

@@ -94,6 +94,14 @@ If extension patterns change, update architecture guidance in this file or compa
 
 ---
 
+# 7.1 Localization Preservation Rule
+
+- Never overwrite translations provided by native speakers.
+- If a native translation appears to break runtime matching, fix parser/normalization logic in code instead of changing translator-provided locale strings.
+- Mark AI-generated localization as provisional and keep native-speaker wording authoritative for user-facing text.
+
+---
+
 # 8. Evidence and Uncertainty Protocol
 
 When proposing or implementing changes:

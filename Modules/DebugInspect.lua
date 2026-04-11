@@ -467,9 +467,7 @@ end
 local DebugInspectModule = {}
 
 function DebugInspectModule:OnSlashCommand(text, rest)
-    if text ~= "inspect" and text ~= "inspectbug" and text ~= "inspectbugsack" and text ~= "inspectbs" and text ~= "inspectboth"
-        and text ~= "inspectquest" and text ~= "inspectquestbug" and text ~= "inspectquestbs" and text ~= "inspectquestboth"
-        and text ~= "qinspect" then
+    if text ~= "inspect" and text ~= "qinspect" then
         return false
     end
 
@@ -478,38 +476,44 @@ function DebugInspectModule:OnSlashCommand(text, rest)
         return true
     end
 
-    local isQuestInspect = (text == "inspectquest" or text == "inspectquestbug" or text == "inspectquestbs" or text == "inspectquestboth" or text == "qinspect")
+    local isQuestInspect = (text == "qinspect")
+    local tokens = {}
+    for token in tostring(rest or ""):gmatch("%S+") do
+        tokens[#tokens + 1] = string.lower(token)
+    end
 
     local mode = "chat"
-    if text == "inspectbug" or text == "inspectbugsack" or text == "inspectbs" or text == "inspectquestbug" or text == "inspectquestbs" then
-        mode = "bugsack"
-    elseif text == "inspectboth" or text == "inspectquestboth" then
-        mode = "both"
-    else
-        local inspectMode = string.lower((rest or ""):match("^%s*(.-)%s*$"))
-        if inspectMode == "bug" or inspectMode == "bugsack" or inspectMode == "bs" then
+    local requestedQuestID = nil
+
+    for _, token in ipairs(tokens) do
+        if token == "bs" then
             mode = "bugsack"
-        elseif inspectMode == "both" then
-            mode = "both"
+        elseif isQuestInspect and requestedQuestID == nil then
+            local parsedQuestID = tonumber(token)
+            if parsedQuestID and parsedQuestID > 0 then
+                requestedQuestID = parsedQuestID
+            else
+                return false
+            end
+        else
+            return false
         end
     end
 
     local lines, reportText
     if isQuestInspect then
-        local questToken = tostring((rest or ""):match("^%s*(%S+)") or "")
-        local requestedQuestID = tonumber(questToken)
         lines, reportText = BuildQuestInspectReport(requestedQuestID)
     else
         lines, reportText = BuildInspectReport()
     end
 
-    if mode == "chat" or mode == "both" then
+    if mode == "chat" then
         for _, line in ipairs(lines) do
             print(line)
         end
     end
 
-    if mode == "bugsack" or mode == "both" then
+    if mode == "bugsack" then
         local header = isQuestInspect and "Preydator Quest Inspect Report" or "Preydator Inspect Report"
         local sent, reason = SendToErrorHandler(reportText, header)
         if sent then

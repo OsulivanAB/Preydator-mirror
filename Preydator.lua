@@ -23,8 +23,8 @@ local UIDropDownMenu_SetWidth = _G.UIDropDownMenu_SetWidth
 local UIDropDownMenu_SetText = _G.UIDropDownMenu_SetText
 local UIDropDownMenu_AddButton = _G.UIDropDownMenu_AddButton
 
-_G.SLASH_PREYDATOR1 = "/preydator"
-_G.SLASH_PREYDATOR2 = "/pd"
+_G.SLASH_PREYDATOR1 = "/pd"
+_G.SLASH_PREYDATOR2 = nil
 
 local PREY_WIDGET_TYPE = 31
 local PREY_PROGRESS_FINAL = 3
