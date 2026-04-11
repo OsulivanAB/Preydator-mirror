@@ -1,179 +1,141 @@
-# Preydator
+# Preydator Mirror (WowUp packaging only)
 
-Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
+> ⚠️ **UNOFFICIAL MIRROR — NOT THE ORIGINAL PROJECT**
+>
+> This repository is a **packaging/distribution mirror only**. It exists solely to
+> publish WowUp-compatible releases of the Preydator addon.
+> **All addon code and creative work belongs to the original author.**
 
-Current release: `v2.2.2`
+---
 
-## What Preydator tracks
+## Original project
 
-- Active prey quest and stage transitions in real time
-- Out-of-zone state and fallback labels
-- Stage-based progress display using Blizzard's exposed stage model
+| | |
+|---|---|
+| **Addon** | [Preydator](https://github.com/RagingAltoholic/Preydator) |
+| **Author** | [RagingAltoholic](https://github.com/RagingAltoholic) |
+| **Upstream repo** | <https://github.com/RagingAltoholic/Preydator> |
 
-Important: Blizzard does not expose a true percent completion for Prey Hunts. Preydator uses stage transitions and fallback stage percentages.
+> 🐛 **Bugs, feature requests, and addon questions belong upstream:**
+> **<https://github.com/RagingAltoholic/Preydator/issues>**
+>
+> Do **not** open issues here about addon behaviour — this repo only handles packaging.
 
-- `Quarters`: `25 / 50 / 75 / 100`
-- `Thirds`: `33 / 66 / 100` (default for new installs)
+---
 
-## Stage flow
+## What this repo does
 
-1. **Scent in the Wind**
-2. **Blood in the Shadows**
-3. **Echoes of the Kill**
-4. **Feast of the Fang**
+The upstream addon does not publish GitHub Releases, which means WowUp cannot
+install or update it automatically. This mirror repository fills that gap:
 
-## UI and layout features (2.0.3)
+1. A GitHub Actions workflow runs **every 30 minutes**.
+2. It fetches the latest commit from the upstream repo.
+3. If the upstream has changed since the last mirrored release, it:
+   - Downloads the upstream source.
+   - Extracts the version number from `Preydator.toc`.
+   - Packages the addon files into a WoW-ready zip (`Preydator/…` folder structure).
+   - Creates a GitHub Release in this mirror repo with the zip attached.
+4. If nothing has changed, it exits without creating a duplicate release.
 
-- New module runtime controls for Bar, Sounds, Currency, Hunt Table, and Warband
-- Module-aware settings locking with reload detection when module state changes
-- CPU optimizations for zone caching and reduced unnecessary update routes
-- New installs start with the bar unlocked for quick placement; lock it in Options when finished
-- 4K display support with corrected dropdown scaling and UI-scale normalization
-- Account-wide prey unlock tracking for Nightmare difficulty
-- Bar position persistence across reloads with resilient backup coordinate sync
-- New Currency Tracker window for approved Prey currencies
-- New Warband currency table with sortable columns and realm grouping
-- Hunt Table tracker with grouping/sorting, reward icons, collapsible headers, and direct accept/open actions
-- Warband `Prey Track (Alts)` with `N/H/Ni` available/completed modes and weekly-aware tracking snapshots
-- Session delta tracking for approved Prey currencies
-- Theme support in currency windows: `Light`, `Brown`, `Dark`
-- One-time What's New splash for currency launch (with Show Again in Advanced tab)
-- Currencies tab now includes direct controls for tracker/warband visibility, tracked currency selection, random hunt cost context, and panel layout sliders
+**This repo does not store or duplicate the addon source code itself** — the
+packaging step downloads it fresh from upstream at release time.
 
-- Modular tabbed settings panel: `General`, `Display`, `Text`, `Audio`, `Advanced`
-- Compact Edit Mode quick-settings window
-- Edit Mode click-to-open behavior on the Preydator element
-- Outside-click dismiss behavior while Edit Mode quick-settings is open
-- Lock/unlock positioning and persistent center-relative coordinates
-- Display controls: width, height, scale, font size
-- Vertical bar mode controls: orientation, fill direction, vertical scale, dedicated width/height, text side/alignment, and vertical percent controls
+---
 
-## Display customization
+## Installing via WowUp
 
-- Texture presets
-- Color controls:
-	- Fill color
-	- Background color
-	- Title color
-	- Percent color
-	- Tick mark color
-	- Border color (optional linked-to-fill behavior)
-- Percent display modes:
-	- In Bar
-	- Above Bar
-	- Above Ticks
-	- Under Ticks
-	- Below Bar
-	- Off
-- Text Display mode for stage names: `Above Bar` or `Below Bar`
-- Tick mark labels can be used as the percent display in vertical mode (`Show Percentage at Tick Marks`)
-- `Display Spark Line` toggle (default: off)
-- Fill and tick rendering inset so visuals stay inside the border at all scales
+Point WowUp at this GitHub repository to keep Preydator up to date automatically:
 
-## Text and label system
+1. Open WowUp → **Get Addons** → **Install from URL**
+2. Paste: `https://github.com/OsulivanAB/Preydator-mirror`
+3. WowUp will find the latest release and install it.
 
-- Full stage label editing for all 4 stages
-- Prefix + suffix label system
-- Dedicated `Out of Zone Prefix` and `Ambush Prefix`
-- Ambush custom override text
-- Label modes:
-	- Centered
-	- Left (Prefix only)
-	- Left (Suffix only)
-	- Right (Suffix only)
-	- Right (Prefix only)
-	- Separate (Prefix + Suffix)
-	- No Text
+Releases are named `v{upstream_version}` (e.g. `v1.7.3`). If the upstream addon
+version number has not changed but a new commit is detected, the release tag will
+include a short commit hash (e.g. `v1.7.3-5a349d9`) to avoid collisions.
 
-## Audio features
+---
 
-- Stage 1-4 sound selection
-- Ambush sound selection
-- Echo of Predation sound selection (Nightmare prey encounter)
-- Sound channel selection
-- Sound enhancement control
-- Stage sound test buttons (1-4), Ambush test, Bloody Command test, and Echo of Predation test button
-- Custom sound file add/remove in settings UI
-- Protected default sound files cannot be removed
-- Bloody Command alert trigger: Nightmare prey only, stages 1-3
-- One-time 2.2.0 audio migration prompt with `New Defaults` button; close keeps your current sounds
+## Manual installation
 
-Bundled default files:
+1. Go to the [Releases](../../releases) page.
+2. Download the `.zip` file from the latest release.
+3. Extract it into your WoW `Interface/AddOns/` directory.
+4. The addon folder should appear as: `Interface/AddOns/Preydator/`
 
-- `predator-alert.ogg`
-- `predator-ambush.ogg`
-- `predator-snarl-01.ogg`
-- `predator-torment.ogg`
-- `predator-kill.ogg`
-- `well-we-ve-prepared-a-trap-for-this-predator.ogg`
-- `predator-kills-its-prey-to-survive.ogg`
-- `echo-of-predation.ogg`
+---
 
-2.2.0 default mapping:
+## Zip structure
 
-- Stage 1: `predator-ambush.ogg`
-- Stage 2: `predator-snarl-01.ogg`
-- Stage 3: `predator-torment.ogg`
-- Stage 4: `predator-kill.ogg`
-- Ambush trigger: `well-we-ve-prepared-a-trap-for-this-predator.ogg`
-- Bloody Command trigger: `predator-kills-its-prey-to-survive.ogg`
-- Echo of Predation: `echo-of-predation.ogg`
+WowUp and WoW both expect the addon to be inside a top-level folder named
+`Preydator`. The zip produced by this mirror looks like:
 
-## Visibility and icon behavior
-
-- `Only show in prey zone`
-- `Show in Edit Mode preview`
-- `Disable Default Prey Icon`
-
-## Diagnostics and debug
-
-- `/pd inspect` live diagnostic output
-- `/pd mem` memory snapshot
-- Debug system defaults to off
-- Advanced tab `Enable Debug` toggle
-- Slash debug controls remain available:
-	- `/pd debug on`
-	- `/pd debug off`
-	- `/pd debug show`
-	- `/pd debug clear`
-
-## Roadmap progress snapshot
-
-- Epic 1: Approved Currency Ledger (MVP) - Completed and expanded through `v1.7.0`
-- Epic 2: Hunt Source Scanner - Planned
-- Epic 3: Weekly Hunt Cap Tracker - Planned
-- Epic 4: Prey Achievement Gap Highlighter - Planned
-- Epic 5: Reward Intelligence and Cost Context - In progress
-
-## Slash commands
-
-- `/pd options` or `/preydator options` - open settings
-- `/pd inspect` - print live diagnostics
-- `/pd inspect bs` - send inspect diagnostics to BugSack
-- `/pd show` - force show bar
-- `/pd hide` - return to auto visibility
-- `/pd toggle` - toggle force show
-- `/pd mem` - print memory usage snapshot
-- `/pd debug <on|off|show|clear>` - debug logging tools
-
-## Optional custom audio
-
-Place your own `.ogg` files in:
-
-```text
-Interface/AddOns/Preydator/sounds/
+```
+Preydator/
+  Preydator.toc
+  Preydator.lua
+  Locales/
+  Modules/
+  sounds/
+  …
 ```
 
-Then add/select them in settings and run `/reload` if needed.
+---
 
-Accepted input formats in the custom file field:
+## How the change-detection works
 
-- bare name (example: `my-alert`)
-- explicit `.ogg` filename (example: `my-alert.ogg`)
-- full path starting with `Interface\AddOns\Preydator\sounds\`
+The SHA of the last-mirrored upstream commit is stored in `.last-upstream-sha`
+in this repository. The workflow compares that value against the current upstream
+`HEAD` SHA. If they differ, a new release is built; if they match, the run exits
+cleanly with no changes.
 
-## Issues and feedback
+---
 
-Please report bugs, feature requests, or visual/audio issues at:
+## Upstream licensing
 
-**[https://github.com/RagingAltoholic/Preydator/issues](https://github.com/RagingAltoholic/Preydator/issues)**
+The upstream repository ([RagingAltoholic/Preydator](https://github.com/RagingAltoholic/Preydator))
+does **not** currently include an explicit open-source license. All rights to the
+addon code remain with the original author. This mirror redistributes the addon
+files in good faith for the sole purpose of WowUp distribution convenience.
+
+The `LICENSE` file in this repository covers only the mirror's own automation
+scripts and documentation — not the addon itself.
+
+---
+
+## Repository setup (first-time)
+
+If you fork or recreate this mirror, the following one-time setup is required:
+
+### 1. GitHub Actions permissions
+
+Navigate to **Settings → Actions → General → Workflow permissions** and set:
+- ✅ **Read and write permissions**
+- ✅ **Allow GitHub Actions to create and approve pull requests** (optional)
+
+This allows the workflow to push the updated `.last-upstream-sha` file and to
+create releases using the built-in `GITHUB_TOKEN`.
+
+### 2. No secrets needed
+
+The workflow uses only the built-in `GITHUB_TOKEN`. No personal access tokens or
+secrets need to be configured.
+
+### 3. First run
+
+On the first run, `.last-upstream-sha` will be empty, so the workflow will
+immediately package and publish the current upstream state as the first release.
+Subsequent runs will only release when upstream changes.
+
+---
+
+## This repo is not the source of truth
+
+- Do not use this repo to judge the addon's current development status.
+- Do not submit pull requests to this repo to change addon behaviour.
+- Always refer to the [upstream repo](https://github.com/RagingAltoholic/Preydator)
+  for the definitive, up-to-date source.
+
+---
+
+*Automated mirror — not affiliated with or endorsed by the original author.*
