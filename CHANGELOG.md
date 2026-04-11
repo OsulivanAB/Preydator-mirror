@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.2 - 2026-04-10
+
+### Fixed
+- Hardened Echo of Predation nameplate GUID parsing to avoid direct comparisons on raw `UnitGUID` values in protected contexts, preventing secret-string compare faults in `NAME_PLATE_UNIT_ADDED` handling.
+- Added a reusable taint-safe GUID-to-NPC parser helper and routed both Echo nameplate handling and HuntScanner target-NPC parsing through it.
+- Hardened Echo NPC-ID coercion to use the shared fail-closed numeric conversion path instead of direct `tonumber(...)`.
+
 ## 2.2.1 - 2026-04-10
 
 ### Changed

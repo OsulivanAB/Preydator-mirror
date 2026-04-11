@@ -1647,17 +1647,21 @@ local function ParseTargetNPCID()
         return nil
     end
 
-    local okGUID, guid = pcall(UnitGUID, "target")
-    if not okGUID or type(guid) ~= "string" or guid == "" then
+    local okGUID, guidValue = pcall(UnitGUID, "target")
+    if not okGUID then
         return nil
     end
 
-    if strsplit then
-        local _, _, _, _, _, npcID = strsplit("-", guid)
-        return SafeToNumber(npcID)
+    if api and type(api.ExtractNPCIDFromGUID) == "function" then
+        return api.ExtractNPCIDFromGUID(guidValue)
     end
 
-    local npcID = guid:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
+    local okGUIDString, guidString = pcall(tostring, guidValue)
+    if not okGUIDString or type(guidString) ~= "string" or guidString == "" then
+        return nil
+    end
+
+    local npcID = guidString:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
     return SafeToNumber(npcID)
 end
 

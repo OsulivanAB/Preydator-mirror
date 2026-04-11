@@ -12,7 +12,6 @@ local C_QuestLog = _G["C_QuestLog"]
 local C_TaskQuest = _G["C_TaskQuest"]
 local C_Map = _G["C_Map"]
 local C_SuperTrack = _G["C_SuperTrack"]
-local GetQuestProgressBarPercent = _G.GetQuestProgressBarPercent
 local UIParent = _G.UIParent
 local GetTime = _G.GetTime
 local IsInInstance = _G.IsInInstance
@@ -1664,8 +1663,44 @@ local function IsNightmarePreyQuest(questID)
     return false
 end
 
+local function SafeToNumber(value)
+    -- Some Blizzard APIs can return protected "secret number" values.
+    -- Converting those directly via tonumber taints and can error in map UI.
+    local okString, asString = pcall(tostring, value)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, result = pcall(tonumber, numericToken)
+    if okNumber and type(result) == "number" then
+        return result
+    end
+
+    return nil
+end
+
+local function SafeExtractNPCIDFromGUIDValue(guidValue)
+    local okGUIDString, guidString = pcall(tostring, guidValue)
+    if not okGUIDString or type(guidString) ~= "string" or guidString == "" then
+        return nil
+    end
+
+    local parsedNPCID = guidString:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
+    if type(parsedNPCID) ~= "string" or parsedNPCID == "" then
+        return nil
+    end
+
+    return SafeToNumber(parsedNPCID)
+end
+
 TryPlayEchoOfPredationEncounter = function(npcID, source)
-    local numericNPCID = tonumber(npcID)
+    local numericNPCID = SafeToNumber(npcID)
     if numericNPCID ~= 248365 then
         return false
     end
@@ -1725,21 +1760,19 @@ TryHandleEchoOfPredationNameplate = function(unitToken, source)
         return false
     end
 
-    local guid = unitGUID(unitToken)
-    if type(guid) ~= "string" or guid == "" then
+    local okGUID, rawGUID = pcall(unitGUID, unitToken)
+    if not okGUID then
         return false
     end
 
-    local npcID = nil
-    if strsplit then
-        local _, _, _, _, _, parsedNPCID = strsplit("-", guid)
-        npcID = tonumber(parsedNPCID)
+    -- Never compare raw UnitGUID results directly. In some nameplate contexts,
+    -- Blizzard can return protected/secret string payloads.
+    local okGUIDString, guidString = pcall(tostring, rawGUID)
+    if not okGUIDString or type(guidString) ~= "string" then
+        return false
     end
 
-    if not npcID then
-        local parsedNPCID = guid:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
-        npcID = tonumber(parsedNPCID)
-    end
+    local npcID = SafeExtractNPCIDFromGUIDValue(guidString)
 
     if npcID ~= 248365 then
         return false
@@ -2439,9 +2472,9 @@ local function ExtractQuestObjectivePercent(questID)
     end
 
     local questBarPct = nil
-    if GetQuestProgressBarPercent then
+    if _G.GetQuestProgressBarPercent then
         local okQuestBarPct, rawQuestBarPct = pcall(function()
-            return CoerceSafeNumeric(GetQuestProgressBarPercent(questID))
+            return CoerceSafeNumeric(_G.GetQuestProgressBarPercent(questID))
         end)
         if not okQuestBarPct then
             rawQuestBarPct = nil
@@ -3217,28 +3250,6 @@ local function SafeFieldRead(tbl, key)
     end)
     if ok then
         return value
-    end
-
-    return nil
-end
-
-local function SafeToNumber(value)
-    -- Some Blizzard APIs can return protected "secret number" values.
-    -- Converting those directly via tonumber taints and can error in map UI.
-    local okString, asString = pcall(tostring, value)
-    if not okString or type(asString) ~= "string" then
-        return nil
-    end
-
-    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
-        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
-    if not numericToken then
-        return nil
-    end
-
-    local okNumber, result = pcall(tonumber, numericToken)
-    if okNumber and type(result) == "number" then
-        return result
     end
 
     return nil
@@ -5274,6 +5285,9 @@ Preydator.API = {
     end,
     TryPlayEchoOfPredationSound = function(npcID, source)
         return TryPlayEchoOfPredationEncounter(npcID, source)
+    end,
+    ExtractNPCIDFromGUID = function(guidValue)
+        return SafeExtractNPCIDFromGUIDValue(guidValue)
     end,
     TryPlayStageSound = function(stageIndex, force)
         return TryPlayStageSound(stageIndex, force)
