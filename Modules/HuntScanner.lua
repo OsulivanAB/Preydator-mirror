@@ -21,7 +21,9 @@ local REWARD_POLL_INTERVAL = 0.10
 local REWARD_TIMEOUT_SECONDS = 4.0
 local REWARD_MAX_EMPTY_RETRIES = 2
 local REWARD_MIN_STABLE_SECONDS = 0.50
-local HUNT_REWARD_WARMING_ENABLED = false
+-- Reward warming must only run in live Hunt Table context (open mission frame/map tab).
+-- CanInspectHuntRewardsNow() enforces that gate before any reward inspection work starts.
+local HUNT_REWARD_WARMING_ENABLED = true
 
 local panelFrame
 local panelRows = {}
@@ -927,8 +929,9 @@ local function RebuildAchievementNeedsCache()
                         or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
                         or ("Achievement " .. tostring(achievementID))
                     AddAchievementNeed(achievementNeedsByQuestID, questID, achievementID, label)
-                    AddAchievementNameMatch(achievementID, achievementName, criteriaName, label)
-                elseif okCriteria and criteriaCompleted ~= true then
+                elseif okCriteria
+                    and criteriaType == ACHIEVEMENT_CRITERIA_TYPE_QUEST
+                    and criteriaCompleted ~= true then
                     local label = (type(achievementName) == "string" and achievementName ~= "" and achievementName)
                         or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
                         or ("Achievement " .. tostring(achievementID))
@@ -974,7 +977,7 @@ local function GetQuestAchievementNeeds(questID, title, difficulty)
 
     EnsureAchievementNeedsCache(false)
     local bucket = id and achievementNeedsByQuestID[id] or nil
-    if (type(bucket) ~= "table" or (bucket.count or 0) <= 0) and type(title) == "string" and title ~= "" then
+    if (not id or id < 1) and type(title) == "string" and title ~= "" then
         local nameKey = BuildAchievementMatchKey(title, difficulty)
         if nameKey then
             bucket = achievementNeedsByNameKey[nameKey]
@@ -1195,6 +1198,55 @@ local function NormalizeDifficultyKey(value)
     return DIFFICULTY_NORMAL
 end
 
+local function EscapePattern(text)
+    if type(text) ~= "string" or text == "" then
+        return ""
+    end
+
+    return (string.gsub(text, "([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"))
+end
+
+local function NormalizeToken(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+
+    local text = string.gsub(value, "^%s+", "")
+    text = string.gsub(text, "%s+$", "")
+    if text == "" then
+        return nil
+    end
+
+    return string.lower(text)
+end
+
+local function DetectDifficultyFromText(value)
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+
+    local normalized = NormalizeToken(value)
+    if not normalized then
+        return nil
+    end
+
+    local nightmareToken = NormalizeToken(L["Nightmare"])
+    local hardToken = NormalizeToken(L["Hard"])
+    local normalToken = NormalizeToken(L["Normal"])
+
+    if SafeFindLiteral(normalized, "nightmare") or (nightmareToken and SafeFindLiteral(normalized, nightmareToken)) then
+        return DIFFICULTY_NIGHTMARE
+    end
+    if SafeFindLiteral(normalized, "hard") or (hardToken and SafeFindLiteral(normalized, hardToken)) then
+        return DIFFICULTY_HARD
+    end
+    if SafeFindLiteral(normalized, "normal") or (normalToken and SafeFindLiteral(normalized, normalToken)) then
+        return DIFFICULTY_NORMAL
+    end
+
+    return nil
+end
+
 local function NormalizeAchievementMatchText(value)
     if type(value) ~= "string" or value == "" then
         return nil
@@ -1205,10 +1257,34 @@ local function NormalizeAchievementMatchText(value)
     text = string.gsub(text, "|r", "")
     text = string.gsub(text, "^%s+", "")
     text = string.gsub(text, "%s+$", "")
-    text = string.gsub(text, "^Prey:%s*", "")
+
+    -- Strip a short leading label prefix (e.g. "Prey:", localized equivalents).
+    local fullWidthColon = "\239\188\154"
+    local colonStart, colonEnd = string.find(text, ":", 1, true)
+    if not colonStart then
+        colonStart, colonEnd = string.find(text, fullWidthColon, 1, true)
+    end
+    if colonStart and colonEnd and colonStart <= 28 then
+        local prefix = string.sub(text, 1, colonStart - 1)
+        if not string.find(prefix, "%d") then
+            text = string.sub(text, colonEnd + 1)
+            text = string.gsub(text, "^%s+", "")
+        end
+    end
+
     text = string.gsub(text, "^Complete%s+", "")
-    text = string.gsub(text, "%s*%((Nightmare|Hard|Normal)%)%s*$", "")
-    text = string.gsub(text, "[^%w]+", " ")
+
+    local trailingParen = string.match(text, "%s*(%b())%s*$")
+    if trailingParen then
+        local inner = string.sub(trailingParen, 2, -2)
+        if DetectDifficultyFromText(inner) then
+            local escaped = EscapePattern(trailingParen)
+            text = string.gsub(text, "%s*" .. escaped .. "%s*$", "")
+        end
+    end
+
+    -- Keep non-ASCII letters intact for locale-safe matching.
+    text = string.gsub(text, "[%p%c]+", " ")
     text = string.lower(string.gsub(text, "%s+", " "))
     text = string.gsub(text, "^%s+", "")
     text = string.gsub(text, "%s+$", "")
@@ -1224,15 +1300,9 @@ local function ExtractAchievementDifficultyKey(...)
     for index = 1, select("#", ...) do
         local value = select(index, ...)
         if type(value) == "string" and value ~= "" then
-            local lowerValue = string.lower(value)
-            if SafeFindLiteral(lowerValue, "nightmare") then
-                return DIFFICULTY_NIGHTMARE
-            end
-            if SafeFindLiteral(lowerValue, "hard") then
-                return DIFFICULTY_HARD
-            end
-            if SafeFindLiteral(lowerValue, "normal") then
-                return DIFFICULTY_NORMAL
+            local difficulty = DetectDifficultyFromText(value)
+            if difficulty then
+                return difficulty
             end
         end
     end

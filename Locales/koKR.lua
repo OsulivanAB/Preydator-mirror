@@ -243,7 +243,7 @@ local L = _G.PreydatorL
   L["Rewards unknown"]                                 = "보상 알 수 없음"
   L["Reward data pending"]                             = "보상 데이터 대기 중"
   L["No available hunts"]                              = "가능한 사냥 없음"
-  L["Use /pd huntdebug at a hunt table to print payload data."] = "사냥 탁자에서 /pd huntdebug를 입력하여 데이터를 확인하세요."
+  L["Use /pd huntdebug at a hunt table to print payload data."] = "사냥 탁자에서 /pd hinspect를 입력하여 데이터를 확인하세요."
 
 ---- Currency config page labels
   L["Currencies to Track"]          = "추적할 화폐"
@@ -457,7 +457,7 @@ local L = _G.PreydatorL
 
   L["Preydator:"] = "Preydator:"
   L["Preydator: %s"] = "Preydator: %s"
-  L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator 명령어: options | show | hide | toggle | mem | debug <on|off|show|clear>"
+  L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator 명령어: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs]"
 
 ---- Additional settings and panel keys
   L["Achievements Theme"] = "업적 테마"

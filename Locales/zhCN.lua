@@ -240,7 +240,7 @@ L["Available Hunts"] = "可用狩猎"
 L["Rewards unknown"] = "奖励未知"
 L["Reward data pending"] = "奖励数据待定"
 L["No available hunts"] = "没有可用狩猎"
-L["Use /pd huntdebug at a hunt table to print payload data."] = "在狩猎面板使用/pd huntdebug来打印载荷数据。"
+L["Use /pd huntdebug at a hunt table to print payload data."] = "在狩猎面板使用/pd hinspect来打印载荷数据。"
 
 ---- Currency config page labels
 L["Currencies to Track"] = "要追踪的货币"
@@ -326,7 +326,7 @@ L["Preydator: debug commands are 'debug on', 'debug off', 'debug show', 'debug c
 L["Preydator: Progress bar forced visible."] = "Preydator: 进度条已强制显示。"
 L["Preydator: Progress bar auto mode restored."] = "Preydator: 进度条自动模式已恢复。"
 L["Preydator: Progress bar force show = %s"] = "Preydator: 进度条强制显示 = %s"
-L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator命令: options | show | hide | toggle | mem | debug <on|off|show|clear>"
+L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator命令: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs]"
 
 ---- Currency Tracker - Debug
 L["Preydator CurrencyDebug: %s"] = "Preydator货币调试: %s"
@@ -410,7 +410,7 @@ L["Preydator: debug commands are 'debug on', 'debug off', 'debug show', 'debug c
 L["Preydator: Progress bar forced visible."] = "Preydator: 进度条已强制显示。"
 L["Preydator: Progress bar auto mode restored."] = "Preydator: 进度条自动模式已恢复。"
 L["Preydator: Progress bar force show = %s"] = "Preydator: 进度条强制显示 = %s"
-L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator命令: options | show | hide | toggle | mem | debug <on|off|show|clear>"
+L["Preydator commands: options | show | hide | toggle | mem | debug <on|off|show|clear>"] = "Preydator命令: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs]"
 L["Preydator: Inspect report sent to BugSack via error handler (debug module)."] = "Preydator: 检查报告已通过错误处理程序发送到BugSack (调试模块)。"
 L["Preydator: Could not send inspect report to BugSack: "] = "Preydator: 无法发送检查报告到BugSack: "
 L["Preydator: Inspect report cached in PreydatorLastInspectReport (debug module)."] = "Preydator: 检查报告已缓存到PreydatorLastInspectReport (调试模块)。"

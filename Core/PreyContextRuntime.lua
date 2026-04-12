@@ -180,6 +180,21 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
         questMapID = CanonicalizeMapID(SafeToNumber(state.confirmedPreyZoneMapID))
     end
 
+    if not questMapID and playerMapID then
+        local progressState = SafeToNumber(state.progressState)
+        local nowSeconds = (type(now) == "number") and now or 0
+        local lastWidgetSeenAt = SafeToNumber(state.lastWidgetSeenAt) or 0
+        local lastWidgetSetupAt = SafeToNumber(state.lastWidgetSetupAt) or 0
+        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= 8.0
+        -- When quest-map APIs are temporarily nil during transitions/reload,
+        -- latch the current player map if active prey progress/widget signal exists.
+        if progressState ~= nil or hasRecentWidgetSignal then
+            questMapID = playerMapID
+            state.preyZoneMapID = playerMapID
+            state.confirmedPreyZoneMapID = playerMapID
+        end
+    end
+
     local inPreyZone = nil
     if questMapID and playerMapID then
         inPreyZone = (playerMapID == questMapID)

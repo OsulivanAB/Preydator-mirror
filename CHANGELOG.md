@@ -8,6 +8,21 @@
 - Narrowed inspect command aliases to `/pd inspect` and `/pd inspect bs`; removed unused `bug`, `bugsack`, `both`, and concatenated inspect aliases.
 - Renamed quest inspect command family from `inspectquest` to `qinspect`, with support for `/pd qinspect [questID] [bs]`.
 - Renamed hunt debug command family from `huntdebug` to `hinspect`, with support for `/pd hinspect [bs]` and `/pd hinspectcopy [bs]`.
+- Updated zhCN/koKR localized slash-help text to reference the current `hinspect` and expanded inspect command surface.
+
+### Fixed
+- Hardened HuntScanner achievement matching so quest-ID criteria remain authoritative and name-based fallback is used only when a quest criteria entry has no usable quest asset ID.
+- Improved HuntScanner name matching normalization for non-English clients by stripping localized prefix labels (colon-form), preserving non-ASCII text during normalization, and detecting localized difficulty markers via locale tokens.
+- Re-enabled HuntScanner reward-cache warming in live Hunt Table context so hunt rewards populate again when the Hunt Table is open (`interactionType=3`, mission frame + map tab visible).
+- Clarified runtime safety policy: in restricted instance content (party, raid, scenario, delve, arena, pvp), Preydator runtime behavior is intended to fail closed and remain inactive.
+- Fixed Echo nameplate GUID parsing taint by removing direct empty-string comparisons on secret GUID payloads and parsing NPC ID from raw GUID values through taint-safe coercion only.
+- Hardened restricted-instance runtime gating with scenario fallbacks and an early EventRuntime fail-closed return so Preydator runtime handlers do not execute in instance content.
+- Fixed an over-broad scenario fallback in core restricted-instance detection that could hide the prey bar outside instances; scenario fallback now requires valid stage metadata before fail-closing runtime behavior.
+- Fixed prey-zone transition cache gaps that could leave `preyZoneMapID` unresolved (`nil`) during active hunts, incorrectly blocking bar visibility under `Only show in prey zone`; active progress/widget signals now latch a safe canonical zone map fallback.
+- Reduced default prey-icon hide flicker by using event-driven suppression reapplication (mixin/setup transitions and combat-safe deferred retries) instead of periodic polling.
+
+### Added
+- Added `localization-audit.ps1` sanitizer workflow for issues datasets to normalize `Korian` -> `Korean` labels and skip `[DNT] [PH]` placeholder rows during import prep.
 
 ## 2.2.2 - 2026-04-10
 

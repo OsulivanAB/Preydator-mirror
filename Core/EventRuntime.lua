@@ -93,6 +93,17 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
     local isRestrictedInstance = type(ctx.isRestrictedInstanceForPreyBar) == "function"
         and ctx.isRestrictedInstanceForPreyBar() == true
 
+    -- In restricted instance content, fail closed for runtime behavior.
+    if isRestrictedInstance and event ~= "PLAYER_LOGIN" and event ~= "ADDON_LOADED" then
+        if type(ctx.setPollingActive) == "function" then
+            ctx.setPollingActive(false)
+        end
+        if type(ctx.updateBarDisplay) == "function" then
+            ctx.updateBarDisplay()
+        end
+        return true
+    end
+
     -- Gate module fanout for noisy UI widget events when no prey context exists.
     -- Keep this lazy so non-noisy events do not pay quest/cache costs.
     local isNoisyEvent = event == "UPDATE_UI_WIDGET" or event == "UPDATE_ALL_UI_WIDGETS"

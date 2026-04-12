@@ -35,6 +35,18 @@ local function IsRestrictedInstance()
         end
     end
 
+    if _G.C_ScenarioInfo and type(_G.C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okInfo, scenarioInfo = pcall(_G.C_ScenarioInfo.GetScenarioInfo)
+        if okInfo and type(scenarioInfo) == "table" then
+            local hasScenarioName = type(scenarioInfo.name) == "string" and scenarioInfo.name ~= ""
+            local stage = SafeToNumber(scenarioInfo.currentStage)
+            local stages = SafeToNumber(scenarioInfo.numStages)
+            if hasScenarioName and (stage ~= nil or stages ~= nil) then
+                return true
+            end
+        end
+    end
+
     return false
 end
 

@@ -1420,6 +1420,19 @@ local function RefreshInPreyZoneStatus(questID, force)
         questMapID = CanonicalizeFallbackMapID(state.confirmedPreyZoneMapID)
     end
 
+    if not questMapID and playerMapID then
+        local progressState = CoerceSanitizedNumber(state.progressState)
+        local nowSeconds = (type(now) == "number") and now or 0
+        local lastWidgetSeenAt = CoerceSanitizedNumber(state.lastWidgetSeenAt) or 0
+        local lastWidgetSetupAt = CoerceSanitizedNumber(state.lastWidgetSetupAt) or 0
+        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= 8.0
+        if progressState ~= nil or hasRecentWidgetSignal then
+            questMapID = playerMapID
+            state.preyZoneMapID = playerMapID
+            state.confirmedPreyZoneMapID = playerMapID
+        end
+    end
+
     local inPreyZone = nil
     if questMapID and playerMapID then
         inPreyZone = (playerMapID == questMapID)
@@ -1593,6 +1606,27 @@ local function IsRestrictedInstanceForPreyBar()
             or instanceType == "delve"
     end
 
+    -- Some delve/scenario transitions can lag IsInInstance() type reporting.
+    if type(IsInScenario) == "function" then
+        local okScenario, inScenario = pcall(IsInScenario)
+        if okScenario and inScenario == true then
+            return true
+        end
+    end
+
+    if C_ScenarioInfo and type(C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okInfo, scenarioInfo = pcall(C_ScenarioInfo.GetScenarioInfo)
+        if okInfo and type(scenarioInfo) == "table" then
+            local hasScenarioName = type(scenarioInfo.name) == "string" and scenarioInfo.name ~= ""
+            local stage = SafeToNumber(scenarioInfo.currentStage)
+            local stages = SafeToNumber(scenarioInfo.numStages)
+            -- Require explicit stage metadata to avoid false positives from stale names.
+            if hasScenarioName and (stage ~= nil or stages ~= nil) then
+                return true
+            end
+        end
+    end
+
     return false
 end
 
@@ -1687,12 +1721,12 @@ end
 
 local function SafeExtractNPCIDFromGUIDValue(guidValue)
     local okGUIDString, guidString = pcall(tostring, guidValue)
-    if not okGUIDString or type(guidString) ~= "string" or guidString == "" then
+    if not okGUIDString or type(guidString) ~= "string" then
         return nil
     end
 
     local parsedNPCID = guidString:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
-    if type(parsedNPCID) ~= "string" or parsedNPCID == "" then
+    if type(parsedNPCID) ~= "string" then
         return nil
     end
 
@@ -1765,14 +1799,9 @@ TryHandleEchoOfPredationNameplate = function(unitToken, source)
         return false
     end
 
-    -- Never compare raw UnitGUID results directly. In some nameplate contexts,
-    -- Blizzard can return protected/secret string payloads.
-    local okGUIDString, guidString = pcall(tostring, rawGUID)
-    if not okGUIDString or type(guidString) ~= "string" then
-        return false
-    end
-
-    local npcID = SafeExtractNPCIDFromGUIDValue(guidString)
+    -- Instance gate must remain before GUID parsing to avoid secret-string paths.
+    -- Parse directly from raw value via the taint-safe helper.
+    local npcID = SafeExtractNPCIDFromGUIDValue(rawGUID)
 
     if npcID ~= 248365 then
         return false
@@ -3774,6 +3803,10 @@ local function UpdatePreyState()
 end
 
 function Preydator:ShouldUseActivePolling()
+    if IsRestrictedInstanceForPreyBar() then
+        return false
+    end
+
     local customizationV2 = Preydator:GetModule("CustomizationStateV2")
     local barModuleEnabled = true
     local soundsModuleEnabled = true
