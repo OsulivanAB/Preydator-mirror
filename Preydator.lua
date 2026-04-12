@@ -448,6 +448,7 @@ local UpdateBarDisplay
 local ApplyBarSettings
 local ApplyDefaultPreyIconVisibility
 local TryOpenPreyQuestOnMap
+local IsAnyTrackedPreyWidgetShown
 local BarRuntimeApplyHandler
 local BarRuntimeUpdateHandler
 local OnBlizzardWidgetsLoaded
@@ -1384,6 +1385,9 @@ local function RefreshInPreyZoneStatus(questID, force)
             mapApi = C_Map,
             questLog = C_QuestLog,
             taskQuestApi = C_TaskQuest,
+            isTrackedPreyWidgetShown = function()
+                return IsAnyTrackedPreyWidgetShown()
+            end,
             getQuestZoneMapIDFromHuntScanner = function(numericQuestID)
                 if not IsValidQuestID(numericQuestID) then
                     return nil
@@ -1460,7 +1464,8 @@ local function RefreshInPreyZoneStatus(questID, force)
         local lastWidgetSeenAt = CoerceSanitizedNumber(state.lastWidgetSeenAt) or 0
         local lastWidgetSetupAt = CoerceSanitizedNumber(state.lastWidgetSetupAt) or 0
         local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= WIDGET_SETUP_FRESH_SECONDS
-        if progressState ~= nil or hasRecentWidgetSignal then
+        local hasShownWidgetSignal = IsAnyTrackedPreyWidgetShown()
+        if progressState ~= nil or hasRecentWidgetSignal or hasShownWidgetSignal then
             questMapID = playerMapID
             state.preyZoneMapID = playerMapID
             state.confirmedPreyZoneMapID = playerMapID
@@ -1470,18 +1475,6 @@ local function RefreshInPreyZoneStatus(questID, force)
     local inPreyZone = nil
     if questMapID and playerMapID then
         inPreyZone = (playerMapID == questMapID)
-    end
-
-    if inPreyZone == nil and C_QuestLog and C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo and playerMapID then
-        local okLogIndex, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
-        if okLogIndex and logIndex then
-            local okInfo, info = pcall(C_QuestLog.GetInfo, logIndex)
-            if okInfo and type(info) == "table" and info.isOnMap == true then
-                inPreyZone = true
-                state.preyZoneMapID = playerMapID
-                state.confirmedPreyZoneMapID = playerMapID
-            end
-        end
     end
 
     if inPreyZone == true then
@@ -2876,7 +2869,7 @@ local function CaptureLivePreyHuntFrames()
     end
 end
 
-local function IsAnyTrackedPreyWidgetShown()
+IsAnyTrackedPreyWidgetShown = function()
     if preyHuntIconFrame and preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown() then
         return true
     end
@@ -3230,18 +3223,15 @@ ApplyDefaultPreyIconVisibility = function()
         return
     end
 
-    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
-        state.pendingWidgetSuppressionAfterCombat = true
-        return
-    end
-
     local touchedAnyFrame = false
 
     if preyHuntIconFrame then
         touchedAnyFrame = true
         EnsureWidgetSuppressionHook(preyHuntIconFrame)
         ApplyWidgetFrameSuppression(preyHuntIconFrame, true)
-        if preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown() then
+        if preyHuntIconFrame.IsShown and preyHuntIconFrame:IsShown()
+            and type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
+        then
             state.pendingWidgetSuppressionAfterCombat = true
         end
     end
@@ -3251,7 +3241,9 @@ ApplyDefaultPreyIconVisibility = function()
             touchedAnyFrame = true
             EnsureWidgetSuppressionHook(frameRef)
             ApplyWidgetFrameSuppression(frameRef, true)
-            if frameRef.IsShown and frameRef:IsShown() then
+            if frameRef.IsShown and frameRef:IsShown()
+                and type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
+            then
                 state.pendingWidgetSuppressionAfterCombat = true
             end
         end
@@ -3278,6 +3270,7 @@ local function EnsurePreyHuntMixinSuppressionHook()
     local ok = pcall(hooksecurefunc, mixin, "Setup", function(self, widgetInfo)
         preyHuntIconFrame = self
         PREY_WIDGET_FRAMES[self] = true
+        state.lastWidgetSetupAt = (GetTime and GetTime()) or 0
 
         local shownState = nil
         local progressState = nil
@@ -3313,7 +3306,6 @@ local function EnsurePreyHuntMixinSuppressionHook()
                 captureSource = captureSource,
                 argType = type(widgetInfo),
             }
-            state.lastWidgetSetupAt = (GetTime and GetTime()) or 0
             -- Mixin Setup fires only when Blizzard is actively rendering the widget,
             -- which only happens when the player is physically in the prey zone.
             -- This is the authoritative zone-entry signal.
@@ -3333,10 +3325,11 @@ local function EnsurePreyHuntMixinSuppressionHook()
 
         -- Hide immediately after Blizzard Setup when the option is enabled.
         if settings and settings.disableDefaultPreyIcon == true then
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            ApplyWidgetFrameSuppression(self, true)
+            if self.IsShown and self:IsShown()
+                and type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
+            then
                 state.pendingWidgetSuppressionAfterCombat = true
-            else
-                ApplyWidgetFrameSuppression(self, true)
             end
         end
     end)
@@ -3759,6 +3752,7 @@ local function UpdatePreyState()
     local hasActiveQuest = IsValidQuestID(questID)
     local forceKillStage = (state.killStageUntil or 0) > now
     local forceAmbushAlert = (state.ambushAlertUntil or 0) > now
+    local enteredPreyZoneThisPass = false
 
     if not hasActiveQuest and not forceKillStage then
         local endingQuestID = state.activeQuestID or questID
@@ -3785,7 +3779,9 @@ local function UpdatePreyState()
 
     if hasActiveQuest then
         ResetStateForNewQuest(questID)
+        local inZoneBeforeRefresh = state.inPreyZone == true
         RefreshInPreyZoneStatus(questID, false)
+        enteredPreyZoneThisPass = (state.inPreyZone == true and not inZoneBeforeRefresh)
 
         -- While out of prey zone, skip expensive widget/objective scans.
         if state.inPreyZone == false and not forceKillStage and not forceAmbushAlert then
@@ -3887,6 +3883,12 @@ local function UpdatePreyState()
 
     local stageChanged = newStage ~= oldStage
     if stageChanged then
+        TryPlayStageSound(newStage)
+    elseif enteredPreyZoneThisPass
+        and state.inPreyZone == true
+        and not state.stageSoundPlayed[newStage]
+        and not state.stageSoundAttempted[newStage]
+    then
         TryPlayStageSound(newStage)
     end
 

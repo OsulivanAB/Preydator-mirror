@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.5 - 2026-04-12
+
+### Fixed
+- Fixed a default prey-icon suppression regression where the Blizzard prey icon could remain visible during active hunt progression (including stage 3) while `Disable Default Prey Icon` was enabled. Suppression now attempts immediately even during combat-lockdown windows and keeps post-combat reapply as a fail-closed fallback if a frame remains shown.
+- Fixed incorrect-zone prey bar visibility when Blizzard returned `GetInfo(...).isOnMap=true` but no reliable prey-zone map ID. Preydator no longer treats broad quest-log map membership as proof that the player is inside the prey zone, preventing false positives like Eversong Woods showing a Zul'Aman hunt bar under `Only show in prey zone`.
+- Fixed a zone-entry regression where the Preydator bar could stay hidden in the correct prey zone until deeper movement triggered a later widget setup/suppression pass. When Blizzard has not yet provided a reliable quest-zone map, a currently shown prey widget is now treated as authoritative in-zone confirmation for the bar and icon-suppression paths.
+- Fixed stage-1 audio not firing reliably after reload when zone state entered through widget-setup timing paths instead of an explicit stage transition. Entering the prey zone now triggers one current-stage sound pass when no prior stage sound was played for that stage.
+- Fixed a reload case where the bar could remain hidden in-zone with `Only show in prey zone` until leaving/re-entering. Any prey-widget setup now refreshes setup-freshness timing even when payload fields are sparse, allowing zone confirmation to resolve without requiring a later zone transition event.
+
 ## 2.2.4 - 2026-04-11
 
 ### Fixed

@@ -86,29 +86,6 @@ local function ResolveExpectedQuestMapID(questID, ctx)
         end
     end
 
-    -- Last fallback: when explicit zone APIs are nil but the quest log marks this
-    -- quest as on the player's current map, use the current canonical player map ID.
-    if questLog
-        and type(questLog.GetLogIndexForQuestID) == "function"
-        and type(questLog.GetInfo) == "function" then
-        local okLogIndex, logIndex = pcall(questLog.GetLogIndexForQuestID, numericQuestID)
-        if okLogIndex and logIndex then
-            local okInfo, info = pcall(questLog.GetInfo, logIndex)
-            if okInfo and type(info) == "table" and info.isOnMap == true then
-                local mapApi = ctx and ctx.mapApi
-                if mapApi and type(mapApi.GetBestMapForUnit) == "function" then
-                    local okPlayerMapID, rawPlayerMapID = pcall(mapApi.GetBestMapForUnit, "player")
-                    if okPlayerMapID then
-                        local playerMapID = CanonicalizeMapID(SafeToNumber(rawPlayerMapID))
-                        if playerMapID then
-                            return playerMapID
-                        end
-                    end
-                end
-            end
-        end
-    end
-
     return nil
 end
 
@@ -221,9 +198,13 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
         local lastWidgetSeenAt = SafeToNumber(state.lastWidgetSeenAt) or 0
         local lastWidgetSetupAt = SafeToNumber(state.lastWidgetSetupAt) or 0
         local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= 2.0
+        local isTrackedPreyWidgetShown = ctx and ctx.isTrackedPreyWidgetShown
+        local hasShownWidgetSignal = type(isTrackedPreyWidgetShown) == "function" and isTrackedPreyWidgetShown() == true
         -- When quest-map APIs are temporarily nil during transitions/reload,
         -- latch the current player map if active prey progress/widget signal exists.
-        if progressState ~= nil or hasRecentWidgetSignal then
+        -- A currently shown prey widget is also authoritative: Blizzard only renders
+        -- it while the player is physically in the prey zone.
+        if progressState ~= nil or hasRecentWidgetSignal or hasShownWidgetSignal then
             questMapID = playerMapID
             state.preyZoneMapID = playerMapID
             state.confirmedPreyZoneMapID = playerMapID
@@ -233,24 +214,6 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
     local inPreyZone = nil
     if questMapID and playerMapID then
         inPreyZone = (playerMapID == questMapID)
-    end
-
-    if inPreyZone == nil then
-        local questLog = ctx and ctx.questLog
-        if questLog
-            and type(questLog.GetLogIndexForQuestID) == "function"
-            and type(questLog.GetInfo) == "function"
-            and playerMapID then
-            local okLogIndex, logIndex = pcall(questLog.GetLogIndexForQuestID, questID)
-            if okLogIndex and logIndex then
-                local okInfo, info = pcall(questLog.GetInfo, logIndex)
-                if okInfo and type(info) == "table" and info.isOnMap == true then
-                    inPreyZone = true
-                    state.preyZoneMapID = playerMapID
-                    state.confirmedPreyZoneMapID = playerMapID
-                end
-            end
-        end
     end
 
     if inPreyZone == true then
