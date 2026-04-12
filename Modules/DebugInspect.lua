@@ -527,7 +527,11 @@ function DebugInspectModule:OnSlashCommand(text, rest)
 
     if mode == "bugsack" then
         local header = isQuestInspect and "Preydator Quest Inspect Report" or "Preydator Inspect Report"
-        local sent, reason = SendToErrorHandler(reportText, header)
+        local okSendCall, sent, reason = pcall(SendToErrorHandler, reportText, header)
+        if not okSendCall then
+            sent = false
+            reason = "handler dispatch fault"
+        end
         if sent then
             if isQuestInspect then
                 print("Preydator: Quest inspect report sent to BugSack via error handler (debug module).")

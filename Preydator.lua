@@ -605,6 +605,7 @@ local state = {
     elapsedSinceUpdate = 0,
     lastWidgetSeenAt = 0,
     lastWidgetSetupAt = 0,
+    lastWidgetBoundQuestID = nil,
     lastStateDebugSnapshot = nil,
     lastDisplayPct = 0,
     lastDisplayReason = "init",
@@ -1383,6 +1384,23 @@ local function RefreshInPreyZoneStatus(questID, force)
             mapApi = C_Map,
             questLog = C_QuestLog,
             taskQuestApi = C_TaskQuest,
+            getQuestZoneMapIDFromHuntScanner = function(numericQuestID)
+                if not IsValidQuestID(numericQuestID) then
+                    return nil
+                end
+
+                local huntScanner = Preydator and Preydator.GetModule and Preydator:GetModule("HuntScanner")
+                if not (huntScanner and type(huntScanner.GetQuestZoneMapID) == "function") then
+                    return nil
+                end
+
+                local okMapID, rawMapID = pcall(huntScanner.GetQuestZoneMapID, huntScanner, numericQuestID)
+                if not okMapID then
+                    return nil
+                end
+
+                return CanonicalizeFallbackMapID(rawMapID)
+            end,
         })
     end
 
@@ -1417,6 +1435,22 @@ local function RefreshInPreyZoneStatus(questID, force)
     end
 
     if not questMapID then
+        if IsValidQuestID(questID) then
+            local huntScanner = Preydator and Preydator.GetModule and Preydator:GetModule("HuntScanner")
+            if huntScanner and type(huntScanner.GetQuestZoneMapID) == "function" then
+                local okMapID, rawMapID = pcall(huntScanner.GetQuestZoneMapID, huntScanner, questID)
+                if okMapID then
+                    local scannerMapID = CanonicalizeFallbackMapID(rawMapID)
+                    if scannerMapID then
+                        questMapID = scannerMapID
+                        state.preyZoneMapID = scannerMapID
+                    end
+                end
+            end
+        end
+    end
+
+    if not questMapID then
         questMapID = CanonicalizeFallbackMapID(state.confirmedPreyZoneMapID)
     end
 
@@ -1425,7 +1459,7 @@ local function RefreshInPreyZoneStatus(questID, force)
         local nowSeconds = (type(now) == "number") and now or 0
         local lastWidgetSeenAt = CoerceSanitizedNumber(state.lastWidgetSeenAt) or 0
         local lastWidgetSetupAt = CoerceSanitizedNumber(state.lastWidgetSetupAt) or 0
-        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= 8.0
+        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= WIDGET_SETUP_FRESH_SECONDS
         if progressState ~= nil or hasRecentWidgetSignal then
             questMapID = playerMapID
             state.preyZoneMapID = playerMapID
@@ -1437,6 +1471,19 @@ local function RefreshInPreyZoneStatus(questID, force)
     if questMapID and playerMapID then
         inPreyZone = (playerMapID == questMapID)
     end
+
+    if inPreyZone == nil and C_QuestLog and C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo and playerMapID then
+        local okLogIndex, logIndex = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+        if okLogIndex and logIndex then
+            local okInfo, info = pcall(C_QuestLog.GetInfo, logIndex)
+            if okInfo and type(info) == "table" and info.isOnMap == true then
+                inPreyZone = true
+                state.preyZoneMapID = playerMapID
+                state.confirmedPreyZoneMapID = playerMapID
+            end
+        end
+    end
+
     if inPreyZone == true then
         state.confirmedPreyZoneMapID = questMapID
     end
@@ -1617,9 +1664,28 @@ local function IsRestrictedInstanceForPreyBar()
     if C_ScenarioInfo and type(C_ScenarioInfo.GetScenarioInfo) == "function" then
         local okInfo, scenarioInfo = pcall(C_ScenarioInfo.GetScenarioInfo)
         if okInfo and type(scenarioInfo) == "table" then
+            local function parseScenarioNumber(value)
+                local okString, asString = pcall(tostring, value)
+                if not okString or type(asString) ~= "string" then
+                    return nil
+                end
+
+                local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+                    or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+                if not numericToken then
+                    return nil
+                end
+
+                local okNumber, result = pcall(tonumber, numericToken)
+                if okNumber and type(result) == "number" then
+                    return result
+                end
+                return nil
+            end
+
             local hasScenarioName = type(scenarioInfo.name) == "string" and scenarioInfo.name ~= ""
-            local stage = SafeToNumber(scenarioInfo.currentStage)
-            local stages = SafeToNumber(scenarioInfo.numStages)
+            local stage = parseScenarioNumber(scenarioInfo.currentStage)
+            local stages = parseScenarioNumber(scenarioInfo.numStages)
             -- Require explicit stage metadata to avoid false positives from stale names.
             if hasScenarioName and (stage ~= nil or stages ~= nil) then
                 return true
@@ -1720,17 +1786,21 @@ local function SafeToNumber(value)
 end
 
 local function SafeExtractNPCIDFromGUIDValue(guidValue)
-    local okGUIDString, guidString = pcall(tostring, guidValue)
-    if not okGUIDString or type(guidString) ~= "string" then
+    local ok, result = pcall(function()
+        local s = tostring(guidValue)
+        if type(s) ~= "string" then
+            return nil
+        end
+        local p = string.match(s, "^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
+        if type(p) ~= "string" then
+            return nil
+        end
+        return SafeToNumber(p)
+    end)
+    if not ok then
         return nil
     end
-
-    local parsedNPCID = guidString:match("^[^-]*%-[^-]*%-[^-]*%-[^-]*%-[^-]*%-([^-]+)")
-    if type(parsedNPCID) ~= "string" then
-        return nil
-    end
-
-    return SafeToNumber(parsedNPCID)
+    return result
 end
 
 TryPlayEchoOfPredationEncounter = function(npcID, source)
@@ -2668,6 +2738,8 @@ local function ClearPreyStateAndDisplay()
     state.stage = 1
     state.killStageUntil = 0
     state.lastWidgetSeenAt = 0
+    state.lastWidgetSetupAt = 0
+    state.lastWidgetBoundQuestID = nil
     preyWidgetInfoCache = nil
     state.stageSoundPlayed = {}
     state.stageSoundAttempted = {}
@@ -3215,6 +3287,15 @@ local function EnsurePreyHuntMixinSuppressionHook()
         if type(widgetInfo) == "table" then
             shownState = CoerceSanitizedNumber(widgetInfo.shownState)
             progressState = CoerceSanitizedNumber(widgetInfo.progressState)
+            local widgetQuestID = ExtractWidgetQuestID(widgetInfo)
+            if IsValidQuestID(widgetQuestID) then
+                state.lastWidgetBoundQuestID = widgetQuestID
+            elseif IsValidQuestID(state.activeQuestID) then
+                -- Some clients omit questID from widget payloads. Bind to the
+                -- currently tracked prey quest at Setup-time to keep updates
+                -- stable without carrying state across new quest handoffs.
+                state.lastWidgetBoundQuestID = state.activeQuestID
+            end
             if type(widgetInfo.tooltip) == "string" then
                 tooltipText = widgetInfo.tooltip
             end
@@ -3228,6 +3309,7 @@ local function EnsurePreyHuntMixinSuppressionHook()
                 shownState = shownState,
                 progressState = progressState,
                 tooltip = tooltipText,
+                questID = state.lastWidgetBoundQuestID,
                 captureSource = captureSource,
                 argType = type(widgetInfo),
             }
@@ -3546,6 +3628,15 @@ FindPreyWidgetProgressState = function(activeQuestID)
             return nil
         end
 
+        local frameShown = frameRef.IsShown and frameRef:IsShown() or false
+        local now = (GetTime and GetTime()) or 0
+        local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
+        -- Hidden tracked frames can retain stale prey data after turn-in. Only
+        -- trust hidden-frame fallback while a fresh Setup signal is still active.
+        if not frameShown and not setupFresh then
+            return nil
+        end
+
         local shownState, progressState, tooltipText, fieldSource = ResolvePreyFieldsFromFrame(frameRef)
         if shownState == nil and progressState == nil and tooltipText == nil then
             return nil
@@ -3560,6 +3651,7 @@ FindPreyWidgetProgressState = function(activeQuestID)
             shownState = shownState,
             progressState = progressState,
             tooltip = tooltipText,
+            questID = state.lastWidgetBoundQuestID,
             captureSource = captureSource,
             argType = "frame-fallback",
         }
@@ -3604,7 +3696,17 @@ FindPreyWidgetProgressState = function(activeQuestID)
 
     local pct = ExtractProgressPercent(info, info.tooltip)
     if IsValidQuestID(activeQuestID) then
-        local widgetQuestID = ExtractWidgetQuestID(info)
+        local widgetQuestID = ExtractWidgetQuestID(info) or CoerceSanitizedNumber(info.questID) or state.lastWidgetBoundQuestID
+        if widgetQuestID == nil then
+            local now = (GetTime and GetTime()) or 0
+            local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
+            -- Do not trust unbound widget payloads unless they were captured from
+            -- a very recent Setup signal; this prevents stale stage-4 carryover
+            -- into the next accepted prey quest.
+            if not setupFresh then
+                return nil, nil, nil, nil
+            end
+        end
         if widgetQuestID == activeQuestID or widgetQuestID == nil then
             return info.progressState, info.tooltip, pct, nil
         end
@@ -3620,6 +3722,9 @@ local function ResetStateForNewQuest(questID)
         state.lastNotifiedPreyEndQuestID = nil
         state.progressState = nil
         state.progressPercent = nil
+        state.lastWidgetSeenAt = 0
+        state.lastWidgetSetupAt = 0
+        state.lastWidgetBoundQuestID = nil
         state.stageSoundPlayed = {}
         state.stageSoundAttempted = {}
         state.stage = 1
@@ -3637,6 +3742,7 @@ local function ResetStateForNewQuest(questID)
         end
         state.inPreyZone = nil
         state.confirmedPreyZoneMapID = nil
+        state.zoneCacheDirty = true
         RefreshInPreyZoneStatus(questID, true)
         state.preyTooltipText = nil
         state.preyTargetName, state.preyTargetDifficulty = ExtractPreyTargetFromQuestTitle(questID)
@@ -3826,6 +3932,7 @@ function Preydator:ShouldUseActivePolling()
     local liveQuestID = GetCurrentActivePreyQuestCached(ACTIVE_PREY_QUEST_CACHE_SECONDS)
     local hasLiveQuest = IsValidQuestID(liveQuestID) and IsQuestStillActive(liveQuestID)
     local needsQuestBootstrap = hasLiveQuest and not hasTrackedQuest
+    local needsStaleQuestCleanup = IsValidQuestID(trackedQuestID) and not hasTrackedQuest and not hasLiveQuest
     local inKillCarry = ((state and state.killStageUntil) or 0) > now
     local inAmbushAlert = ((state and state.ambushAlertUntil) or 0) > now
     local inBloodyCommandAlert = ((state and state.bloodyCommandAlertUntil) or 0) > now
@@ -3840,6 +3947,7 @@ function Preydator:ShouldUseActivePolling()
     local hasHotQuestContext = hasTrackedQuest and state and state.inPreyZone == true
 
     return needsQuestBootstrap
+        or needsStaleQuestCleanup
         or inKillCarry
         or inAmbushAlert
         or inBloodyCommandAlert
@@ -3909,7 +4017,12 @@ function Preydator:SetPollingActive(enabled)
             if now >= (state.nextPollingEligibilityCheckAt or 0) then
                 state.nextPollingEligibilityCheckAt = now + 2.0
                 if not Preydator:ShouldUseActivePolling() then
-                    Preydator:SetPollingActive(false)
+                    -- Final reconcile before detaching OnUpdate so completed/ended
+                    -- prey quests do not leave stale stage-4 visibility latched.
+                    UpdatePreyState()
+                    if not Preydator:ShouldUseActivePolling() then
+                        Preydator:SetPollingActive(false)
+                    end
                 end
             end
         end)

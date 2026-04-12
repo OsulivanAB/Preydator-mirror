@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.4 - 2026-04-11
+
+### Fixed
+- Fixed a post-completion stale stage-4 latch where polling could disable at kill-carry expiry before a final state reconcile, leaving the bar visible with no live prey quest and preventing expected Hunt Table completion refresh behavior.
+- Hardened `/pd qinspect bs` BugSack dispatch by guarding error-handler send calls with an outer protected wrapper so handler faults fail closed to chat output instead of surfacing a command-time Lua error.
+- Fixed stale widget carryover on new quest acceptance that could immediately force stage 4 / 100% and fire completion sound logic; quest handoff now clears widget timing state and ignores unbound widget payloads unless backed by a fresh Setup signal.
+- Fixed in-zone stage instability where unbound prey-widget payloads could be dropped after setup freshness elapsed, causing stage/progress to bounce or reset; widget updates are now bound to the active tracked prey quest at setup time and cleared on quest handoff.
+- Restored bar visibility for active prey quests when Blizzard quest-zone APIs return nil by adding a HuntScanner-backed quest->zone map fallback in prey-zone resolution, preventing `inPreyZone=nil`/`onlyShowInPreyZone` false blocks.
+- Fixed remaining stage fallback-to-zero/one cases by binding widget quest context immediately on quest handoff, so unbound widget payloads remain associated with the current active prey quest instead of expiring into nil stage data.
+
 ## 2.2.3 - 2026-04-11
 
 ### Changed
