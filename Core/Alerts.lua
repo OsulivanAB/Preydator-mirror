@@ -52,6 +52,23 @@ local function StringContainsInsensitiveSafe(haystack, needle)
     return ok and found or false
 end
 
+local function IsAmbushPreyNameTokenMatch(preyName, message, sender)
+    if type(preyName) ~= "string" or preyName == "" then
+        return false
+    end
+
+    local lowerName = string.lower(preyName)
+    for token in string.gmatch(lowerName, "[%a%d]+") do
+        if string.len(token) >= 4 then
+            if StringContainsInsensitiveSafe(message, token) or StringContainsInsensitiveSafe(sender, token) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 local function ResolveAlertContext(api)
     if type(api.GetBarRuntimeContext) ~= "function" then
         return nil
@@ -98,6 +115,10 @@ local function IsAmbushSystemMessage(ctx, message, sender)
         if StringContainsInsensitiveSafe(message, preyName) or StringContainsInsensitiveSafe(sender, preyName) then
             return true
         end
+
+        if IsAmbushPreyNameTokenMatch(preyName, message, sender) then
+            return true
+        end
     end
 
     return false
@@ -121,7 +142,9 @@ local function ShouldScanAmbushChat(ctx)
 
     if state.activeQuestID ~= liveQuestID then
         state.zoneCacheDirty = true
-        return false
+        if ctx.isValidQuestID(state.activeQuestID) then
+            return false
+        end
     end
 
     if tonumber(state.stage) == tonumber(ctx.maxStage) then
@@ -132,7 +155,11 @@ local function ShouldScanAmbushChat(ctx)
         ctx.refreshInPreyZoneStatus(liveQuestID, true)
     end
 
-    if state.inPreyZone ~= true then
+    -- inPreyZone == nil means the zone APIs haven't resolved yet (common just after
+    -- /reload before the widget cycle delivers data). A player receiving an NPC
+    -- ambush chat message is physically standing near that NPC, so nil (unknown)
+    -- should not block the scan. Only block when the zone is explicitly false.
+    if state.inPreyZone == false then
         return false
     end
 

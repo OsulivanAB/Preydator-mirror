@@ -132,5 +132,5 @@ function SlashCommandsModule:HandleSlashCommand(message, ctx)
         return
     end
 
-    printFn("Preydator commands: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs]")
+    printFn("Preydator commands: options | show | hide | toggle | debug <on|off|show|clear> | inspect [bs] | qinspect [questID] [bs] | hinspect [bs] | hinspectcopy [bs] | ainspect [bs]")
 end

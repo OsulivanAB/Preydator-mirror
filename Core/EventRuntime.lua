@@ -84,6 +84,48 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         if event == "PLAYER_ENTERING_WORLD" and type(ctx.applyAratorSilencing) == "function" then
             ctx.applyAratorSilencing()
         end
+        if (event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN")
+            and type(ctx.armQuestListenBurst) == "function" then
+            -- Bootstrap a short listen window so login timing jitter on
+            -- GetActivePreyQuest() cannot leave runtime events/polling idle.
+            ctx.armQuestListenBurst()
+        end
+        if (event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN") then
+            local runtimeState = state or {}
+            runtimeState.loginBootstrapToken = (tonumber(runtimeState.loginBootstrapToken) or 0) + 1
+            local token = runtimeState.loginBootstrapToken
+
+            local function RunBootstrapPass(applySettings)
+                if token ~= runtimeState.loginBootstrapToken then
+                    return
+                end
+
+                if type(ctx.ensureBar) == "function" then
+                    ctx.ensureBar()
+                end
+                if applySettings == true and type(ctx.applyBarSettings) == "function" then
+                    ctx.applyBarSettings()
+                end
+                if type(ctx.updatePreyState) == "function" then
+                    ctx.updatePreyState()
+                end
+                if type(ctx.setPollingActive) == "function" and type(ctx.shouldUseActivePolling) == "function" then
+                    ctx.setPollingActive(ctx.shouldUseActivePolling())
+                end
+            end
+
+            -- Immediate pass first, then short delayed retries for login race windows.
+            RunBootstrapPass(true)
+
+            local timer = _G and _G.C_Timer
+            if timer and type(timer.After) == "function" then
+                for _, delay in ipairs({ 0.20, 0.75, 1.50, 3.00, 5.00 }) do
+                    timer.After(delay, function()
+                        RunBootstrapPass(false)
+                    end)
+                end
+            end
+        end
     end
 
     if event == "PLAYER_REGEN_ENABLED" and type(ctx.onPlayerRegenEnabled) == "function" then
@@ -181,6 +223,9 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
                 ctx.updateBarDisplay()
             end
         end
+        if type(ctx.updatePreyState) == "function" then
+            ctx.updatePreyState()
+        end
         if type(ctx.setPollingActive) == "function" and type(ctx.shouldUseActivePolling) == "function" then
             ctx.setPollingActive(ctx.shouldUseActivePolling())
         end
@@ -195,6 +240,9 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
     if event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "QUEST_DETAIL" or event == "QUEST_ACCEPTED" then
         if type(ctx.armQuestListenBurst) == "function" then
             ctx.armQuestListenBurst()
+        end
+        if event == "QUEST_ACCEPTED" and type(ctx.onQuestAccepted) == "function" then
+            ctx.onQuestAccepted(arg1)
         end
     end
 

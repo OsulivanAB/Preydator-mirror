@@ -11,6 +11,7 @@ local MAP_ID_EQUIVALENTS = {
     -- succeed regardless of which side returns parent vs sub-map.
     [2437] = 2437,
     [2536] = 2437,
+    [2537] = 2437,
     [2413] = 2413,
     [2576] = 2413,
     [2405] = 2405,
@@ -23,6 +24,16 @@ local function CanonicalizeMapID(mapID)
         return nil
     end
     return MAP_ID_EQUIVALENTS[mapID] or mapID
+end
+
+local function IsKnownPreyMapID(mapID)
+    local canonicalMapID = CanonicalizeMapID(mapID)
+    if not canonicalMapID then
+        return false
+    end
+
+    -- Known prey maps are maintained in MAP_ID_EQUIVALENTS keys/values.
+    return MAP_ID_EQUIVALENTS[canonicalMapID] ~= nil
 end
 
 local function SafeToNumber(value)
@@ -192,24 +203,9 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
         questMapID = CanonicalizeMapID(SafeToNumber(state.confirmedPreyZoneMapID))
     end
 
-    if not questMapID and playerMapID then
-        local progressState = SafeToNumber(state.progressState)
-        local nowSeconds = (type(now) == "number") and now or 0
-        local lastWidgetSeenAt = SafeToNumber(state.lastWidgetSeenAt) or 0
-        local lastWidgetSetupAt = SafeToNumber(state.lastWidgetSetupAt) or 0
-        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= 2.0
-        local isTrackedPreyWidgetShown = ctx and ctx.isTrackedPreyWidgetShown
-        local hasShownWidgetSignal = type(isTrackedPreyWidgetShown) == "function" and isTrackedPreyWidgetShown() == true
-        -- When quest-map APIs are temporarily nil during transitions/reload,
-        -- latch the current player map if active prey progress/widget signal exists.
-        -- A currently shown prey widget is also authoritative: Blizzard only renders
-        -- it while the player is physically in the prey zone.
-        if progressState ~= nil or hasRecentWidgetSignal or hasShownWidgetSignal then
-            questMapID = playerMapID
-            state.preyZoneMapID = playerMapID
-            state.confirmedPreyZoneMapID = playerMapID
-        end
-    end
+    -- Do not infer quest zone from the current player map while quest-map APIs
+    -- are unresolved. In practice this can certify the wrong prey zone when the
+    -- player is physically in a different hunt zone.
 
     local inPreyZone = nil
     if questMapID and playerMapID then

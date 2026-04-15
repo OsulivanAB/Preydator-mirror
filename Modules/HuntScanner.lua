@@ -83,6 +83,12 @@ local questZoneCache = {}
 local questZoneNameCache = {}
 local questCoords = {}
 local cachedAdventureMapID = nil
+local INFERRED_HUNT_ZONE_MAP_IDS = {
+    ["Harandar"] = 2413,
+    ["Voidstorm"] = 2405,
+    ["Eversong Woods"] = 2395,
+    ["Zul'Aman"] = 2437,
+}
 local queueDebounceUntil = 0
 local SNAPSHOT_QUEUE_DEBOUNCE_SECONDS = 0.15
 local achievementNeedsByQuestID = {}
@@ -107,7 +113,10 @@ local LoadCompletedAchievementCache
 local MarkAchievementCompleted
 local IsAchievementCompletedCached
 local AddAchievementNameMatch
+local NormalizeDifficultyKey
+local NormalizeAchievementMatchText
 local BuildAchievementMatchKey
+local BuildAchievementCompactMatchKey
 local AddAchievementNeed
 local RewardListHasIconTags
 
@@ -929,8 +938,12 @@ local function RebuildAchievementNeedsCache()
                         or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
                         or ("Achievement " .. tostring(achievementID))
                     AddAchievementNeed(achievementNeedsByQuestID, questID, achievementID, label)
+                    -- Keep name matching available even when quest IDs are present.
+                    -- Hunt Table offer quest IDs can drift from achievement criteria
+                    -- asset IDs across data updates, so title/difficulty fallback is
+                    -- required to keep signals visible.
+                    AddAchievementNameMatch(achievementID, achievementName, criteriaName, label)
                 elseif okCriteria
-                    and criteriaType == ACHIEVEMENT_CRITERIA_TYPE_QUEST
                     and criteriaCompleted ~= true then
                     local label = (type(achievementName) == "string" and achievementName ~= "" and achievementName)
                         or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
@@ -967,6 +980,91 @@ local function EnsureAchievementNeedsCache(force)
     end
 end
 
+local function ResolveAchievementNameBucket(title, difficulty)
+    if type(title) ~= "string" or title == "" then
+        return nil, nil
+    end
+
+    local function BuildTitleVariants(sourceTitle)
+        local variants = {}
+        local seen = {}
+        local function AddVariant(value)
+            if type(value) ~= "string" or value == "" or seen[value] then
+                return
+            end
+            seen[value] = true
+            variants[#variants + 1] = value
+        end
+
+        AddVariant(sourceTitle)
+
+        local lowered = string.lower(sourceTitle)
+        if string.match(lowered, "^the%s+") then
+            local withoutThe = string.gsub(sourceTitle, "^[Tt][Hh][Ee]%s+", "", 1)
+            AddVariant(withoutThe)
+        else
+            AddVariant("The " .. sourceTitle)
+        end
+
+        -- Known Blizzard string drift: Jan'alai appears as Janali in some
+        -- achievement criteria names. Add a scoped alias to avoid broad fuzzy
+        -- matching across unrelated hunt titles.
+        local normalizedSource = NormalizeAchievementMatchText(sourceTitle)
+        if normalizedSource == "the talon of jan alai" or normalizedSource == "talon of jan alai" then
+            AddVariant("The Talon of Janali")
+            AddVariant("Talon of Janali")
+        end
+
+        return variants
+    end
+
+    local function HasBucket(candidate)
+        return type(candidate) == "table" and (candidate.count or 0) > 0
+    end
+
+    local titleVariants = BuildTitleVariants(title)
+
+    local function ResolveForDifficulty(difficultyKey)
+        for _, candidateTitle in ipairs(titleVariants) do
+            local strictKey = BuildAchievementMatchKey(candidateTitle, difficultyKey)
+            local strictBucket = strictKey and achievementNeedsByNameKey[strictKey] or nil
+            if HasBucket(strictBucket) then
+                return strictBucket, (candidateTitle == title) and "diff" or "diff-title"
+            end
+
+            local compactKey = BuildAchievementCompactMatchKey(candidateTitle, difficultyKey)
+            local compactBucket = compactKey and achievementNeedsByNameKey[compactKey] or nil
+            if HasBucket(compactBucket) then
+                return compactBucket, (candidateTitle == title) and "compact" or "compact-title"
+            end
+        end
+
+        return nil, nil
+    end
+
+    local canonicalDifficulty = NormalizeDifficultyKey(difficulty)
+    local bucket, source = ResolveForDifficulty(canonicalDifficulty)
+    if HasBucket(bucket) then
+        return bucket, source
+    end
+
+    for _, candidateTitle in ipairs(titleVariants) do
+        local plainNameKey = BuildAchievementMatchKey(candidateTitle, nil)
+        local plainBucket = plainNameKey and achievementNeedsByNameKey[plainNameKey] or nil
+        if HasBucket(plainBucket) then
+            return plainBucket, (candidateTitle == title) and "plain" or "plain-title"
+        end
+
+        local compactPlainKey = BuildAchievementCompactMatchKey(candidateTitle, nil)
+        local compactPlainBucket = compactPlainKey and achievementNeedsByNameKey[compactPlainKey] or nil
+        if HasBucket(compactPlainBucket) then
+            return compactPlainBucket, (candidateTitle == title) and "compact-plain" or "compact-plain-title"
+        end
+    end
+
+    return nil, nil
+end
+
 local function GetQuestAchievementNeeds(questID, title, difficulty)
     local id = SafeToNumber(questID)
 
@@ -977,10 +1075,11 @@ local function GetQuestAchievementNeeds(questID, title, difficulty)
 
     EnsureAchievementNeedsCache(false)
     local bucket = id and achievementNeedsByQuestID[id] or nil
-    if (not id or id < 1) and type(title) == "string" and title ~= "" then
-        local nameKey = BuildAchievementMatchKey(title, difficulty)
-        if nameKey then
-            bucket = achievementNeedsByNameKey[nameKey]
+    if (type(bucket) ~= "table" or (bucket.count or 0) <= 0)
+        and type(title) == "string" and title ~= "" then
+        local nameBucket = ResolveAchievementNameBucket(title, difficulty)
+        if type(nameBucket) == "table" and (nameBucket.count or 0) > 0 then
+            bucket = nameBucket
         end
     end
     if type(bucket) ~= "table" or (bucket.count or 0) <= 0 then
@@ -1178,7 +1277,7 @@ local function GetDifficultyDisplayName(canonicalDifficulty)
     return L["Normal"]
 end
 
-local function NormalizeDifficultyKey(value)
+NormalizeDifficultyKey = function(value)
     if type(value) ~= "string" or value == "" then
         return DIFFICULTY_NORMAL
     end
@@ -1247,7 +1346,7 @@ local function DetectDifficultyFromText(value)
     return nil
 end
 
-local function NormalizeAchievementMatchText(value)
+NormalizeAchievementMatchText = function(value)
     if type(value) ~= "string" or value == "" then
         return nil
     end
@@ -1324,6 +1423,25 @@ BuildAchievementMatchKey = function(title, difficulty)
     return normalizedTitle .. "::" .. tostring(difficultyKey or "")
 end
 
+BuildAchievementCompactMatchKey = function(title, difficulty)
+    local normalizedTitle = NormalizeAchievementMatchText(title)
+    if not normalizedTitle then
+        return nil
+    end
+
+    local compactTitle = string.gsub(normalizedTitle, "%s+", "")
+    if compactTitle == "" then
+        return nil
+    end
+
+    local difficultyKey = difficulty and NormalizeDifficultyKey(difficulty) or nil
+    if difficultyKey ~= DIFFICULTY_NORMAL and difficultyKey ~= DIFFICULTY_HARD and difficultyKey ~= DIFFICULTY_NIGHTMARE then
+        difficultyKey = nil
+    end
+
+    return compactTitle .. "::" .. tostring(difficultyKey or "")
+end
+
 AddAchievementNeed = function(bucketMap, bucketKey, achievementID, label)
     if type(bucketMap) ~= "table" or bucketKey == nil then
         return
@@ -1355,9 +1473,22 @@ AddAchievementNameMatch = function(achievementID, achievementName, criteriaName,
         AddAchievementNeed(achievementNeedsByNameKey, achievementKey, achievementID, label)
     end
 
+    local achievementCompactKey = BuildAchievementCompactMatchKey(achievementName, difficultyKey)
+    if achievementCompactKey and achievementCompactKey ~= achievementKey then
+        AddAchievementNeed(achievementNeedsByNameKey, achievementCompactKey, achievementID, label)
+    end
+
     local criteriaKey = BuildAchievementMatchKey(criteriaName, difficultyKey)
     if criteriaKey and criteriaKey ~= achievementKey then
         AddAchievementNeed(achievementNeedsByNameKey, criteriaKey, achievementID, label)
+    end
+
+    local criteriaCompactKey = BuildAchievementCompactMatchKey(criteriaName, difficultyKey)
+    if criteriaCompactKey
+        and criteriaCompactKey ~= criteriaKey
+        and criteriaCompactKey ~= achievementKey
+        and criteriaCompactKey ~= achievementCompactKey then
+        AddAchievementNeed(achievementNeedsByNameKey, criteriaCompactKey, achievementID, label)
     end
 end
 
@@ -1914,29 +2045,120 @@ local function HasVisibleHuntAnchor()
     return false
 end
 
-local function ParseDifficulty(description)
-    if type(description) ~= "string" then
-        return DIFFICULTY_NORMAL
+local function ParseDifficulty(questID, description, title)
+    local function BuildDifficultyTokens()
+        local tokens = {}
+        local function AddToken(key, value)
+            local token = NormalizeToken(value)
+            if token and token ~= "" then
+                tokens[#tokens + 1] = { key = key, token = token }
+            end
+        end
+
+        AddToken(DIFFICULTY_NIGHTMARE, "nightmare")
+        AddToken(DIFFICULTY_HARD, "hard")
+        AddToken(DIFFICULTY_NORMAL, "normal")
+        AddToken(DIFFICULTY_NIGHTMARE, L and L["Nightmare"])
+        AddToken(DIFFICULTY_HARD, L and L["Hard"])
+        AddToken(DIFFICULTY_NORMAL, L and L["Normal"])
+
+        return tokens
     end
 
-    local loweredDescription = string.lower(description)
-    local localizedNightmare = type(L["Nightmare"]) == "string" and string.lower(L["Nightmare"]) or nil
-    local localizedHard = type(L["Hard"]) == "string" and string.lower(L["Hard"]) or nil
-    local localizedNormal = type(L["Normal"]) == "string" and string.lower(L["Normal"]) or nil
+    local difficultyTokens = BuildDifficultyTokens()
 
-    if SafeFindLiteral(loweredDescription, "nightmare") or SafeFindLiteral(loweredDescription, localizedNightmare) then
-        return DIFFICULTY_NIGHTMARE
+    local function DetectSingleDifficultyFromText(value)
+        local normalized = NormalizeToken(value)
+        if not normalized then
+            return nil
+        end
+
+        local matched = {}
+        for _, entry in ipairs(difficultyTokens) do
+            if entry.token and SafeFindLiteral(normalized, entry.token) then
+                matched[entry.key] = true
+            end
+        end
+
+        local count = 0
+        local winner = nil
+        for _, key in ipairs({ DIFFICULTY_NIGHTMARE, DIFFICULTY_HARD, DIFFICULTY_NORMAL }) do
+            if matched[key] then
+                count = count + 1
+                winner = key
+            end
+        end
+
+        if count == 1 then
+            return winner
+        end
+
+        return nil
     end
 
-    if SafeFindLiteral(loweredDescription, "hard") or SafeFindLiteral(loweredDescription, localizedHard) then
-        return DIFFICULTY_HARD
+    local function DetectDifficultyFromParenSuffix(value)
+        if type(value) ~= "string" or value == "" then
+            return nil
+        end
+
+        local suffix = string.match(value, "%s*(%b())%s*$")
+        if not suffix then
+            return nil
+        end
+
+        local inner = string.sub(suffix, 2, -2)
+        return DetectSingleDifficultyFromText(inner)
     end
 
-    if SafeFindLiteral(loweredDescription, "normal") or SafeFindLiteral(loweredDescription, localizedNormal) then
-        return DIFFICULTY_NORMAL
+    local id = SafeToNumber(questID)
+
+    -- Prefer a previously confirmed questID->difficulty mapping. This is
+    -- locale-neutral and avoids reclassifying from noisy pin text each refresh.
+    if id and id > 0 then
+        local remembered = GetRememberedQuestDifficulty(id)
+        if remembered then
+            return remembered, true
+        end
     end
 
-    return DIFFICULTY_NORMAL
+    local candidates = {}
+
+    -- Prefer authoritative quest title text when available.
+    if id and id > 0 and C_QuestLog and type(C_QuestLog.GetTitleForQuestID) == "function" then
+        local okTitle, questTitle = pcall(C_QuestLog.GetTitleForQuestID, id)
+        if okTitle and type(questTitle) == "string" and questTitle ~= "" then
+            candidates[#candidates + 1] = questTitle
+        end
+    end
+
+    if type(title) == "string" and title ~= "" then
+        candidates[#candidates + 1] = title
+    end
+
+    if type(description) == "string" and description ~= "" then
+        candidates[#candidates + 1] = description
+        for line in string.gmatch(description, "([^\n\r]+)") do
+            if type(line) == "string" and line ~= "" then
+                candidates[#candidates + 1] = line
+            end
+        end
+    end
+
+    for _, text in ipairs(candidates) do
+        local difficulty = DetectDifficultyFromParenSuffix(text)
+        if difficulty then
+            return difficulty, true
+        end
+    end
+
+    for _, text in ipairs(candidates) do
+        local difficulty = DetectSingleDifficultyFromText(text)
+        if difficulty then
+            return difficulty, true
+        end
+    end
+
+    return DIFFICULTY_NORMAL, false
 end
 
 local function InferZoneFromCoords(x, y)
@@ -1960,6 +2182,14 @@ local function InferZoneFromCoords(x, y)
     end
 
     return "Zul'Aman"
+end
+
+local function GetInferredZoneMapID(zoneName)
+    if type(zoneName) ~= "string" or zoneName == "" then
+        return nil
+    end
+
+    return INFERRED_HUNT_ZONE_MAP_IDS[zoneName]
 end
 
 local function GetAdventureMapID()
@@ -2186,17 +2416,30 @@ local function RefreshHuntsFromPins()
             if not zoneName then
                 zoneName = questZoneNameCache[questID] or InferZoneFromCoords(nx, ny)
             end
+            if not zoneMapID then
+                zoneMapID = GetInferredZoneMapID(zoneName)
+                if zoneMapID then
+                    questZoneCache[questID] = zoneMapID
+                    if zoneName and zoneName ~= "" then
+                        questZoneNameCache[questID] = zoneName
+                    end
+                    zoneSource = "infer"
+                end
+            end
+            local parsedDifficulty, parsedConfirmed = ParseDifficulty(questID, pin and pin.description, title)
             nextHunts[#nextHunts + 1] = {
                 questID = questID,
                 title = title,
-                difficulty = ParseDifficulty(pin.description),
+                difficulty = parsedDifficulty,
                 zone = zoneName,
                 zoneMapID = zoneMapID,
                 nx = nx,
                 ny = ny,
                 zoneSource = zoneSource,
             }
-            RememberQuestDifficulty(questID, nextHunts[#nextHunts].difficulty)
+            if parsedConfirmed == true then
+                RememberQuestDifficulty(questID, nextHunts[#nextHunts].difficulty)
+            end
         end
     end
 
@@ -3958,6 +4201,150 @@ function HuntScannerModule:OnSlashCommand(text, rest)
         return true
     end
 
+    if text == "ainspect" then
+        local mode = string.lower((rest or ""):match("^%s*(.-)%s*$") or "")
+        EnsureAchievementNeedsCache(true)
+
+        local questIDCount, nameKeyCount, completedCount = 0, 0, 0
+        for _ in pairs(achievementNeedsByQuestID) do questIDCount = questIDCount + 1 end
+        for _ in pairs(achievementNeedsByNameKey) do nameKeyCount = nameKeyCount + 1 end
+        for _ in pairs(completedAchievementCache) do completedCount = completedCount + 1 end
+
+        local suffixNightmare, suffixHard, suffixNormal, suffixNone = 0, 0, 0, 0
+        for key in pairs(achievementNeedsByNameKey) do
+            if string.match(key, "::nightmare$") then
+                suffixNightmare = suffixNightmare + 1
+            elseif string.match(key, "::hard$") then
+                suffixHard = suffixHard + 1
+            elseif string.match(key, "::normal$") then
+                suffixNormal = suffixNormal + 1
+            else
+                suffixNone = suffixNone + 1
+            end
+        end
+
+        local lines = {}
+        lines[#lines + 1] = string.format(
+            "Preydator AchInspect: questIDs=%d nameKeys=%d completed=%d dirty=%s suffixes[nightmare=%d hard=%d normal=%d none=%d]",
+            questIDCount,
+            nameKeyCount,
+            completedCount,
+            tostring(achievementCacheDirty),
+            suffixNightmare,
+            suffixHard,
+            suffixNormal,
+            suffixNone
+        )
+
+        if nameKeyCount == 0 and questIDCount == 0 then
+            lines[#lines + 1] = "  (cache is empty — achievement API may not be ready or all tracked achievements are completed)"
+        end
+
+        local sortedName = {}
+        for key in pairs(achievementNeedsByNameKey) do
+            sortedName[#sortedName + 1] = key
+        end
+        table.sort(sortedName)
+        for _, key in ipairs(sortedName) do
+            local bucket = achievementNeedsByNameKey[key]
+            local names = type(bucket) == "table" and table.concat(bucket.names or {}, ", ") or "?"
+            lines[#lines + 1] = string.format("  [%s] → %s", key, names)
+        end
+
+        local sortedQ = {}
+        for qid in pairs(achievementNeedsByQuestID) do
+            sortedQ[#sortedQ + 1] = qid
+        end
+        table.sort(sortedQ)
+        for _, qid in ipairs(sortedQ) do
+            local bucket = achievementNeedsByQuestID[qid]
+            local names = type(bucket) == "table" and table.concat(bucket.names or {}, ", ") or "?"
+            lines[#lines + 1] = string.format("  questID=%d → %s", qid, names)
+        end
+
+        if #liveHunts > 0 then
+            lines[#lines + 1] = "  -- Live Hunt Lookup --"
+            for index, hunt in ipairs(liveHunts) do
+                local questID = SafeToNumber(hunt and hunt.questID) or 0
+                local title = SafeToString(hunt and hunt.title)
+                local difficulty = NormalizeDifficultyKey(hunt and hunt.difficulty)
+                local key = BuildAchievementMatchKey(title, difficulty)
+                local compactKey = BuildAchievementCompactMatchKey(title, difficulty)
+                local plainKey = BuildAchievementMatchKey(title, nil)
+                local compactPlainKey = BuildAchievementCompactMatchKey(title, nil)
+
+                local variantHits = {}
+                local variantSeen = {}
+                local function addVariantHit(variantKey)
+                    if type(variantKey) ~= "string" or variantKey == "" or variantSeen[variantKey] then
+                        return
+                    end
+                    local variantBucket = achievementNeedsByNameKey[variantKey]
+                    if type(variantBucket) == "table" and (variantBucket.count or 0) > 0 then
+                        variantSeen[variantKey] = true
+                        variantHits[#variantHits + 1] = variantKey
+                    end
+                end
+
+                addVariantHit(BuildAchievementMatchKey(title, DIFFICULTY_NIGHTMARE))
+                addVariantHit(BuildAchievementCompactMatchKey(title, DIFFICULTY_NIGHTMARE))
+                addVariantHit(BuildAchievementMatchKey(title, DIFFICULTY_HARD))
+                addVariantHit(BuildAchievementCompactMatchKey(title, DIFFICULTY_HARD))
+                addVariantHit(BuildAchievementMatchKey(title, DIFFICULTY_NORMAL))
+                addVariantHit(BuildAchievementCompactMatchKey(title, DIFFICULTY_NORMAL))
+                addVariantHit(BuildAchievementMatchKey(title, nil))
+                addVariantHit(BuildAchievementCompactMatchKey(title, nil))
+
+                local bucket, source = ResolveAchievementNameBucket(title, difficulty)
+                source = source or "none"
+
+                local matchCount = (type(bucket) == "table" and (bucket.count or 0)) or 0
+                if matchCount > 0 then
+                    local matchedNames = table.concat(bucket.names or {}, ", ")
+                    lines[#lines + 1] = string.format(
+                        "  [H%d] questID=%d title=%s diff=%s key=%s match=%d via=%s → %s",
+                        index,
+                        questID,
+                        title,
+                        difficulty,
+                        SafeToString(key),
+                        matchCount,
+                        source,
+                        matchedNames
+                    )
+                else
+                    local variantSummary = #variantHits > 0 and table.concat(variantHits, " | ") or "(none)"
+                    lines[#lines + 1] = string.format(
+                        "  [H%d] questID=%d title=%s diff=%s key=%s compact=%s plain=%s compactPlain=%s match=0 variants=%s",
+                        index,
+                        questID,
+                        title,
+                        difficulty,
+                        SafeToString(key),
+                        SafeToString(compactKey),
+                        SafeToString(plainKey),
+                        SafeToString(compactPlainKey),
+                        variantSummary
+                    )
+                end
+            end
+        end
+
+        if mode == "bs" then
+            local sent, reason = SendLinesToBugSack(lines)
+            if sent then
+                print("Preydator AchInspect: sent to BugSack via error handler.")
+            else
+                print("Preydator AchInspect: Could not send to BugSack: " .. tostring(reason))
+                for _, line in ipairs(lines) do print(line) end
+            end
+        else
+            for _, line in ipairs(lines) do print(line) end
+        end
+
+        return true
+    end
+
     return false
 end
 
@@ -4144,6 +4531,16 @@ function HuntScannerModule:GetQuestZoneMapID(questID)
     local hunt = huntByQuestID[id]
     if hunt and type(hunt.zoneMapID) == "number" then
         return hunt.zoneMapID
+    end
+    if hunt and type(hunt.zone) == "string" and hunt.zone ~= "" then
+        local inferredZoneMapID = GetInferredZoneMapID(hunt.zone)
+        if inferredZoneMapID then
+            questZoneCache[id] = inferredZoneMapID
+            if not questZoneNameCache[id] then
+                questZoneNameCache[id] = hunt.zone
+            end
+            return inferredZoneMapID
+        end
     end
     -- Primary on-demand: query zone directly from task quest metadata.
     if C_TaskQuest and type(C_TaskQuest.GetQuestZoneID) == "function" then

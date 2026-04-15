@@ -1332,6 +1332,7 @@ end
 local FALLBACK_MAP_ID_EQUIVALENTS = {
     [2437] = 2437,
     [2536] = 2437,
+    [2537] = 2437,
     [2413] = 2413,
     [2576] = 2413,
     [2405] = 2405,
@@ -1458,19 +1459,9 @@ local function RefreshInPreyZoneStatus(questID, force)
         questMapID = CanonicalizeFallbackMapID(state.confirmedPreyZoneMapID)
     end
 
-    if not questMapID and playerMapID then
-        local progressState = CoerceSanitizedNumber(state.progressState)
-        local nowSeconds = (type(now) == "number") and now or 0
-        local lastWidgetSeenAt = CoerceSanitizedNumber(state.lastWidgetSeenAt) or 0
-        local lastWidgetSetupAt = CoerceSanitizedNumber(state.lastWidgetSetupAt) or 0
-        local hasRecentWidgetSignal = (nowSeconds - math.max(lastWidgetSeenAt, lastWidgetSetupAt)) <= WIDGET_SETUP_FRESH_SECONDS
-        local hasShownWidgetSignal = IsAnyTrackedPreyWidgetShown()
-        if progressState ~= nil or hasRecentWidgetSignal or hasShownWidgetSignal then
-            questMapID = playerMapID
-            state.preyZoneMapID = playerMapID
-            state.confirmedPreyZoneMapID = playerMapID
-        end
-    end
+    -- Do not infer quest zone from the current player map when quest-map APIs
+    -- are unresolved. This can incorrectly mark in-zone when the player is in a
+    -- different prey zone than the active quest.
 
     local inPreyZone = nil
     if questMapID and playerMapID then
@@ -1590,16 +1581,28 @@ local function ArmQuestListenBurst(durationSeconds)
 end
 
 local function GetQuestTitle(questID)
-    if not (C_QuestLog and C_QuestLog.GetTitleForQuestID) then
-        return nil
+    if C_QuestLog and C_QuestLog.GetTitleForQuestID then
+        local titleInfo = C_QuestLog.GetTitleForQuestID(questID)
+        if type(titleInfo) == "table" and type(titleInfo.title) == "string" and titleInfo.title ~= "" then
+            return titleInfo.title
+        end
+
+        if type(titleInfo) == "string" and titleInfo ~= "" then
+            return titleInfo
+        end
     end
 
-    local titleInfo = C_QuestLog.GetTitleForQuestID(questID)
-    if type(titleInfo) == "table" then
-        return titleInfo.title
+    if C_QuestLog and C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetInfo then
+        local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+        if logIndex then
+            local info = C_QuestLog.GetInfo(logIndex)
+            if type(info) == "table" and type(info.title) == "string" and info.title ~= "" then
+                return info.title
+            end
+        end
     end
 
-    return titleInfo
+    return nil
 end
 
 local function ExtractPreyTargetFromQuestTitle(questID)
@@ -3306,19 +3309,13 @@ local function EnsurePreyHuntMixinSuppressionHook()
                 captureSource = captureSource,
                 argType = type(widgetInfo),
             }
-            -- Mixin Setup fires only when Blizzard is actively rendering the widget,
-            -- which only happens when the player is physically in the prey zone.
-            -- This is the authoritative zone-entry signal.
-            if C_Map and type(C_Map.GetBestMapForUnit) == "function" then
-                local okMapID, rawMapID = pcall(C_Map.GetBestMapForUnit, "player")
-                if okMapID then
-                    local mapID = CoerceSanitizedNumber(rawMapID)
-                    state.confirmedPreyZoneMapID = mapID
-                    state.preyZoneMapID = mapID
-                end
+            -- Setup indicates widget payload freshness, not authoritative zone.
+            -- Force a zone recompute on the normal runtime pass instead of
+            -- certifying in-zone directly from widget visibility.
+            state.zoneCacheDirty = true
+            if type(UpdateBarDisplay) == "function" then
+                UpdateBarDisplay()
             end
-            state.inPreyZone = true
-            state.zoneCacheDirty = false
         else
             preyWidgetInfoCache = nil
         end
@@ -3624,8 +3621,6 @@ FindPreyWidgetProgressState = function(activeQuestID)
         local frameShown = frameRef.IsShown and frameRef:IsShown() or false
         local now = (GetTime and GetTime()) or 0
         local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
-        -- Hidden tracked frames can retain stale prey data after turn-in. Only
-        -- trust hidden-frame fallback while a fresh Setup signal is still active.
         if not frameShown and not setupFresh then
             return nil
         end
@@ -3672,6 +3667,18 @@ FindPreyWidgetProgressState = function(activeQuestID)
     -- which can freeze progression if we only trust stale cached state.
     local refreshed = BuildCacheFromTrackedFrames()
     if refreshed then
+        if info ~= nil then
+            if refreshed.questID == nil and info.questID ~= nil then
+                refreshed.questID = info.questID
+            end
+
+            local existingProgressState = CoerceSanitizedNumber(info.progressState)
+            local refreshedProgressState = CoerceSanitizedNumber(refreshed.progressState)
+            if existingProgressState ~= nil and (refreshedProgressState == nil or refreshedProgressState < existingProgressState) then
+                refreshed.progressState = info.progressState
+            end
+        end
+
         info = refreshed
         preyWidgetInfoCache = refreshed
     elseif not info then
@@ -3689,17 +3696,7 @@ FindPreyWidgetProgressState = function(activeQuestID)
 
     local pct = ExtractProgressPercent(info, info.tooltip)
     if IsValidQuestID(activeQuestID) then
-        local widgetQuestID = ExtractWidgetQuestID(info) or CoerceSanitizedNumber(info.questID) or state.lastWidgetBoundQuestID
-        if widgetQuestID == nil then
-            local now = (GetTime and GetTime()) or 0
-            local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
-            -- Do not trust unbound widget payloads unless they were captured from
-            -- a very recent Setup signal; this prevents stale stage-4 carryover
-            -- into the next accepted prey quest.
-            if not setupFresh then
-                return nil, nil, nil, nil
-            end
-        end
+        local widgetQuestID = ExtractWidgetQuestID(info)
         if widgetQuestID == activeQuestID or widgetQuestID == nil then
             return info.progressState, info.tooltip, pct, nil
         end
@@ -3709,19 +3706,27 @@ FindPreyWidgetProgressState = function(activeQuestID)
     return info.progressState, info.tooltip, pct, nil
 end
 
-local function ResetStateForNewQuest(questID)
-    if state.activeQuestID ~= questID then
+local function ResetStateForNewQuest(questID, forceReset)
+    if forceReset == true or state.activeQuestID ~= questID then
+        local cachedWidgetQuestID = CoerceSanitizedNumber(state.lastWidgetBoundQuestID)
+            or CoerceSanitizedNumber(preyWidgetInfoCache and preyWidgetInfoCache.questID)
+        local hasMatchingWidgetCache = forceReset ~= true
+            and cachedWidgetQuestID == questID
+            and preyWidgetInfoCache ~= nil
+
         state.activeQuestID = questID
         state.lastNotifiedPreyEndQuestID = nil
         state.progressState = nil
         state.progressPercent = nil
-        state.lastWidgetSeenAt = 0
-        state.lastWidgetSetupAt = 0
-        state.lastWidgetBoundQuestID = nil
+        if not hasMatchingWidgetCache then
+            state.lastWidgetSeenAt = 0
+            state.lastWidgetSetupAt = 0
+            state.lastWidgetBoundQuestID = nil
+            preyWidgetInfoCache = nil
+        end
         state.stageSoundPlayed = {}
         state.stageSoundAttempted = {}
         state.stage = 1
-        preyWidgetInfoCache = nil
         local runtime = GetRuntimeModule("PreyContextRuntime")
         if runtime and type(runtime.GetPreyZoneInfo) == "function" then
             state.preyZoneName, state.preyZoneMapID = runtime:GetPreyZoneInfo(questID, {
@@ -3801,13 +3806,6 @@ local function UpdatePreyState()
 
     if hasWidgetData then
         state.lastWidgetSeenAt = now
-        -- Guard against stale widget cache after zone exits: only treat widget
-        -- data as in-zone confirmation if a recent mixin Setup fired.
-        local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
-        if setupFresh then
-            state.inPreyZone = true
-            state.zoneCacheDirty = false
-        end
     end
 
     local effectiveQuestID = hasActiveQuest and questID or nil
@@ -3845,21 +3843,75 @@ local function UpdatePreyState()
     local percentSource = "none"
     newProgressState = CoerceSanitizedNumber(newProgressState)
     newProgressPercent = CoerceSanitizedNumber(newProgressPercent)
+    -- Allow objective inference whenever widget state is unresolved or reports
+    -- progressState=0. Setup can re-fire frequently for the same frame and keep
+    -- setup freshness hot, so freshness-gating inference can permanently block
+    -- stage advancement.
+    if (newProgressState == nil or newProgressState == 0)
+        and hasActiveQuest and C_QuestLog and C_QuestLog.GetQuestObjectives then
+        local objectives = C_QuestLog.GetQuestObjectives(questID)
+        if type(objectives) == "table" and #objectives >= 1 then
+            local first = objectives[1]
+            local second = objectives[2]
+
+            local function IsObjectiveDone(objective)
+                if type(objective) ~= "table" then
+                    return false
+                end
+                if objective.finished == true then
+                    return true
+                end
+
+                local fulfilled = CoerceSafeNumeric(objective.numFulfilled)
+                local required = CoerceSafeNumeric(objective.numRequired)
+                if fulfilled ~= nil and required ~= nil and required > 0 then
+                    return fulfilled >= required
+                end
+
+                local text = objective.text
+                if type(text) == "string" and text ~= "" then
+                    local curText, maxText = text:match("(%d+)%s*/%s*(%d+)")
+                    local curValue = CoerceSafeNumeric(tonumber(curText))
+                    local maxValue = CoerceSafeNumeric(tonumber(maxText))
+                    if curValue ~= nil and maxValue ~= nil and maxValue > 0 then
+                        return curValue >= maxValue
+                    end
+                end
+
+                return false
+            end
+
+            local firstDone = IsObjectiveDone(first)
+            local secondDone = IsObjectiveDone(second)
+            local secondObjectivePresent = type(second) == "table"
+                and ((type(second.text) == "string" and second.text ~= "")
+                    or (CoerceSafeNumeric(second.numRequired) ~= nil))
+
+            if secondDone or (firstDone and secondObjectivePresent) then
+                newProgressState = PREY_PROGRESS_FINAL
+            elseif firstDone then
+                newProgressState = 2
+            else
+                newProgressState = 0
+            end
+        end
+    end
+
     if newProgressState ~= nil then
-        state.progressState = newProgressState
+        -- Never regress progressState within a hunt. Stale widget reads can produce
+        -- lower values than the inference or mixin-hook previously established.
+        if state.progressState == nil or newProgressState > state.progressState then
+            state.progressState = newProgressState
+        end
     end
     if newProgressPercent ~= nil then
         state.progressPercent = Clamp(newProgressPercent, 0, 100)
         percentSource = "widget"
     elseif newProgressState == nil then
-        -- When live widget stage exists but widget percent is absent, stay on
-        -- stage-gate fallback percent. Objective text percent can lag behind and
-        -- produce misleading mid-stage values (e.g., 50% while widget is stage 3/4).
-        local objectivePercent = CoerceSanitizedNumber(ExtractQuestObjectivePercent(questID))
-        if objectivePercent ~= nil and (objectivePercent > 0 or newProgressState == PREY_PROGRESS_FINAL) then
-            state.progressPercent = Clamp(objectivePercent, 0, 100)
-            percentSource = "objective"
-        end
+        -- Keep objective percent out of display when stage is unknown.
+        -- Objective rows can report 50% while true prey stage is 3/4, which causes
+        -- misleading half-bar regressions after reload.
+        state.progressPercent = nil
     end
 
     if newProgressPercent == nil and percentSource == "none" and newProgressState ~= nil then
@@ -3870,8 +3922,10 @@ local function UpdatePreyState()
             state.progressPercent = nil
         end
     elseif newProgressPercent == nil and percentSource == "none" and (now - (state.lastWidgetSeenAt or 0)) > 2 then
+        -- Preserve last known stage/progress when widget payloads are temporarily
+        -- unavailable after reload. Clearing progressState here regresses the bar
+        -- back to stage 1 even while the hunt context remains valid.
         state.progressPercent = nil
-        state.progressState = nil
     end
     state.lastPercentSource = percentSource
     state.preyTooltipText = tooltipText
@@ -4387,6 +4441,21 @@ local function OnAddonLoaded()
     ApplyAratorSilencing()
     Preydator:ShowSoundDefaultsPromptIfNeeded()
     AddDebugLog("OnAddonLoaded", "debug=" .. tostring(debugDB.enabled) .. " | stage" .. tostring(MAX_STAGE) .. "=" .. tostring(settings.stageSounds[MAX_STAGE]), true)
+
+    -- Reload/login bootstrap from live quest context only.
+    -- Do not seed stage/progress from snapshots here because prey quest IDs are
+    -- reused and stale snapshots can incorrectly force stage 4 / 100%.
+    do
+        local liveQuestID = GetCurrentActivePreyQuestCached(0)
+        if IsValidQuestID(liveQuestID) then
+            state.activeQuestID = liveQuestID
+            RefreshInPreyZoneStatus(liveQuestID, true)
+            if type(ArmQuestListenBurst) == "function" then
+                ArmQuestListenBurst(10)
+            end
+            UpdatePreyState()
+        end
+    end
 
     state.pollingActive = false
 
@@ -5590,7 +5659,6 @@ state.coreAlwaysEvents = {
 }
 
 state.corePreyRuntimeEvents = {
-    "PLAYER_ENTERING_WORLD",
     "UPDATE_UI_WIDGET",
     "UPDATE_ALL_UI_WIDGETS",
     "QUEST_TURNED_IN",
@@ -5708,6 +5776,7 @@ end)
 -- Register addon events once during file load so we do not call RegisterEvent from runtime initialization paths.
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("QUEST_ACCEPTED")
 
 Preydator:SetCorePreyRuntimeEventsRegistered(false)

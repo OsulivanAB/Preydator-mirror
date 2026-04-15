@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.2.6 - 2026-04-14
+
+### Fixed
+- Fixed live prey progression updates stalling without reload by hardening widget-cache refresh behavior and objective fallback gating, so stage transitions continue to advance during active hunts.
+- Fixed login/bootstrap race cases where active prey state could initialize late and leave runtime polling/event flow idle until a manual refresh/reload.
+- Added queued login bootstrap refresh passes after `PLAYER_LOGIN`/`PLAYER_ENTERING_WORLD` so delayed quest/widget readiness does not require manual reload to initialize bar state.
+- Fixed stale stage/progress carryover on prey quest re-accept (including same questID) by resetting widget/progress cache on `QUEST_ACCEPTED` before runtime reconciliation.
+- Fixed stage regressions from stale/partial widget data by preserving stronger known progress and preventing in-hunt progressState rollbacks.
+- Fixed reload bootstrap/state carryover issues so fresh hunts no longer jump to an incorrect stage and same-quest stale snapshots do not override live context.
+- Fixed prey-zone gating edge cases so non-prey areas do not falsely latch in-zone, while valid prey-widget signals still assert in-zone state for active hunts.
+- Fixed quest lifecycle cleanup so turn-in/abandon boundaries clear zone/progress state consistently and prevent stale bar persistence.
+- Fixed wrong-zone bar visibility false positives under `Only show in prey zone` by removing unresolved zone-certification fallbacks that inferred in-zone from the current player map or fresh prey-widget activity (for example latching Silvermoon/Voidstorm hunts to Zul'Aman or Harandar).
+- Fixed accepted hunts with unresolved Blizzard zone APIs staying zone-unknown after Hunt Table pickup by promoting the current live Hunt Table zone inference into a transient runtime map ID, so the active hunt resolves the correct zone without persisting a permanent quest-to-zone binding.
+- Fixed prey-specific ambush reliability by improving prey-name extraction and matching logic while keeping triggers anchored to the active prey target.
+- Fixed Hunt Table achievement indicators not showing for some hunts when achievement criteria quest IDs did not match offer quest IDs or criteria metadata arrived incomplete; signals now include robust title/difficulty fallback matching.
+- Fixed Hunt Table mode mismatches where pin-description parsing could assign the wrong Normal/Hard/Nightmare key for live rows; difficulty now prefers authoritative quest-title metadata before fallback parsing.
+- Tightened Hunt Table pin difficulty parsing to accept only unambiguous mode markers (including parenthesized suffixes), preventing mixed description text from being misclassified to the wrong difficulty.
+- Updated Hunt Table difficulty memory to prefer confirmed questID mappings first and only persist newly parsed values when difficulty detection is unambiguous, preventing guessed defaults from polluting cross-region quest difficulty cache.
+- Fixed strict achievement name matching misses caused by punctuation/spacing variants (for example `Jan'alai` vs `Janali`) by adding compact-key lookup while preserving difficulty boundaries.
+- Fixed a Hunt Table regression where cross-difficulty inference could incorrectly match Normal/Hard rows against Nightmare achievements; matching is strict by mode and no longer infers a different difficulty bucket.
+- Fixed additional title drift cases where Blizzard hunt rows and achievement criteria differ only by a leading article (`The ...`), by trying article variants during strict title-key resolution.
+- Added a scoped alias for `The Talon of Jan'alai` -> `The Talon of Janali` in hunt-achievement title resolution to handle Blizzard transliteration drift while keeping strict difficulty boundaries.
+
+### Added
+- Added objective-inference diagnostics to `/pd qinspect` (`objectiveInference`) and hardened inspect/qinspect BugSack dispatch to fail closed.
+
+### Changed
+- Canonicalized prey-map fallback equivalence for Zul'Aman (`2537 -> 2437`) in legacy/runtime-safe zone resolution paths.
+
 ## 2.2.5 - 2026-04-12
 
 ### Fixed
@@ -63,20 +92,10 @@
 ## 2.2.0 - 2026-04-10
 
 ### Added
-- Added a new `Echo of Predation` encounter sound path and runtime trigger for `npc=248365`.
-- Added Nightmare-only encounter gating for Echo of Predation playback.
-- Added prey-zone gating for Echo of Predation playback so alerts only fire in the active hunt zone.
-- Added a dedicated Echo of Predation sound selector in Audio settings.
-- Added a dedicated `Test Echo of Predation` button in Audio settings.
-- Added an Audio checkbox to silence Astalor Bloodsworn encounter lines (`Silence Arator (Astalor Bloodsworn)`) using sound-file ID mute/unmute handling.
-- Added re-apply handling for Astalor silencing on login/enter-world so the muted state remains consistent across reloads.
-- Added support for a second Bloody Command chat phrase trigger: `Drain their anguish!`.
-- Added a one-time `Preydator Audio Defaults (2.2.0)` prompt with a `New Defaults` action so existing installs can opt into the new sound mapping without forcing changes.
+- Hunt Tracker achievement matching remains difficulty-strict for prey criteria so Normal/Hard/Nightmare requirements do not cross-credit between modes.
 
-### Changed
 - Increased Audio test-button widths to fit longer labels cleanly.
 - Updated Bloody Command gating to stages 1, 2, and 3 only (Nightmare difficulty required).
-- Expanded default/protected bundled sound filename lists to include `predator-snarl-01.ogg`, `well-we-ve-prepared-a-trap-for-this-predator.ogg`, `predator-kills-its-prey-to-survive.ogg`, and `echo-of-predation.ogg`.
 - Updated release packaging script to use an explicit runtime include list (`Preydator.toc`, `Preydator.lua`, `Core`, `Modules`, `Locales`, `media`, `sounds`) so commit-only/docs/dev files are not shipped in release zips.
 - Bumped addon version to `2.2.0` in both `Preydator.toc` and `build-release.ps1` default version.
 - Added `Music` as a valid Audio sound channel option and normalized/validated it across playback/runtime paths.

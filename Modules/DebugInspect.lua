@@ -114,7 +114,17 @@ local function SendToErrorHandler(reportText, headerText)
         local startPos = ((index - 1) * chunkSize) + 1
         local endPos = math.min(index * chunkSize, length)
         local chunk = string.sub(reportText, startPos, endPos)
-        local okSend = pcall(handler, string.format("%s [%d/%d]\n%s", header, index, chunks, chunk))
+        local payload = nil
+        local okPayload, builtPayload = pcall(string.format, "%s [%d/%d]\n%s", header, index, chunks, chunk)
+        if okPayload and type(builtPayload) == "string" and builtPayload ~= "" then
+            payload = builtPayload
+        else
+            payload = header .. " [" .. tostring(index) .. "/" .. tostring(chunks) .. "]\n" .. chunk
+        end
+
+        local okSend = pcall(function()
+            handler(payload)
+        end)
 
         if not okSend then
             return false, "handler failed on chunk " .. tostring(index)
@@ -239,6 +249,59 @@ local function BuildQuestInspectReport(requestedQuestID)
         local okObjectives, objectives = pcall(C_QuestLog.GetQuestObjectives, questID)
         objectives = okObjectives and objectives or nil
         if type(objectives) == "table" and #objectives > 0 then
+            local function IsObjectiveDone(objective)
+                if type(objective) ~= "table" then
+                    return false
+                end
+                if objective.finished == true then
+                    return true
+                end
+                local fulfilled = SafeToNumber(objective.numFulfilled)
+                local required = SafeToNumber(objective.numRequired)
+                if fulfilled ~= nil and required ~= nil and required > 0 then
+                    return fulfilled >= required
+                end
+
+                local text = objective.text
+                if type(text) == "string" and text ~= "" then
+                    local curText, maxText = text:match("(%d+)%s*/%s*(%d+)")
+                    local curValue = SafeToNumber(curText)
+                    local maxValue = SafeToNumber(maxText)
+                    if curValue ~= nil and maxValue ~= nil and maxValue > 0 then
+                        return curValue >= maxValue
+                    end
+                end
+
+                return false
+            end
+
+            local inferredProgressState = nil
+            local first = objectives[1]
+            local second = objectives[2]
+            local firstDone = IsObjectiveDone(first)
+            local secondDone = IsObjectiveDone(second)
+            local secondPresent = type(second) == "table"
+                and ((type(second.text) == "string" and second.text ~= "")
+                    or (SafeToNumber(second.numRequired) ~= nil))
+
+            if secondDone or (firstDone and secondPresent) then
+                inferredProgressState = 3
+            elseif firstDone then
+                inferredProgressState = 2
+            elseif state.inPreyZone == true then
+                inferredProgressState = 1
+            else
+                inferredProgressState = 0
+            end
+
+            local inferredStage = inferredProgressState + 1
+            add("- objectiveInference | progressState=" .. SafeValue(inferredProgressState)
+                .. " | stage=" .. SafeValue(inferredStage)
+                .. " | firstDone=" .. SafeValue(firstDone)
+                .. " | secondPresent=" .. SafeValue(secondPresent)
+                .. " | secondDone=" .. SafeValue(secondDone)
+                .. " | inPreyZone=" .. SafeValue(state.inPreyZone))
+
             add("- objectives count=" .. tostring(#objectives))
             for idx, obj in ipairs(objectives) do
                 add("  - [" .. tostring(idx) .. "] " .. FormatTablePairs(obj))
@@ -324,6 +387,14 @@ local function BuildInspectReport()
         .. " | onlyShowInPreyZone=" .. tostring(settings and settings.onlyShowInPreyZone == true)
         .. " | disableDefaultPreyIcon=" .. tostring(settings and settings.disableDefaultPreyIcon == true))
 
+    local suppressionDebug = nil
+    if type(Preydator.GetWidgetSuppressionDebug) == "function" then
+        local okSuppression, data = pcall(Preydator.GetWidgetSuppressionDebug)
+        if okSuppression and type(data) == "table" then
+            suppressionDebug = data
+        end
+    end
+
     local preyWidgetVisible = suppressionDebug and suppressionDebug.preyIconShown == true
     local onlyShowInPreyZone = settings and settings.onlyShowInPreyZone == true
     local forceShowBar = state and state.forceShowBar == true
@@ -383,13 +454,6 @@ local function BuildInspectReport()
         .. " | restricted=" .. tostring(isRestrictedInstance)
         .. " | editModePreview=" .. tostring(editModePreview))
 
-    local suppressionDebug = nil
-    if type(Preydator.GetWidgetSuppressionDebug) == "function" then
-        local okSuppression, data = pcall(Preydator.GetWidgetSuppressionDebug)
-        if okSuppression and type(data) == "table" then
-            suppressionDebug = data
-        end
-    end
     if suppressionDebug then
         add("- suppression trackedFrames=" .. SafeValue(suppressionDebug.trackedFrames)
             .. " | shownFrames=" .. SafeValue(suppressionDebug.shownFrames)
