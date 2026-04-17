@@ -5,7 +5,7 @@
 ## Category-enUS: Quests
 ## Category-koKR: 퀘스트
 ## Category-zhCN: 任务
-## Version: 2.2.6
+## Version: 2.2.7-beta2
 ## AddonCompartmentFunc: Preydator_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: Preydator_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: Preydator_OnAddonCompartmentLeave
@@ -40,4 +40,5 @@ Modules\Settings.lua
 Modules\EditMode.lua
 Modules\DebugInspect.lua
 Modules\CurrencyTracker.lua
+Modules\PreyQuestData.lua
 Modules\HuntScanner.lua

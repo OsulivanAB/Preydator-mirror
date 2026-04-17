@@ -173,7 +173,7 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         local hasPreyContext = state.activeQuestID or (now < (state.killStageUntil or 0))
         local outOfZoneQuestIdle = type(ctx.isValidQuestID) == "function"
             and ctx.isValidQuestID(state.activeQuestID)
-            and state.inPreyZone ~= true
+            and state.inPreyZone == false
             and not (now < (state.killStageUntil or 0))
             and not (now < (state.ambushAlertUntil or 0))
             and not (now < (state.bloodyCommandAlertUntil or 0))
@@ -297,7 +297,7 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
     if isNoisyEvent
         and type(ctx.isValidQuestID) == "function"
         and ctx.isValidQuestID(state.activeQuestID)
-        and state.inPreyZone ~= true
+        and state.inPreyZone == false
         and not ((state.killStageUntil or 0) > now)
         and not ((state.ambushAlertUntil or 0) > now)
         and not ((state.bloodyCommandAlertUntil or 0) > now) then

@@ -1389,6 +1389,19 @@ local function RefreshInPreyZoneStatus(questID, force)
             isTrackedPreyWidgetShown = function()
                 return IsAnyTrackedPreyWidgetShown()
             end,
+            isTrackedPreyWidgetPresent = function()
+                if preyHuntIconFrame ~= nil then
+                    return true
+                end
+
+                for frameRef in pairs(PREY_WIDGET_FRAMES) do
+                    if frameRef ~= nil then
+                        return true
+                    end
+                end
+
+                return false
+            end,
             getQuestZoneMapIDFromHuntScanner = function(numericQuestID)
                 if not IsValidQuestID(numericQuestID) then
                     return nil
@@ -1706,6 +1719,8 @@ local function TriggerAmbushAlert(message, source)
             local ambushPath = Preydator.API.ResolveAmbushSoundPath()
             TryPlaySound(ambushPath)
             state.lastAmbushSoundAt = now
+        else
+            AddDebugLog("Ambush", "Sound skipped by cooldown | remaining=" .. string.format("%.1f", nextSoundAt - now) .. "s", true)
         end
     end
 
