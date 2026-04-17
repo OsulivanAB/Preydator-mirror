@@ -5771,6 +5771,10 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
             tryHandleEchoOfPredationNameplate = function(unitToken, source)
                 return TryHandleEchoOfPredationNameplate(unitToken, source)
             end,
+            clearPreyWidgetInfoCache = function()
+                preyWidgetInfoCache = nil
+                state.progressState = nil
+            end,
         })
         Preydator:SyncCorePreyRuntimeEvents()
         return
@@ -5793,6 +5797,7 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("QUEST_ACCEPTED")
+frame:RegisterEvent("PLAYER_ALIVE")
 
 Preydator:SetCorePreyRuntimeEventsRegistered(false)
 

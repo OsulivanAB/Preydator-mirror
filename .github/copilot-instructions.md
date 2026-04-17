@@ -84,6 +84,9 @@ If any required file is missing or unclear, stop and ask.
 - Keep module `OnEvent` handlers lightweight.
 - Gate expensive behavior by active hunt context.
 - Gate zone behavior through existing map canonicalization in `Core/PreyContextRuntime.lua`.
+- **Never create persistent QuestID -> zone bindings.**
+- Treat zone as runtime/context data only; any prey quest can appear in any prey zone.
+- Do not "fix" zone issues by wiring or caching a permanent quest-to-zone mapping.
 
 ---
 

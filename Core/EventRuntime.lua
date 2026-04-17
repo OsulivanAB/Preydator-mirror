@@ -268,6 +268,22 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         end
     end
 
+    -- When a player dies and respawns before reaching Stage 4, the prey quest
+    -- objective resets to 0.  The widget cache's anti-regression guard would
+    -- normally keep the stale progressState, freezing the bar at the pre-death
+    -- stage.  On PLAYER_ALIVE, clear the cache so the next UpdatePreyState pass
+    -- reads the live (reset) widget state instead of the stale cached value.
+    -- Stage 4 is exempt: at that point death no longer causes an objective reset.
+    if event == "PLAYER_ALIVE" then
+        if state.stage ~= nil and state.stage < 4 and type(ctx.clearPreyWidgetInfoCache) == "function" then
+            ctx.clearPreyWidgetInfoCache()
+        end
+        if type(ctx.updatePreyState) == "function" then
+            ctx.updatePreyState()
+        end
+        return true
+    end
+
     if event == "QUEST_REMOVED" and state.activeQuestID and arg1 == state.activeQuestID then
         -- Abandon/removal boundary: clear prey-zone cache immediately.
         state.preyZoneName = nil

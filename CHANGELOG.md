@@ -12,6 +12,9 @@
 
 ### Fixed
 - Fixed locale-sensitive prey achievement signal drift by moving primary matching to ID-based quest criteria checks for mapped prey quests.
+- Fixed bar not resetting to Stage 1 after player death on Hard/Nightmare hunts before Stage 4. The widget cache's anti-regression guard was blocking the post-death objective rollback; `PLAYER_ALIVE` now clears the cache so the bar re-evaluates from live quest state. Stage 4 is exempt (death after reaching Stage 4 no longer causes an objective reset).
+- Fixed Shift+RightClick minimap Options opening in combat triggering `[ADDON_ACTION_BLOCKED]` on Blizzard's protected `OpenSettingsPanel()` call by deferring the panel-open request until `PLAYER_REGEN_ENABLED`.
+- Fixed Currency Tracker opening tainting Blizzard money/currency UI with a secret-number payload by sanitizing `C_CurrencyInfo.GetCurrencyInfo()` quantity and icon values before any addon-side arithmetic or UI binding.
 
 ## 2.2.7-beta - 2026-04-16
 
