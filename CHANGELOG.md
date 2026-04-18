@@ -1,11 +1,12 @@
 # Changelog
 
-## 2.2.7-beta2 - 2026-04-17
+## 2.2.7 - 2026-04-18
 
 ### Added
 - Added static prey quest data module with deterministic questID mappings for difficulty and criteria IDs (`Modules/PreyQuestData.lua`) and TOC registration before HuntScanner.
 - Added explicit tracked per-quest achievement mapping table for non-meta prey achievements using IDs curated in `issues/achievements.md`.
 - Added achievement route diagnostics counters (`id`, `fallback`, `miss`) to HuntScanner and surfaced them in `/pd inspect`, `/pd hinspect`, and `/pd ainspect` outputs.
+- Added Ambush debug instrumentation when sound playback is skipped by cooldown, so `/pd debuglog` explicitly reports the remaining cooldown instead of failing silently.
 
 ### Changed
 - HuntScanner achievement signal cache now prioritizes static questID-driven ID matching for known prey quests, including mode I/II/III checks by difficulty, before legacy text fallback routes.
@@ -15,16 +16,9 @@
 - Fixed bar not resetting to Stage 1 after player death on Hard/Nightmare hunts before Stage 4. The widget cache's anti-regression guard was blocking the post-death objective rollback; `PLAYER_ALIVE` now clears the cache so the bar re-evaluates from live quest state. Stage 4 is exempt (death after reaching Stage 4 no longer causes an objective reset).
 - Fixed Shift+RightClick minimap Options opening in combat triggering `[ADDON_ACTION_BLOCKED]` on Blizzard's protected `OpenSettingsPanel()` call by deferring the panel-open request until `PLAYER_REGEN_ENABLED`.
 - Fixed Currency Tracker opening tainting Blizzard money/currency UI with a secret-number payload by sanitizing `C_CurrencyInfo.GetCurrencyInfo()` quantity and icon values before any addon-side arithmetic or UI binding.
-
-## 2.2.7-beta - 2026-04-16
-
-### Fixed
 - Fixed `Only show in prey zone` permanent bar blocking when `preyZoneMapID` is unresolved but the Blizzard prey widget is currently visible; bar visibility now accepts the same widget-driven in-zone signal already used by stage-4 handling.
 - Added Eversong Woods (`2395`) to known prey map canonicalization so prey-zone fallback certification resolves active Eversong hunts correctly (including quest `91245`).
 - Fixed noisy-event out-of-zone gating so ambush chat processing is only suppressed when the player is explicitly out of prey zone (`inPreyZone=false`), not when zone state is temporarily unknown (`inPreyZone=nil`) during active hunts.
-
-### Added
-- Added Ambush debug instrumentation when sound playback is skipped by cooldown, so `/pd debuglog` explicitly reports the remaining cooldown instead of failing silently.
 
 ## 2.2.6 - 2026-04-14
 

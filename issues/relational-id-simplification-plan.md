@@ -1,4 +1,4 @@
-# Relational ID Simplification Plan (2.2.7-beta2 Baseline)
+# Relational ID Simplification Plan (2.2.7 Baseline)
 
 ## Purpose
 Capture where Preydator can be simplified and made more reliable by using relational IDs and canonical keys instead of fragile text parsing and cross-locale string matching.
