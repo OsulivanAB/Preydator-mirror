@@ -3209,6 +3209,13 @@ ApplyDefaultPreyIconVisibility = function()
         return
     end
 
+    -- Gate: do not manipulate prey widget frames until the bar UI is initialized.
+    -- On reload, running this before EnsureBar() completes can corrupt frame visibility
+    -- and cascade to break bar rendering.
+    if not UI.barFrame then
+        return
+    end
+
     CaptureLivePreyHuntFrames()
 
     if settings.disableDefaultPreyIcon ~= true then
@@ -3905,7 +3912,7 @@ local function UpdatePreyState()
             if secondDone or (firstDone and secondObjectivePresent) then
                 newProgressState = PREY_PROGRESS_FINAL
             elseif firstDone then
-                newProgressState = 2
+                newProgressState = 1
             else
                 newProgressState = 0
             end

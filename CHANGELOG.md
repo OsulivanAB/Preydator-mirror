@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.8 - 2026-04-18
+
+### Fixed
+- Fixed stage progression skipping Stage 2 during objective-inference fallback when widget progress state was unresolved. The first-objective-complete path now maps to `progressState=1` (Stage 2) instead of `progressState=2` (Stage 3), restoring correct stage flow.
+
 ## 2.2.7 - 2026-04-18
 
 ### Added
