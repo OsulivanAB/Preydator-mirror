@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.2.9 - 2026-04-19
+
+### Fixed
+- Fixed sound-selection persistence during load/update normalization so addon-local custom selections are retained when stored with legacy filename/full-path/case variants.
+- Fixed a sound migration bug where the saved Bloody Command sound was not included in the allowed custom sound set, causing custom Bloody Command selections to reset to a fallback sound on load.
+- Retired the legacy 2.2.0 audio-defaults prompt so updates can no longer accidentally replace a player's saved sound choices.
+- Silenced Luacheck's false-positive `main function has more than 200 local variables` warning for the monolithic core runtime file so style checks stop flagging the file for its chunk size alone.
+- Fixed Ambush/Bloody Command text fallback so alerts no longer render blank when legacy empty prefix values are carried forward; legacy text settings now migrate to `AMBUSH: ` + `preyTargetName` and `Bloody Command: ` + `bloodyCommandSourceName` defaults.
+- Fixed alert text behavior when both prefix and suffix are empty so Ambush/Bloody Command alerts keep the Stage label instead of showing no text.
+- Fixed Ambush trigger misses for non-name chat lines by adding a fallback phrase detector (including trap callouts) in active prey context, matching ActionSounds-style behavior while preserving prey-name matching priority.
+- Added Ambush chat gate diagnostics to debug log (`/pd debug show`) so accepted/ignored chat lines include event/sender/match-route details.
+- Fixed suffix variable-marker rendering so when `preyTargetName` or `bloodyCommandSourceName` is selected but no runtime name is available yet, the marker text remains visible instead of collapsing to prefix-only text.
+- Fixed Ambush variable-name resolution in fallback chat routes by passing sender through the trigger and using it as dynamic name fallback when `preyTargetName` is selected but quest-title parsing has not populated yet.
+- Fixed delayed Currency Tracker gain/loss updates by restoring immediate refresh on loot/currency chat signals and subscribing the currency module event frame to direct currency/update events (`CURRENCY_DISPLAY_UPDATE`, `CHAT_MSG_CURRENCY`, `QUEST_TURNED_IN`, `BAG_UPDATE_DELAYED`) while keeping deferred follow-up sweeps for late server updates.
+- Changed Hunt Table achievement matching to strict QuestID criteria only. Title/name/difficulty fallback matching is now disabled so achievements only signal when an explicit questID criteria mapping exists.
+- Removed name-based achievement fallback cache population in HuntScanner so only questID criteria mappings are built for signals.
+
+### Added
+- Added ordered sound catalogs so audio selectors now list `None` first, then custom addon-local sounds, bundled Preydator defaults, and finally extra registered sounds discovered from LibSharedMedia.
+- Added validation support for non-Preydator registered sound paths so selecting an external catalog sound is preserved by settings normalization instead of being reset on load.
+- Added a dedicated searchable sound picker popup (15 visible rows with scrollbar) for all sound-selection controls (Stage 1-4, Ambush, Bloody Command, Echo of Predation).
+- External LibSharedMedia sound entries are labeled with a source prefix (`LSM: Sound Name`). Preydator bundled sounds and custom user files are unlabelled.
+
 ## 2.2.8 - 2026-04-18
 
 ### Fixed

@@ -1071,17 +1071,6 @@ local function RebuildAchievementNeedsCache()
                         or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
                         or ("Achievement " .. tostring(achievementID))
                     AddAchievementNeed(achievementNeedsByQuestID, questID, achievementID, label)
-                    -- Keep name matching available even when quest IDs are present.
-                    -- Hunt Table offer quest IDs can drift from achievement criteria
-                    -- asset IDs across data updates, so title/difficulty fallback is
-                    -- required to keep signals visible.
-                    AddAchievementNameMatch(achievementID, achievementName, criteriaName, label)
-                elseif okCriteria
-                    and criteriaCompleted ~= true then
-                    local label = (type(achievementName) == "string" and achievementName ~= "" and achievementName)
-                        or (type(criteriaName) == "string" and criteriaName ~= "" and criteriaName)
-                        or ("Achievement " .. tostring(achievementID))
-                    AddAchievementNameMatch(achievementID, achievementName, criteriaName, label)
                 end
             end
             end
@@ -1249,27 +1238,13 @@ local function GetQuestAchievementNeeds(questID, title, difficulty)
     local idBucket = id and achievementNeedsByQuestID[id] or nil
     local hasIDBucket = type(idBucket) == "table" and (idBucket.count or 0) > 0
 
-    local nameBucket = nil
-    local hasNameBucket = false
-    if type(title) == "string" and title ~= "" then
-        nameBucket = ResolveAchievementNameBucket(title, difficulty)
-        hasNameBucket = type(nameBucket) == "table" and (nameBucket.count or 0) > 0
-    end
-
     if hasIDBucket then
         achievementRouteStats.idHits = (achievementRouteStats.idHits or 0) + 1
-    end
-    if hasNameBucket then
-        achievementRouteStats.fallbackHits = (achievementRouteStats.fallbackHits or 0) + 1
+        return idBucket.count or 0, idBucket.names
     end
 
-    local mergedCount, mergedNames = MergeAchievementBuckets(idBucket, nameBucket)
-    if mergedCount <= 0 then
-        achievementRouteStats.misses = (achievementRouteStats.misses or 0) + 1
-        return 0, nil
-    end
-
-    return mergedCount, mergedNames
+    achievementRouteStats.misses = (achievementRouteStats.misses or 0) + 1
+    return 0, nil
 end
 
 local function GetRewardScopeKey()

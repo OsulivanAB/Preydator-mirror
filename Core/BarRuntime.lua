@@ -719,27 +719,47 @@ local function UpdateBarDisplay()
     local suffixText = ""
     if forceBloodyCommandAlert then
         prefixText = (settings and settings.bloodyCommandPrefix) or ""
-        local bloodySuffix = (settings and settings.bloodyCommandSuffix) or _G.PreydatorL["Bloody Command"]
-        if type(bloodySuffix) ~= "string" or bloodySuffix == "" then
-            bloodySuffix = _G.PreydatorL["Bloody Command"]
-        end
-        if type(state.bloodyCommandSourceName) == "string" and state.bloodyCommandSourceName ~= "" then
-            suffixText = bloodySuffix .. ": " .. state.bloodyCommandSourceName
+        local suffixSetting = (settings and settings.bloodyCommandSuffix) or "bloodyCommandSourceName"
+
+        -- If suffix exactly matches the variable name, use dynamic value.
+        if suffixSetting == "bloodyCommandSourceName" then
+            if type(state.bloodyCommandSourceName) == "string" and state.bloodyCommandSourceName ~= "" then
+                suffixText = state.bloodyCommandSourceName
+            else
+                suffixText = "bloodyCommandSourceName"
+            end
+        -- Otherwise use as literal text.
+        elseif type(suffixSetting) == "string" and suffixSetting ~= "" then
+            suffixText = tostring(suffixSetting)
         else
-            suffixText = bloodySuffix
+            suffixText = ""
+        end
+
+        if prefixText == "" and suffixText == "" then
+            suffixText = label
         end
     elseif forceAmbushAlert then
         prefixText = (settings and settings.ambushPrefix) or ""
-        local customAmbushText = settings and settings.ambushCustomText
-        if type(customAmbushText) == "string" and customAmbushText ~= "" then
-            suffixText = customAmbushText
-        else
-            local ambushSuffix = (settings and settings.ambushLabel) or constants.DEFAULT_AMBUSH_LABEL
+        local suffixSetting = (settings and settings.ambushSuffix) or "preyTargetName"
+
+        -- If suffix exactly matches the variable name, use dynamic value.
+        if suffixSetting == "preyTargetName" then
             if type(state.preyTargetName) == "string" and state.preyTargetName ~= "" then
-                suffixText = ambushSuffix .. ": " .. state.preyTargetName
+                suffixText = state.preyTargetName
+            elseif type(state.ambushSourceName) == "string" and state.ambushSourceName ~= "" then
+                suffixText = state.ambushSourceName
             else
-                suffixText = ambushSuffix
+                suffixText = "preyTargetName"
             end
+        -- Otherwise use as literal text.
+        elseif type(suffixSetting) == "string" and suffixSetting ~= "" then
+            suffixText = tostring(suffixSetting)
+        else
+            suffixText = ""
+        end
+
+        if prefixText == "" and suffixText == "" then
+            suffixText = label
         end
     elseif isOutOfPreyZone and not forceKillStage then
         prefixText = (settings and settings.outOfZonePrefix) or ""
@@ -748,8 +768,8 @@ local function UpdateBarDisplay()
         if editModePreview then
             suffixText = "Preydator (Edit Mode Preview)"
         else
-            local zoneName = _G.GetZoneText and _G.GetZoneText() or "Unknown Zone"
-            suffixText = zoneName
+            local zoneName = (_G.GetZoneText and _G.GetZoneText()) or "Unknown Zone"
+            suffixText = tostring(zoneName)
         end
     else
         prefixText = (settings.stageSuffixLabels and settings.stageSuffixLabels[stage]) or ""
