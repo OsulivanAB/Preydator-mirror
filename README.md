@@ -41,6 +41,7 @@ Important: Blizzard does not expose a true percent completion for Prey Hunts. Pr
 - Hunt Table tracker with grouping/sorting, reward icons, collapsible headers, and direct accept/open actions
 - Warband `Prey Track (Alts)` with `N/H/Ni` available/completed modes and weekly-aware tracking snapshots
 - Hunt Table achievement signals resolve from explicit questID criteria mappings only (no title/name fallback matching)
+- Hunt Table achievement signals on higher-tier rows can cumulatively include unmet lower-tier mapped achievements for the same prey target while remaining questID/criteria anchored
 - Session delta tracking for approved Prey currencies
 - Theme support in currency windows: `Light`, `Brown`, `Dark`
 - One-time What's New splash for currency launch (with Show Again in Advanced tab)

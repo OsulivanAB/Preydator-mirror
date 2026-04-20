@@ -16,6 +16,8 @@
 - Fixed delayed Currency Tracker gain/loss updates by restoring immediate refresh on loot/currency chat signals and subscribing the currency module event frame to direct currency/update events (`CURRENCY_DISPLAY_UPDATE`, `CHAT_MSG_CURRENCY`, `QUEST_TURNED_IN`, `BAG_UPDATE_DELAYED`) while keeping deferred follow-up sweeps for late server updates.
 - Changed Hunt Table achievement matching to strict QuestID criteria only. Title/name/difficulty fallback matching is now disabled so achievements only signal when an explicit questID criteria mapping exists.
 - Removed name-based achievement fallback cache population in HuntScanner so only questID criteria mappings are built for signals.
+- Fixed strict questID achievement stacking for mode tiers by evaluating lower mode achievements (I/II) with the same quest criteriaID hint as Mode III, so rows can correctly show combined pending counts (for example `x2` when both II and III are still incomplete).
+- Extended strict questID cumulative stacking to non-I/II/III per-quest achievements by resolving same-target lower-tier questIDs through criteria-index alignment, so higher-tier hunt rows also include unmet mapped achievements from lower tiers.
 
 ### Added
 - Added ordered sound catalogs so audio selectors now list `None` first, then custom addon-local sounds, bundled Preydator defaults, and finally extra registered sounds discovered from LibSharedMedia.
