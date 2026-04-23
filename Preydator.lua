@@ -1393,7 +1393,19 @@ local FALLBACK_MAP_ID_EQUIVALENTS = {
 }
 
 local function CanonicalizeFallbackMapID(mapID)
-    mapID = tonumber(mapID)
+    local okString, asString = pcall(tostring, mapID)
+    if not okString or type(asString) ~= "string" then
+        return nil
+    end
+
+    local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+        or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+    if not numericToken then
+        return nil
+    end
+
+    local okNumber, parsedMapID = pcall(tonumber, numericToken)
+    mapID = okNumber and parsedMapID or nil
     if not mapID or mapID < 1 then
         return nil
     end
@@ -1490,7 +1502,21 @@ local function RefreshInPreyZoneStatus(questID, force)
     local playerMapID = nil
     if C_Map and C_Map.GetBestMapForUnit then
         local okMapID, rawMapID = pcall(C_Map.GetBestMapForUnit, "player")
-        playerMapID = okMapID and CanonicalizeFallbackMapID(rawMapID) or nil
+        if okMapID then
+            local parsedMapID = nil
+            local okMapString, mapAsString = pcall(tostring, rawMapID)
+            if okMapString and type(mapAsString) == "string" then
+                local numericToken = string.match(mapAsString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+                    or string.match(mapAsString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+                if numericToken then
+                    local okNumber, numericValue = pcall(tonumber, numericToken)
+                    if okNumber and type(numericValue) == "number" then
+                        parsedMapID = numericValue
+                    end
+                end
+            end
+            playerMapID = CanonicalizeFallbackMapID(parsedMapID)
+        end
     end
 
     local questMapID = CanonicalizeFallbackMapID(state.preyZoneMapID)

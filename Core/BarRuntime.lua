@@ -555,8 +555,12 @@ local function UpdateBarDisplay()
     local onlyShowInPreyZone = settings.onlyShowInPreyZone == true
     local preyWidgetVisible = type(ctx.isAnyTrackedPreyWidgetShown) == "function"
         and ctx.isAnyTrackedPreyWidgetShown() == true
+    local hasResolvedPreyZoneEvidence = state.preyZoneMapID ~= nil or state.confirmedPreyZoneMapID ~= nil
+    local hasCertifiedWidgetZoneSignal = state.inPreyZone == nil
+        and preyWidgetVisible
+        and hasResolvedPreyZoneEvidence
     local inStageFourInZone = (state.stage == constants.MAX_STAGE)
-        and (state.inPreyZone == true or (state.inPreyZone == nil and preyWidgetVisible))
+        and (state.inPreyZone == true or hasCertifiedWidgetZoneSignal)
     local function IsEditModePreviewEnabled()
         if settings.showInEditMode ~= true then
             return false
@@ -575,7 +579,7 @@ local function UpdateBarDisplay()
     elseif state.forceShowBar or forceKillStage or forceAmbushAlert or forceBloodyCommandAlert or editModePreview then
         shouldShow = true
     elseif onlyShowInPreyZone then
-        local inZoneSignal = state.inPreyZone == true or (state.inPreyZone == nil and preyWidgetVisible)
+        local inZoneSignal = state.inPreyZone == true or hasCertifiedWidgetZoneSignal
         shouldShow = (hasActiveQuest and inZoneSignal) or inStageFourInZone
     else
         shouldShow = true

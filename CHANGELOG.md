@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.10 - 2026-04-23
+
+### Fixed
+- Fixed an over-aggressive prey-zone fallback regression from 2.2.10 where unresolved quest-zone data could mark legitimate in-zone hunts as explicitly out-of-zone, causing Stage 1-3 bar updates to stop and the bar to disappear mid-hunt.
+- Tightened the `Only show in prey zone` widget-visible fallback so it only acts as an in-zone signal when Preydator has actual prey-zone map evidence, preventing wrong-zone false positives like Silvermoon City without hard-marking unresolved live hunts out of zone.
+- Fixed world-map mouseover taint path (`Blizzard_SharedXML/LayoutFrame.lua:491`, secret-number compare) by removing direct numeric coercion on raw map-ID payloads in prey-zone canonicalization and using fail-closed token parsing before map-ID comparisons.
+- Hardened minimap/flying prey-zone refresh paths against secret-value taint by sanitizing `GetBestMapForUnit` and quest-zone map payloads in-scope before any helper-call boundaries, preventing protected map values from propagating into later layout comparisons during tooltip updates.
+- Fixed `/pd inspect bs` usability when BugSack/error-handler dispatch fails. The command now prints the inspect lines to chat as a fallback instead of only reporting the dispatch failure.
+- Fixed `/pd inspect` reporting `shouldShowBar=false / onlyShowInPreyZone-block` while the bar was physically visible. The diagnostic `onlyShowInPreyZone` branch now mirrors the actual `BarRuntime` logic including the `preyWidgetVisible` fallback, so the inspect output truthfully reflects what the bar is doing.
+
 ## 2.2.9 - 2026-04-19
 
 ### Fixed
