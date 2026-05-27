@@ -2,7 +2,7 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v2.2.10`
+Current release: `v2.2.11`
 
 Runtime safety note: In restricted instance content (`party`, `raid`, `scenario`, `delve`, `arena`, `pvp`), Preydator is intended to fail closed and keep runtime behavior inactive.
 
@@ -177,19 +177,19 @@ Bundled default files:
 
 - Inspect diagnostics:
 	- `/pd inspect` - print live addon diagnostics to chat.
-	- `/pd inspect bs` - send live addon diagnostics to BugSack.
+	- `/pd inspect bs` - open live addon diagnostics in the built-in report window.
 
 - Quest inspect diagnostics:
 	- `/pd qinspect` - inspect the active prey quest.
 	- `/pd qinspect <questID>` - inspect a specific quest ID.
-	- `/pd qinspect bs` - send active prey quest diagnostics to BugSack.
-	- `/pd qinspect <questID> bs` - send specific quest diagnostics to BugSack.
+	- `/pd qinspect bs` - open active prey quest diagnostics in the built-in report window.
+	- `/pd qinspect <questID> bs` - open specific quest diagnostics in the built-in report window.
 
 - Hunt snapshot diagnostics:
 	- `/pd hinspect` - print the current hunt snapshot to chat.
-	- `/pd hinspect bs` - send the current hunt snapshot to BugSack.
+	- `/pd hinspect bs` - open the current hunt snapshot in the built-in report window.
 	- `/pd hinspectcopy` - print the last captured hunt payload.
-	- `/pd hinspectcopy bs` - send the last captured hunt payload to BugSack.
+	- `/pd hinspectcopy bs` - open the last captured hunt payload in the built-in report window.
 
 Removed legacy aliases: `/preydator`, `/pd open`, `/pd mem`, `/pd memory`, `inspectquest*`, and `huntdebug*`.
 

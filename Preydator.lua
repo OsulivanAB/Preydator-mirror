@@ -30,7 +30,6 @@ _G.SLASH_PREYDATOR2 = nil
 local PREY_PROGRESS_FINAL = 3
 local MAX_STAGE = 4
 local MAX_TICK_MARKS = 3
-local WIDGET_SHOWN = 1
 -- local IDLE_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-idle.ogg"
 local ALERT_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-alert.ogg"
 local AMBUSH_SOUND_PATH = "Interface\\AddOns\\Preydator\\sounds\\predator-ambush.ogg"
@@ -492,6 +491,7 @@ local TryPlayStageSound
 local TryPlayEchoOfPredationEncounter
 local TryHandleEchoOfPredationNameplate
 local UpdateBarDisplay
+local UpdatePreyState
 local ApplyBarSettings
 local ApplyDefaultPreyIconVisibility
 local TryOpenPreyQuestOnMap
@@ -500,6 +500,36 @@ local BarRuntimeApplyHandler
 local BarRuntimeUpdateHandler
 local OnBlizzardWidgetsLoaded
 local OnPlayerRegenEnabled
+Preydator.deferredPreyRefreshPending = false
+
+local function RequestDeferredPreyRefresh()
+    if Preydator.deferredPreyRefreshPending then
+        return
+    end
+
+    if not (type(C_Timer) == "table" and type(C_Timer.After) == "function") then
+        if type(UpdatePreyState) == "function" then
+            UpdatePreyState()
+        end
+        if type(Preydator.ShouldUseActivePolling) == "function" and type(Preydator.SetPollingActive) == "function" then
+            Preydator:SetPollingActive(Preydator:ShouldUseActivePolling())
+        end
+        return
+    end
+
+    Preydator.deferredPreyRefreshPending = true
+    C_Timer.After(0, function()
+        Preydator.deferredPreyRefreshPending = false
+
+        if type(UpdatePreyState) == "function" then
+            UpdatePreyState()
+        end
+        if type(Preydator.ShouldUseActivePolling) == "function" and type(Preydator.SetPollingActive) == "function" then
+            Preydator:SetPollingActive(Preydator:ShouldUseActivePolling())
+        end
+    end)
+end
+
 function Preydator:ApplyNewSoundDefaults()
     if type(settings) ~= "table" then
         return false
@@ -3418,22 +3448,17 @@ local function EnsurePreyHuntMixinSuppressionHook()
             -- Force a zone recompute on the normal runtime pass instead of
             -- certifying in-zone directly from widget visibility.
             state.zoneCacheDirty = true
-            if type(UpdateBarDisplay) == "function" then
-                UpdateBarDisplay()
-            end
+            RequestDeferredPreyRefresh()
         else
             preyWidgetInfoCache = nil
         end
 
-        -- Hide immediately after Blizzard Setup when the option is enabled.
-        if settings and settings.disableDefaultPreyIcon == true then
-            ApplyWidgetFrameSuppression(self, true)
-            if self.IsShown and self:IsShown()
-                and type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
-            then
-                state.pendingWidgetSuppressionAfterCombat = true
-            end
-        end
+        -- NOTE: Do NOT call ApplyWidgetFrameSuppression() here. Calling protected
+        -- functions inside a hooksecurefunc hook creates a tainted execution context
+        -- that propagates to downstream Blizzard code, causing ADDON_ACTION_BLOCKED
+        -- errors (e.g., SetPassThroughButtons during map operations).
+        -- Suppression is applied exclusively in ApplyDefaultPreyIconVisibility(),
+        -- which executes in a safe non-hooked context.
     end)
 
     if ok then
@@ -3829,7 +3854,7 @@ FindPreyWidgetProgressState = function(activeQuestID)
         return nil, nil, nil, nil
     end
 
-    local shownStateShown = (Enum and Enum.WidgetShownState and Enum.WidgetShownState.Shown) or WIDGET_SHOWN
+    local shownStateShown = (Enum and Enum.WidgetShownState and Enum.WidgetShownState.Shown) or 1
     -- Only reject if shownState is explicitly a non-shown value; nil is allowed because
     -- shownState can be a protected number that reads as nil in insecure context.
     if info.shownState ~= nil and info.shownState ~= shownStateShown then
@@ -3894,7 +3919,7 @@ local function ResetStateForNewQuest(questID, forceReset)
     end
 end
 
-local function UpdatePreyState()
+UpdatePreyState = function()
     local now = GetTime and GetTime() or 0
     local questID = GetCurrentActivePreyQuestCached(0)
     local hasActiveQuest = IsValidQuestID(questID)
@@ -5900,6 +5925,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2)
             armQuestListenBurst = ArmQuestListenBurst,
             getCurrentActivePreyQuestCached = GetCurrentActivePreyQuestCached,
             updatePreyState = UpdatePreyState,
+            requestDeferredPreyRefresh = RequestDeferredPreyRefresh,
             isRelevantWidgetUpdateEvent = IsRelevantWidgetUpdateEvent,
             isValidQuestID = IsValidQuestID,
             isRestrictedInstanceForPreyBar = IsRestrictedInstanceForPreyBar,

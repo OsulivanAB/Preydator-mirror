@@ -14,6 +14,8 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         return false
     end
 
+    local requestDeferredPreyRefresh = ctx.requestDeferredPreyRefresh
+
     -- Taint safety: never propagate noisy widget payload args.
     -- UPDATE_UI_WIDGET args can carry secret-number values; addons should not
     -- read/forward them unless absolutely required.
@@ -321,6 +323,11 @@ function EventRuntime:HandleEvent(event, arg1, arg2, ctx)
         and not ((state.killStageUntil or 0) > now)
         and not ((state.ambushAlertUntil or 0) > now)
         and not ((state.bloodyCommandAlertUntil or 0) > now) then
+        return true
+    end
+
+    if isNoisyEvent and type(requestDeferredPreyRefresh) == "function" then
+        requestDeferredPreyRefresh()
         return true
     end
 

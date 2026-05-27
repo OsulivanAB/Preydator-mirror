@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.11 - 2026-05-27
+
+### Fixed
+- Fixed `ADDON_ACTION_BLOCKED` errors (`SetPassThroughButtons`) that occurred during map operations (especially when closing the world map). The error was caused by calling protected frame suppression functions (`SetAlpha`, `Hide`) directly inside the `UIWidgetTemplatePreyHuntProgressMixin.Setup` hooksecurefunc, which created a tainted execution context that propagated to Blizzard's map canvas code. Prey icon suppression is now applied exclusively through the safe non-hooked context in `ApplyDefaultPreyIconVisibility()`, which is called during initialization and after every bar update cycle through the BarRuntime. This maintains full suppression functionality while eliminating the taint propagation.
+- Fixed remaining world-map tooltip/widget taint during active prey hunts by deferring prey refresh work triggered from prey-widget `Setup` and `UPDATE_UI_WIDGET` until after Blizzard's current widget script pass completes. This keeps widget snapshot capture, stage progression, and default-icon suppression intact without doing bar/runtime refresh work inside Blizzard's widget layout stack. Thanks to `adefee` for the player report and pull request that pointed directly at this error.
+- Removed the external BugSack dependency from diagnostics paths. `/pd inspect bs`, `/pd qinspect bs`, `/pd hinspect bs`, and `/pd hinspectcopy bs` now open a built-in copyable Preydator report window with Back/Next history instead of routing through the error handler.
+- Fixed `main function has more than 200 local variables` warnings by reducing `Preydator.lua` top-level local pressure back to the Lua chunk limit.
+- Fixed built-in report window layout overflow by removing the extra Close action and keeping the Copy action fully inside frame bounds.
+- Added built-in report window resizing with bounds and a bottom-right resize grip.
+- Hardened `/pd inspect bs` and `/pd qinspect bs` report-window dispatch so command handling remains stable even if the report window path faults.
+
 ## 2.2.10 - 2026-04-23
 
 ### Fixed
