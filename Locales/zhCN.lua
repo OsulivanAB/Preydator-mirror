@@ -276,6 +276,7 @@ L["Normal %d | Hard %d | Nightmare %s"] = "普通 %d | 困难 %d | 噩梦 %s"
 
 ---- Minimap / LDB tooltip
 L["Left Click: Toggle Currency Window"] = "左键点击: 切换货币窗口"
+L["Shift + Left Click: Open Report Window"] = "Shift+左键点击: 打开报告窗口"
 L["Right Click: Toggle Warband Window"] = "右键点击: 切换战团窗口"
 L["Shift + Right Click: Open Options"] = "Shift+右键点击: 打开选项"
 L["Preydator Currency Tracker"] = "Preydator货币追踪器"

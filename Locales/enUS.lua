@@ -302,6 +302,7 @@
 
 ---- Minimap / LDB tooltip
   L["Left Click: Toggle Currency Window"]  = ""
+  L["Shift + Left Click: Open Report Window"] = ""
   L["Right Click: Toggle Warband Window"]  = ""
   L["Shift + Right Click: Open Options"]   = ""
   L["Preydator Currency Tracker"]          = ""

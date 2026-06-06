@@ -147,3 +147,13 @@ Before ending a session:
 7. Update the changelog with all changes made to the new versioning.
 8. Run `build-release.ps1` to produce a release zip for the current version.
 9. Create a non-interactive git commit using `.github/commit-template.md` for the message structure, then push it to GitHub.
+
+---
+
+# 11. Local Variable Cap Rule (Required Every Change)
+
+- Run a local-cap check on every code change, not only at release time.
+- Run `luacheck` on modified files before concluding work.
+- Explicitly report warning `561` status (`main function has more than 200 local variables`) in every completion summary.
+- If local pressure increases in `Preydator.lua`, refactor or move logic before finalizing.
+- Never skip this check due to time; missing the check is considered an incomplete task.

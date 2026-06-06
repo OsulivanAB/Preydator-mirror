@@ -295,6 +295,7 @@ local L = _G.PreydatorL
 
 ---- Minimap / LDB tooltip
   L["Left Click: Toggle Currency Window"]  = "왼쪽 클릭: 화폐 창 켜기/끄기"
+  L["Shift + Left Click: Open Report Window"] = "Shift + 왼쪽 클릭: 보고서 창 열기"
   L["Right Click: Toggle Warband Window"]  = "오른쪽 클릭: 전투부대 창 켜기/끄기"
   L["Shift + Right Click: Open Options"]   = "Shift + 오른쪽 클릭: 설정 열기"
   L["Preydator Currency Tracker"]          = "Preydator 화폐 추적기"

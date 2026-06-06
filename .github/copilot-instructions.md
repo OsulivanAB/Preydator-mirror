@@ -156,3 +156,17 @@ Before ending a substantial coding session:
 3. Confirm which files changed.
 4. Confirm docs are aligned with behavior changes.
 5. Provide explicit next steps for the next session.
+
+---
+
+# 11. Local Variable Cap Enforcement
+
+Preydator runs on Lua with strict local-variable limits.
+
+You must:
+
+- Run a local-cap validation on every code change (not only at release time).
+- Run `luacheck` against modified files before concluding a change.
+- Treat warning `561` (`main function has more than 200 local variables`) as a required check item in every completion summary.
+- If local-variable pressure increases in `Preydator.lua`, refactor/reduce locals or move logic before finalizing.
+- Never rely on memory for this check. Always validate and report status explicitly.

@@ -396,6 +396,25 @@ local debugDB
 local Preydator = _G.Preydator or {}
 _G.Preydator = Preydator
 Preydator.modules = Preydator.modules or {}
+Preydator.PreyWidgetNumericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys or {
+    "progressPercentage",
+    "progressPercent",
+    "fillPercentage",
+    "percentage",
+    "percent",
+    "progress",
+    "progressValue",
+    "barValue",
+    "value",
+    "currentValue",
+    "barMin",
+    "barMax",
+    "maxValue",
+    "totalValue",
+    "total",
+    "max",
+    "range",
+}
 
 function Preydator:RegisterModule(name, module)
     if type(name) ~= "string" or name == "" or type(module) ~= "table" then
@@ -507,7 +526,8 @@ local function RequestDeferredPreyRefresh()
         return
     end
 
-    if not (type(C_Timer) == "table" and type(C_Timer.After) == "function") then
+    if type(CreateFrame) ~= "function" then
+        Preydator.deferredPreyRefreshPending = false
         if type(UpdatePreyState) == "function" then
             UpdatePreyState()
         end
@@ -517,10 +537,14 @@ local function RequestDeferredPreyRefresh()
         return
     end
 
-    Preydator.deferredPreyRefreshPending = true
-    C_Timer.After(0, function()
-        Preydator.deferredPreyRefreshPending = false
+    if not Preydator.deferredPreyRefreshFrame then
+        Preydator.deferredPreyRefreshFrame = CreateFrame("Frame")
+    end
 
+    Preydator.deferredPreyRefreshPending = true
+    Preydator.deferredPreyRefreshFrame:SetScript("OnUpdate", function(self)
+        self:SetScript("OnUpdate", nil)
+        Preydator.deferredPreyRefreshPending = false
         if type(UpdatePreyState) == "function" then
             UpdatePreyState()
         end
@@ -2631,6 +2655,20 @@ local function ExtractProgressPercentFromInfoScan(info)
 end
 
 local function ExtractProgressPercent(info, tooltipText)
+    local function ExtractPercentFromText(text)
+        if type(text) ~= "string" then
+            return nil
+        end
+
+        local pctText = text:match("(%d+)%s*%%")
+        local pctValue = CoerceSafeNumeric(tonumber(pctText))
+        if pctValue ~= nil then
+            return Clamp(pctValue, 0, 100)
+        end
+
+        return nil
+    end
+
     if type(info) == "table" then
         local directFields = {
             "progressPercentage",
@@ -2677,12 +2715,16 @@ local function ExtractProgressPercent(info, tooltipText)
         return scannedPct
     end
 
-    if type(tooltipText) == "string" then
-        local pctText = tooltipText:match("(%d+)%s*%%")
-        local pctValue = CoerceSafeNumeric(tonumber(pctText))
-        if pctValue then
-            return Clamp(pctValue, 0, 100)
+    if type(info) == "table" then
+        local barTextPct = ExtractPercentFromText(info.barText)
+        if barTextPct ~= nil then
+            return barTextPct
         end
+    end
+
+    local tooltipPct = ExtractPercentFromText(tooltipText)
+    if tooltipPct ~= nil then
+        return tooltipPct
     end
 
     return nil
@@ -3322,6 +3364,16 @@ ApplyDefaultPreyIconVisibility = function()
         return
     end
 
+    local inCombatLockdown = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+    if inCombatLockdown then
+        -- Taint safety: do not mutate Blizzard prey widget frames during combat.
+        -- Defer icon suppression/recovery until PLAYER_REGEN_ENABLED.
+        if settings.disableDefaultPreyIcon == true then
+            state.pendingWidgetSuppressionAfterCombat = true
+        end
+        return
+    end
+
     -- Gate: do not manipulate prey widget frames until the bar UI is initialized.
     -- On reload, running this before EnsureBar() completes can corrupt frame visibility
     -- and cascade to break bar rendering.
@@ -3410,48 +3462,66 @@ local function EnsurePreyHuntMixinSuppressionHook()
         PREY_WIDGET_FRAMES[self] = true
         state.lastWidgetSetupAt = (GetTime and GetTime()) or 0
 
+        local snapshot = {
+            questID = nil,
+            captureSource = "widgetInfo",
+            argType = type(widgetInfo),
+        }
+        local hasSnapshotData = false
         local shownState = nil
         local progressState = nil
         local tooltipText = nil
-        local captureSource = "none"
+        local widgetQuestID = nil
 
         if type(widgetInfo) == "table" then
             shownState = CoerceSanitizedNumber(widgetInfo.shownState)
             progressState = CoerceSanitizedNumber(widgetInfo.progressState)
-            local widgetQuestID = ExtractWidgetQuestID(widgetInfo)
-            if IsValidQuestID(widgetQuestID) then
-                state.lastWidgetBoundQuestID = widgetQuestID
-            elseif IsValidQuestID(state.activeQuestID) then
-                -- Some clients omit questID from widget payloads. Bind to the
-                -- currently tracked prey quest at Setup-time to keep updates
-                -- stable without carrying state across new quest handoffs.
-                state.lastWidgetBoundQuestID = state.activeQuestID
-            end
+            widgetQuestID = ExtractWidgetQuestID(widgetInfo)
             if type(widgetInfo.tooltip) == "string" then
                 tooltipText = widgetInfo.tooltip
             end
-            if shownState ~= nil or progressState ~= nil or tooltipText ~= nil then
-                captureSource = "widgetInfo"
+
+            if type(widgetInfo.barText) == "string" and widgetInfo.barText ~= "" then
+                snapshot.barText = widgetInfo.barText
+                hasSnapshotData = true
+            end
+
+            local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
+            if type(numericSnapshotKeys) == "table" then
+                for _, keyName in ipairs(numericSnapshotKeys) do
+                    local numericValue = CoerceSanitizedNumber(widgetInfo[keyName])
+                    if numericValue ~= nil then
+                        snapshot[keyName] = numericValue
+                        hasSnapshotData = true
+                    end
+                end
             end
         end
 
+        if IsValidQuestID(widgetQuestID) then
+            state.lastWidgetBoundQuestID = widgetQuestID
+        elseif IsValidQuestID(state.activeQuestID) then
+            state.lastWidgetBoundQuestID = state.activeQuestID
+        end
+
+        snapshot.shownState = shownState
+        snapshot.progressState = progressState
+        snapshot.tooltip = tooltipText
+        snapshot.questID = state.lastWidgetBoundQuestID
+
         if shownState ~= nil or progressState ~= nil or tooltipText ~= nil then
-            preyWidgetInfoCache = {
-                shownState = shownState,
-                progressState = progressState,
-                tooltip = tooltipText,
-                questID = state.lastWidgetBoundQuestID,
-                captureSource = captureSource,
-                argType = type(widgetInfo),
-            }
-            -- Setup indicates widget payload freshness, not authoritative zone.
-            -- Force a zone recompute on the normal runtime pass instead of
-            -- certifying in-zone directly from widget visibility.
-            state.zoneCacheDirty = true
-            RequestDeferredPreyRefresh()
+            hasSnapshotData = true
+        end
+
+        if hasSnapshotData then
+            preyWidgetInfoCache = snapshot
         else
             preyWidgetInfoCache = nil
         end
+
+        -- Setup indicates widget freshness, not authoritative zone/progress data.
+        state.zoneCacheDirty = true
+        RequestDeferredPreyRefresh()
 
         -- NOTE: Do NOT call ApplyWidgetFrameSuppression() here. Calling protected
         -- functions inside a hooksecurefunc hook creates a tainted execution context
@@ -3768,8 +3838,16 @@ ExtractWidgetQuestID = function(info)
 
     for _, fieldName in ipairs(possibleFields) do
         local value = info[fieldName]
-        if type(value) == "number" and value > 0 then
-            return value
+        local okString, asString = pcall(tostring, value)
+        if okString and type(asString) == "string" then
+            local numericToken = string.match(asString, "^%s*([%+%-]?%d+%.?%d*)%s*$")
+                or string.match(asString, "^%s*([%+%-]?%d*%.%d+)%s*$")
+            if numericToken then
+                local okNumber, numericValue = pcall(tonumber, numericToken)
+                if okNumber and type(numericValue) == "number" and numericValue > 0 then
+                    return numericValue
+                end
+            end
         end
     end
 
@@ -3780,7 +3858,7 @@ end
 -- Never calls GetAllWidgetsBySetID or reads widgetID/widgetType fields; those are
 -- secret numbers that taint subsequent Blizzard layout/widget operations even inside pcall.
 FindPreyWidgetProgressState = function(activeQuestID)
-    local function TryBuildCacheFromFrame(frameRef, sourceTag)
+    local function BuildSnapshotFromFrame(frameRef, sourceTag)
         if not frameRef then
             return nil
         end
@@ -3802,7 +3880,7 @@ FindPreyWidgetProgressState = function(activeQuestID)
             captureSource = captureSource .. ":" .. fieldSource
         end
 
-        return {
+        local snapshot = {
             shownState = shownState,
             progressState = progressState,
             tooltip = tooltipText,
@@ -3810,16 +3888,34 @@ FindPreyWidgetProgressState = function(activeQuestID)
             captureSource = captureSource,
             argType = "frame-fallback",
         }
+
+        local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
+        if type(numericSnapshotKeys) == "table" then
+            for _, keyName in ipairs(numericSnapshotKeys) do
+                local rawValue = ReadPreyValueFromObject(frameRef, keyName)
+                local numericValue = CoerceSanitizedNumber(rawValue)
+                if numericValue ~= nil then
+                    snapshot[keyName] = numericValue
+                end
+            end
+        end
+
+        local barText = ReadPreyValueFromObject(frameRef, "barText")
+        if type(barText) == "string" and barText ~= "" then
+            snapshot.barText = barText
+        end
+
+        return snapshot
     end
 
     local function BuildCacheFromTrackedFrames()
-        local refreshed = TryBuildCacheFromFrame(preyHuntIconFrame, "liveFrame")
+        local refreshed = BuildSnapshotFromFrame(preyHuntIconFrame, "liveFrame")
         if refreshed then
             return refreshed
         end
 
         for frameRef in pairs(PREY_WIDGET_FRAMES) do
-            refreshed = TryBuildCacheFromFrame(frameRef, "trackedFrame")
+            refreshed = BuildSnapshotFromFrame(frameRef, "trackedFrame")
             if refreshed then
                 return refreshed
             end
@@ -3829,9 +3925,6 @@ FindPreyWidgetProgressState = function(activeQuestID)
     end
 
     local info = preyWidgetInfoCache
-    -- Keep the cache synchronized with live/tracked prey frames each pass.
-    -- Some clients stop delivering full Setup payloads after the first update,
-    -- which can freeze progression if we only trust stale cached state.
     local refreshed = BuildCacheFromTrackedFrames()
     if refreshed then
         if info ~= nil then
@@ -3848,9 +3941,14 @@ FindPreyWidgetProgressState = function(activeQuestID)
 
         info = refreshed
         preyWidgetInfoCache = refreshed
-    elseif not info then
+    end
+
+    if not info then
         return nil, nil, nil, nil
-    elseif info.progressState == nil then
+    end
+
+    local pct = ExtractProgressPercent(info, info.tooltip)
+    if info.progressState == nil and pct == nil then
         return nil, nil, nil, nil
     end
 
@@ -3861,7 +3959,6 @@ FindPreyWidgetProgressState = function(activeQuestID)
         return nil, nil, nil, nil
     end
 
-    local pct = ExtractProgressPercent(info, info.tooltip)
     if IsValidQuestID(activeQuestID) then
         local widgetQuestID = ExtractWidgetQuestID(info)
         if widgetQuestID == activeQuestID or widgetQuestID == nil then
@@ -3970,7 +4067,7 @@ UpdatePreyState = function()
     if hasActiveQuest then
         newProgressState, tooltipText, newProgressPercent = FindPreyWidgetProgressState(questID)
     end
-    local hasWidgetData = newProgressState ~= nil
+    local hasWidgetData = newProgressState ~= nil or newProgressPercent ~= nil
 
     if hasWidgetData then
         state.lastWidgetSeenAt = now
@@ -4008,6 +4105,7 @@ UpdatePreyState = function()
     end
 
     local oldProgressState = state.progressState
+    local previousProgressPercent = state.progressPercent
     local percentSource = "none"
     newProgressState = CoerceSanitizedNumber(newProgressState)
     newProgressPercent = CoerceSanitizedNumber(newProgressPercent)
@@ -4076,10 +4174,18 @@ UpdatePreyState = function()
         state.progressPercent = Clamp(newProgressPercent, 0, 100)
         percentSource = "widget"
     elseif newProgressState == nil then
-        -- Keep objective percent out of display when stage is unknown.
-        -- Objective rows can report 50% while true prey stage is 3/4, which causes
-        -- misleading half-bar regressions after reload.
-        state.progressPercent = nil
+        local cacheAge = now - (state.lastWidgetSeenAt or 0)
+        if type(previousProgressPercent) == "number" and previousProgressPercent > 0 and cacheAge <= 2 then
+            -- Preserve a very recent non-zero percent briefly when widget state is nil.
+            -- This reduces transient 0% jumps while waiting for the next widget/objective pass.
+            state.progressPercent = Clamp(previousProgressPercent, 0, 100)
+            percentSource = "cache"
+        else
+            -- Keep objective percent out of display when stage is unknown.
+            -- Objective rows can report 50% while true prey stage is 3/4, which causes
+            -- misleading half-bar regressions after reload.
+            state.progressPercent = nil
+        end
     end
 
     if newProgressPercent == nil and percentSource == "none" and newProgressState ~= nil then
@@ -4103,8 +4209,12 @@ UpdatePreyState = function()
     local newStage = GetStageFromState(state.progressState)
     state.stage = newStage
 
+    local canPlayFinalStageSound = (state.inPreyZone == true)
+        or forceKillStage
+        or questCompleted
+
     local stageChanged = newStage ~= oldStage
-    if stageChanged then
+    if stageChanged and (newStage ~= MAX_STAGE or canPlayFinalStageSound) then
         TryPlayStageSound(newStage)
     elseif enteredPreyZoneThisPass
         and state.inPreyZone == true
@@ -4115,6 +4225,12 @@ UpdatePreyState = function()
     end
 
     if newProgressState ~= PREY_PROGRESS_FINAL or oldProgressState == PREY_PROGRESS_FINAL then
+        ApplyDefaultPreyIconVisibility()
+        UpdateBarDisplay()
+        return
+    end
+
+    if not canPlayFinalStageSound then
         ApplyDefaultPreyIconVisibility()
         UpdateBarDisplay()
         return
@@ -4310,6 +4426,7 @@ local LAUNCHER_LDB_NAME  = "Preydator"
 local launcherMinimapButton
 local launcherLdbObject
 local launcherLdbRegistered = false
+local HandleSlashCommand
 
 local function LauncherAtan2(y, x)
     if math.atan2 then
@@ -4354,13 +4471,21 @@ end
 
 local function HandleAddonLauncherClick(mouseButton)
     local ct = Preydator and Preydator.GetModule and Preydator:GetModule("CurrencyTracker")
+    local isShiftHeld = _G.IsShiftKeyDown and _G.IsShiftKeyDown()
+    if mouseButton == "LeftButton" and isShiftHeld then
+        local reportModule = Preydator and Preydator.GetModule and Preydator:GetModule("ReportWindow")
+        if reportModule and type(reportModule.OpenWindow) == "function" then
+            reportModule:OpenWindow()
+        end
+        return
+    end
     if mouseButton == "LeftButton" then
         if ct and type(ct.ToggleCurrencyWindow) == "function" then
             ct:ToggleCurrencyWindow()
         end
         return
     end
-    if mouseButton == "RightButton" and _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
+    if mouseButton == "RightButton" and isShiftHeld then
         OpenOptionsPanel()
         return
     end
@@ -4442,6 +4567,7 @@ local function EnsureLauncherLdb()
             end
             tooltip:AddLine("Preydator")
             tooltip:AddLine(L["Left Click: Toggle Currency Window"], 1, 1, 1)
+            tooltip:AddLine(L["Shift + Left Click: Open Report Window"], 1, 1, 1)
             tooltip:AddLine(L["Right Click: Toggle Warband Window"], 1, 1, 1)
             tooltip:AddLine(L["Shift + Right Click: Open Options"], 1, 1, 1)
         end,
@@ -4568,6 +4694,7 @@ function _G.Preydator_OnAddonCompartmentEnter()
     gt:ClearLines()
     gt:AddLine("Preydator")
     gt:AddLine(L["Left Click: Toggle Currency Window"], 1, 1, 1)
+    gt:AddLine(L["Shift + Left Click: Open Report Window"], 1, 1, 1)
     gt:AddLine(L["Right Click: Toggle Warband Window"], 1, 1, 1)
     gt:AddLine(L["Shift + Right Click: Open Options"], 1, 1, 1)
     gt:Show()
@@ -5803,7 +5930,7 @@ Preydator.API = {
     end,
 }
 
-local function HandleSlashCommand(message)
+function HandleSlashCommand(message)
     local slashModule = GetRuntimeModule("SlashCommands")
     if slashModule and type(slashModule.HandleSlashCommand) == "function" then
         slashModule:HandleSlashCommand(message, {

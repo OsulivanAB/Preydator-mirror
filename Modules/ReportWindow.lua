@@ -1,3 +1,5 @@
+---@diagnostic disable
+
 local Preydator = _G.Preydator
 if type(Preydator) ~= "table" then
     return
@@ -9,6 +11,8 @@ Preydator:RegisterModule("ReportWindow", ReportWindowModule)
 local CreateFrame = _G.CreateFrame
 local UIParent = _G.UIParent
 local rawget = _G.rawget
+local GetServerTime = _G.GetServerTime
+local UnitGUID = _G.UnitGUID
 
 local reportFrame = nil
 local reportWidgets = {
@@ -16,13 +20,15 @@ local reportWidgets = {
     pageLabel = nil,
     backButton = nil,
     nextButton = nil,
-    copyButton = nil,
     editBox = nil,
 }
 local reportState = {
     history = {},
     index = 0,
 }
+local REPORT_PERSIST_KEY = "reportWindowStateV1"
+local REPORT_RELOAD_GRACE_SECONDS = 180
+local REPORT_HISTORY_MAX = 60
 
 local function callMethod(target, methodName, ...)
     local method = target and target[methodName]
@@ -39,6 +45,125 @@ local function toReportText(value)
     return tostring(value or "")
 end
 
+local function trimHistoryIfNeeded()
+    local removed = 0
+    local overflow = #reportState.history - REPORT_HISTORY_MAX
+    while overflow > 0 do
+        table.remove(reportState.history, 1)
+        overflow = overflow - 1
+        removed = removed + 1
+    end
+
+    reportState.index = reportState.index - removed
+    if reportState.index < 1 then
+        reportState.index = #reportState.history
+    end
+end
+
+local function getPersistRoot()
+    _G.PreydatorDebugDB = _G.PreydatorDebugDB or {}
+    return _G.PreydatorDebugDB
+end
+
+local function persistHistory()
+    local root = getPersistRoot()
+
+    local historyCopy = {}
+    for index, entry in ipairs(reportState.history) do
+        historyCopy[index] = {
+            title = tostring(entry.title or "Preydator Report"),
+            text = tostring(entry.text or ""),
+        }
+    end
+
+    local now = nil
+    if type(GetServerTime) == "function" then
+        now = tonumber(GetServerTime())
+    end
+
+    local playerGUID = nil
+    if type(UnitGUID) == "function" then
+        playerGUID = UnitGUID("player")
+    end
+
+    root[REPORT_PERSIST_KEY] = {
+        savedAt = now,
+        playerGUID = playerGUID,
+        index = tonumber(reportState.index) or #historyCopy,
+        history = historyCopy,
+    }
+end
+
+local function restoreHistoryFromPersistence()
+    local root = getPersistRoot()
+
+    local persisted = root[REPORT_PERSIST_KEY]
+    if type(persisted) ~= "table" then
+        return
+    end
+
+    local now = nil
+    if type(GetServerTime) == "function" then
+        now = tonumber(GetServerTime())
+    end
+
+    local samePlayer = true
+    if type(UnitGUID) == "function" and type(persisted.playerGUID) == "string" then
+        samePlayer = UnitGUID("player") == persisted.playerGUID
+    end
+
+    local isLikelyReload = false
+    if type(now) == "number" and type(persisted.savedAt) == "number" then
+        isLikelyReload = (now - persisted.savedAt) <= REPORT_RELOAD_GRACE_SECONDS
+    end
+
+    if samePlayer and isLikelyReload and type(persisted.history) == "table" and #persisted.history > 0 then
+        reportState.history = {}
+        for _, entry in ipairs(persisted.history) do
+            reportState.history[#reportState.history + 1] = {
+                title = tostring(entry.title or "Preydator Report"),
+                text = tostring(entry.text or ""),
+            }
+        end
+
+        local restoredIndex = tonumber(persisted.index) or #reportState.history
+        if restoredIndex < 1 then
+            restoredIndex = 1
+        end
+        if restoredIndex > #reportState.history then
+            restoredIndex = #reportState.history
+        end
+        reportState.index = restoredIndex
+        trimHistoryIfNeeded()
+        persistHistory()
+        return
+    end
+
+    root[REPORT_PERSIST_KEY] = nil
+    reportState.history = {}
+    reportState.index = 0
+end
+
+local function focusAndHighlightReport()
+    local editBox = reportWidgets.editBox
+    if not editBox then
+        return
+    end
+
+    local text = ""
+    if type(editBox.GetText) == "function" then
+        local okText, value = pcall(editBox.GetText, editBox)
+        if okText and type(value) == "string" then
+            text = value
+        end
+    end
+    callMethod(editBox, "EnableKeyboard", true)
+    callMethod(editBox, "EnableMouse", true)
+    callMethod(editBox, "SetFocus")
+    -- Official API behavior: HighlightText(0, -1) selects full text.
+    callMethod(editBox, "HighlightText", 0, -1)
+end
+
 local function updateButtons()
     local frame = reportFrame
     if not frame then
@@ -47,18 +172,12 @@ local function updateButtons()
 
     local backButton = reportWidgets.backButton
     local nextButton = reportWidgets.nextButton
-    local copyButton = reportWidgets.copyButton
-
     if backButton then
         callMethod(backButton, "SetEnabled", reportState.index > 1)
     end
 
     if nextButton then
         callMethod(nextButton, "SetEnabled", reportState.index < #reportState.history)
-    end
-
-    if copyButton then
-        callMethod(copyButton, "SetEnabled", #reportState.history > 0)
     end
 end
 
@@ -84,8 +203,7 @@ local function renderCurrentReport()
     end
     if reportWidgets.editBox then
         callMethod(reportWidgets.editBox, "SetText", entry.text or "")
-        callMethod(reportWidgets.editBox, "HighlightText")
-        callMethod(reportWidgets.editBox, "SetFocus")
+        focusAndHighlightReport()
     end
 
     updateButtons()
@@ -135,18 +253,13 @@ local function buildFrame()
 
     local backButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     backButton:SetSize(46, 20)
-    backButton:SetPoint("topright", frame, "topright", -140, -28)
+    backButton:SetPoint("topright", frame, "topright", -88, -28)
     callMethod(backButton, "SetText", "Back")
 
     local nextButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     nextButton:SetSize(46, 20)
-    nextButton:SetPoint("left", backButton, "right", 6, 0)
+    nextButton:SetPoint("topright", frame, "topright", -36, -28)
     callMethod(nextButton, "SetText", "Next")
-
-    local copyButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    copyButton:SetSize(46, 20)
-    copyButton:SetPoint("left", nextButton, "right", 6, 0)
-    callMethod(copyButton, "SetText", "Copy")
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("topleft", frame, "topleft", 8, -58)
@@ -155,6 +268,7 @@ local function buildFrame()
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     callMethod(editBox, "SetMultiLine", true)
     callMethod(editBox, "SetAutoFocus", false)
+    callMethod(editBox, "EnableKeyboard", true)
     callMethod(editBox, "SetFontObject", rawget(_G, "ChatFontNormal"))
     callMethod(editBox, "SetTextInsets", 6, 6, 6, 6)
     callMethod(editBox, "SetMaxLetters", 0)
@@ -185,7 +299,6 @@ local function buildFrame()
     reportWidgets.pageLabel = pageLabel
     reportWidgets.backButton = backButton
     reportWidgets.nextButton = nextButton
-    reportWidgets.copyButton = copyButton
     reportWidgets.editBox = editBox
 
     backButton:SetScript("OnClick", function()
@@ -199,13 +312,6 @@ local function buildFrame()
         if reportState.index < #reportState.history then
             reportState.index = reportState.index + 1
             renderCurrentReport()
-        end
-    end)
-
-    copyButton:SetScript("OnClick", function()
-        if reportWidgets.editBox then
-            callMethod(reportWidgets.editBox, "SetFocus")
-            callMethod(reportWidgets.editBox, "HighlightText")
         end
     end)
 
@@ -226,7 +332,9 @@ function ReportWindowModule:ShowReport(title, text)
         title = tostring(title or "Preydator Report"),
         text = toReportText(text),
     }
+    trimHistoryIfNeeded()
     reportState.index = #reportState.history
+    persistHistory()
     renderCurrentReport()
     return true
 end
@@ -239,6 +347,12 @@ function ReportWindowModule:ShowReportLines(title, lines)
     return self:ShowReport(title, lines)
 end
 
+function ReportWindowModule:OpenWindow()
+    ensureFrame()
+    renderCurrentReport()
+    return true
+end
+
 function ReportWindowModule:GetCurrentReport()
     local entry = reportState.history[reportState.index]
     if not entry then
@@ -246,4 +360,15 @@ function ReportWindowModule:GetCurrentReport()
     end
 
     return entry.title, entry.text
+end
+
+function ReportWindowModule:OnEvent(event)
+    if event == "PLAYER_LOGIN" then
+        restoreHistoryFromPersistence()
+        return
+    end
+
+    if event == "PLAYER_LOGOUT" then
+        persistHistory()
+    end
 end

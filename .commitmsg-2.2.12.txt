@@ -1,0 +1,42 @@
+release 2.2.12 polish report workflow
+
+## Summary
+Prepare 2.2.12 release metadata, improve user-facing changelog clarity, and finalize report-window launcher workflow.
+
+## Scope
+Release/Packaging; Documentation; Modules/ReportWindow; Core launcher interaction
+
+## Changed Files
+Preydator.toc
+build-release.ps1
+README.md
+CHANGELOG.md
+Preydator.lua
+Modules/ReportWindow.lua
+Locales/enUS.lua
+Locales/zhCN.lua
+Locales/koKR.lua
+Modules/SlashCommands.lua
+Core/EventRuntime.lua
+PREYDATOR_AGENT.md
+.github/copilot-instructions.md
+.vscode/tasks.json
+issues/Predaytor PR19.md
+
+## Behavior Changes
+- Report window Copy button removed; keyboard copy flow remains.
+- Report Back/Next controls repositioned for clearer alignment.
+- Shift+LeftClick on launcher opens report window directly without running slash commands.
+- Added /pd debug bs report-window route and reload-safe report history.
+- Clarified 2.2.12 release notes in user-focused language.
+
+## Validation
+- Ran build-release.ps1 and produced Preydator-2.2.12.zip (561127 bytes).
+- Ran luacheck on touched Lua files (0 errors, warnings present).
+- Verified version sync in TOC, README, and build script defaults.
+
+## Risks / Unknowns
+- Existing luacheck warnings remain in legacy code paths; no new Lua errors introduced in this pass.
+
+## Follow-up
+- Smoke test in-game launcher/report interactions and publish 2.2.12 release artifacts.

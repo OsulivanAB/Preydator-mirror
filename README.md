@@ -2,9 +2,10 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v2.2.11`
+Current release: `v2.2.12`
 
 Runtime safety note: In restricted instance content (`party`, `raid`, `scenario`, `delve`, `arena`, `pvp`), Preydator is intended to fail closed and keep runtime behavior inactive.
+Widget safety note: Preydator treats Blizzard prey-widget Setup as a freshness signal only and avoids reading live widget payload/frame fields in runtime paths to prevent world-map tooltip taint cascades. When Blizzard omits `progressState` but still exposes widget percent or bar text, Preydator now preserves that percent-only evidence from the sanitized Setup snapshot instead of dropping the hunt update.
 
 ## What Preydator tracks
 
@@ -148,6 +149,7 @@ Bundled default files:
 	- `/pd debug on`
 	- `/pd debug off`
 	- `/pd debug show`
+	- `/pd debug bs`
 	- `/pd debug clear`
 
 ## Roadmap progress snapshot
@@ -173,6 +175,7 @@ Bundled default files:
 	- `/pd debug on` - enable debug logging.
 	- `/pd debug off` - disable debug logging.
 	- `/pd debug show` - print the latest debug log lines.
+	- `/pd debug bs` - open the debug log in the built-in report window.
 	- `/pd debug clear` - clear stored debug log lines.
 
 - Inspect diagnostics:
@@ -190,6 +193,12 @@ Bundled default files:
 	- `/pd hinspect bs` - open the current hunt snapshot in the built-in report window.
 	- `/pd hinspectcopy` - print the last captured hunt payload.
 	- `/pd hinspectcopy bs` - open the last captured hunt payload in the built-in report window.
+
+- Launcher shortcuts (minimap button / addon compartment):
+	- `Left Click` - toggle Currency window.
+	- `Shift + Left Click` - open the built-in report window (no command execution).
+	- `Right Click` - toggle Warband window.
+	- `Shift + Right Click` - open Options.
 
 Removed legacy aliases: `/preydator`, `/pd open`, `/pd mem`, `/pd memory`, `inspectquest*`, and `huntdebug*`.
 

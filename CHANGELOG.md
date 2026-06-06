@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.12 - 2026-06-06
+
+### Fixed
+- Fixed hunt progress getting stuck at early stages in some sessions; stage updates now recover more reliably even when Blizzard widget data arrives partially.
+- Reduced world-map/widget taint issues during prey updates by tightening widget handling and moving risky update work out of sensitive UI paths.
+- Improved prey-widget value safety checks to avoid protected-value edge cases causing bad comparisons or stale progress behavior.
+- Improved prey icon handling during combat by deferring protected visibility changes until combat ends.
+- Improved update timing for prey refreshes to reduce tooltip jitter and temporary 0% flicker during rapid widget updates.
+- Removed extra noisy widget fanout paths to reduce update churn and taint interaction surface.
+- Removed the built-in `Copy` button from the report window. Reports are now keyboard-copy only with automatic focus/selection.
+- Added launcher shortcut `Shift + Left Click` (minimap/addon compartment) to open the built-in report window directly.
+- Added report-window history persistence across likely `/reload` sessions, while full login clears stale history.
+- Added `/pd debug bs` to open the debug log in the same built-in report window used by inspect tools.
+- Fixed Stage 4 sound false triggers during wrong-zone teleports by requiring valid completion context before firing final-stage audio.
+
 ## 2.2.11 - 2026-05-27
 
 ### Fixed
