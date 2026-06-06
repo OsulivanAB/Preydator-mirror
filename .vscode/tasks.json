@@ -25,6 +25,32 @@
 				"git -C . add .vscode/tasks.json; git -C . commit -m cleanup_tasks_json_after_session_automation"
 			],
 			"isBackground": false
+		},
+		{
+			"label": "Preydator: Push Tasks Cleanup",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"git -C . push origin main"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Preydator: Final Git Status Check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"git -C . status --short"
+			],
+			"isBackground": false
 		}
 	]
 }
