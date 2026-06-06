@@ -14,7 +14,7 @@
 			"isBackground": false
 		},
 		{
-			"label": "Preydator: Session Git Status",
+			"label": "Preydator: Commit Tasks Cleanup",
 			"type": "shell",
 			"command": "powershell",
 			"args": [
@@ -22,72 +22,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-Command",
-				"git -C . status --short"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "Preydator: Session Luacheck",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"$cmd = Get-Command luacheck -ErrorAction SilentlyContinue; if (-not $cmd) { Write-Output 'luacheck-not-found'; exit 0 }; luacheck Preydator.lua Modules/ReportWindow.lua Locales/enUS.lua Locales/zhCN.lua Locales/koKR.lua"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "Preydator: Current Branch",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"git -C . branch --show-current"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "Preydator: Current Remote",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"git -C . remote -v"
-			],
-			"isBackground": false
-		},
-		{
-			"label": "Preydator: Commit Session Changes",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"git -C . add -A; git -C . commit -m \"release 2.2.12 polish report workflow\" -m \"## Summary`nPrepare 2.2.12 release metadata, improve user-facing changelog clarity, and finalize report-window launcher workflow.`n`n## Scope`nRelease/Packaging; Documentation; Modules/ReportWindow; Core launcher interaction`n`n## Changed Files`nPreydator.toc`nbuild-release.ps1`nREADME.md`nCHANGELOG.md`nPreydator.lua`nModules/ReportWindow.lua`nLocales/enUS.lua`nLocales/zhCN.lua`nLocales/koKR.lua`nModules/SlashCommands.lua`nCore/EventRuntime.lua`nPREYDATOR_AGENT.md`n.github/copilot-instructions.md`n.vscode/tasks.json`nissues/Predaytor PR19.md`n`n## Behavior Changes`n- Report window Copy button removed; keyboard copy flow remains.`n- Report Back/Next controls repositioned for clearer alignment.`n- Shift+LeftClick on launcher opens report window directly without running slash commands.`n- Added /pd debug bs report-window route and reload-safe report history.`n- Clarified 2.2.12 release notes in user-focused language.`n`n## Validation`n- Ran build-release.ps1 and produced Preydator-2.2.12.zip (561127 bytes).`n- Ran luacheck on touched Lua files (0 errors, warnings present).`n- Verified version sync in TOC, README, and build script defaults.`n`n## Risks / Unknowns`n- Existing luacheck warnings remain in legacy code paths; no new Lua errors introduced in this pass.`n`n## Follow-up`n- Smoke test in-game launcher/report interactions and publish 2.2.12 release artifacts.\""
-			],
-			"isBackground": false
-		},
-		{
-			"label": "Preydator: Commit From File",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"git -C . add -A; git -C . commit -F .commitmsg-2.2.12.txt"
+				"git -C . add .vscode/tasks.json; git -C . commit -m cleanup_tasks_json_after_session_automation"
 			],
 			"isBackground": false
 		}
