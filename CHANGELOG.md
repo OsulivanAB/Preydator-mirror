@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.13 - 2026-06-07
+
+### Fixed
+- Fixed intermittent `script ran too long` errors in `Modules/CurrencyTracker.lua` by preventing weekly-history key canonicalization/merge from rerunning on every refresh sweep; migration now runs once and cached state is reused on hot event paths.
+
 ## 2.2.12 - 2026-06-06
 
 ### Fixed
