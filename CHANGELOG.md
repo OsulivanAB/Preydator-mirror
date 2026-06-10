@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.14 - 2026-06-10
+
+### Changed
+- Updated addon release version metadata to `2.2.14` across TOC, README, and release packaging defaults.
+- Confirmed release metadata for WoW `12.0.7` compatibility.
+
 ## 2.2.13 - 2026-06-07
 
 ### Fixed

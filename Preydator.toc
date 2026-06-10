@@ -1,11 +1,11 @@
-## Interface: 120001, 120005
+## Interface: 120005, 120007
 ## Title: Preydator
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
 ## Category-enUS: Quests
 ## Category-koKR: 퀘스트
 ## Category-zhCN: 任务
-## Version: 2.2.13
+## Version: 2.2.14
 ## AddonCompartmentFunc: Preydator_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: Preydator_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: Preydator_OnAddonCompartmentLeave
