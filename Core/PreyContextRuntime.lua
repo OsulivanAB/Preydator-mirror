@@ -303,6 +303,7 @@ function PreyContextRuntime:RefreshInPreyZoneStatus(questID, force, state, ctx)
 
     local shouldRefresh = force == true
         or state.inPreyZone == nil
+        or state.inPreyZone == false
         or state.zoneCacheDirty == true
     if not shouldRefresh then
         return state.inPreyZone

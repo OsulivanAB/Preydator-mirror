@@ -1548,7 +1548,10 @@ local function RefreshInPreyZoneStatus(questID, force)
 
     local now = GetTime and GetTime() or 0
 
-    local shouldRefresh = force == true or state.inPreyZone == nil or state.zoneCacheDirty == true
+    local shouldRefresh = force == true
+        or state.inPreyZone == nil
+        or state.inPreyZone == false
+        or state.zoneCacheDirty == true
     if not shouldRefresh then
         return state.inPreyZone
     end

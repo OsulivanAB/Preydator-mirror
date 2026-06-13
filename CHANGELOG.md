@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.15 - 2026-06-13
+
+### Fixed
+- Fixed prey-zone visibility recovery for active hunts when Only show in prey zone is enabled: zone-status refresh now re-evaluates while cached out-of-zone state is false, so the bar appears promptly after entering the correct prey zone without waiting for an extra cache-dirty event.
+
 ## 2.2.14 - 2026-06-10
 
 ### Changed
