@@ -8,7 +8,6 @@ local PlaySoundFile = _G.PlaySoundFile
 local C_Timer = _G.C_Timer
 local ColorPickerFrame = _G.ColorPickerFrame
 local OpacitySliderFrame = _G.OpacitySliderFrame
-local Enum = _G.Enum
 local C_QuestLog = _G["C_QuestLog"]
 local C_TaskQuest = _G["C_TaskQuest"]
 local C_Map = _G["C_Map"]
@@ -731,7 +730,6 @@ local state = {
 }
 
 local UPDATE_INTERVAL_SECONDS = 0.5
-local WIDGET_SETUP_FRESH_SECONDS = 2.0
 local ExtractWidgetQuestID
 local FindPreyWidgetProgressState
 
@@ -3252,32 +3250,6 @@ end
 
 Preydator.GetWidgetSuppressionDebug = GetWidgetSuppressionDebugSnapshot
 
-local function ReadPreyValueFromObject(obj, keyName)
-    if type(obj) ~= "table" then
-        return nil
-    end
-
-    local okDirect, directValue = pcall(function()
-        return obj[keyName]
-    end)
-    if okDirect and directValue ~= nil then
-        return directValue
-    end
-
-    local getterName = "Get" .. string.upper(string.sub(keyName, 1, 1)) .. string.sub(keyName, 2)
-    local okGetter, getter = pcall(function()
-        return obj[getterName]
-    end)
-    if okGetter and type(getter) == "function" then
-        local okCall, value = pcall(getter, obj)
-        if okCall and value ~= nil then
-            return value
-        end
-    end
-
-    return nil
-end
-
 local function CoerceSanitizedNumber(value)
     -- Accept number-like protected values too (secret-number wrappers).
     -- Always sanitize via string-token roundtrip before tonumber.
@@ -3298,38 +3270,6 @@ local function CoerceSanitizedNumber(value)
     end
 
     return nil
-end
-
-local function ResolvePreyFieldsFromFrame(self)
-    if type(self) ~= "table" then
-        return nil, nil, nil, nil
-    end
-
-    local sources = {
-        { name = "frame", value = self },
-        { name = "frame.widgetInfo", value = ReadPreyValueFromObject(self, "widgetInfo") },
-        { name = "frame.widgetData", value = ReadPreyValueFromObject(self, "widgetData") },
-        { name = "frame.dataSource", value = ReadPreyValueFromObject(self, "dataSource") },
-        { name = "frame.info", value = ReadPreyValueFromObject(self, "info") },
-    }
-
-    for _, source in ipairs(sources) do
-        local obj = source.value
-        if type(obj) == "table" then
-            local shownState = CoerceSanitizedNumber(ReadPreyValueFromObject(obj, "shownState"))
-            local progressState = CoerceSanitizedNumber(ReadPreyValueFromObject(obj, "progressState"))
-            local tooltip = ReadPreyValueFromObject(obj, "tooltip")
-            if type(tooltip) ~= "string" then
-                tooltip = nil
-            end
-
-            if shownState ~= nil or progressState ~= nil or tooltip ~= nil then
-                return shownState, progressState, tooltip, source.name
-            end
-        end
-    end
-
-    return nil, nil, nil, nil
 end
 
 local function ShouldSuppressEncounterNow()
@@ -3465,37 +3405,34 @@ local function EnsurePreyHuntMixinSuppressionHook()
         PREY_WIDGET_FRAMES[self] = true
         state.lastWidgetSetupAt = (GetTime and GetTime()) or 0
 
-        local snapshot = {
-            questID = nil,
-            captureSource = "widgetInfo",
-            argType = type(widgetInfo),
-        }
-        local hasSnapshotData = false
-        local shownState = nil
-        local progressState = nil
-        local tooltipText = nil
+        -- Read stage-tracking fields from widgetInfo safely.
+        -- Do NOT read widgetID / widgetType (explicitly secret numbers per widget-taint notes).
+        -- Do NOT read shownState (protected frame-visibility enum, skip to avoid secret-number taint).
+        -- All numeric reads go through CoerceSanitizedNumber (pcall→tostring→tonumber roundtrip).
+        local snapshot = nil
         local widgetQuestID = nil
-
         if type(widgetInfo) == "table" then
-            shownState = CoerceSanitizedNumber(widgetInfo.shownState)
-            progressState = CoerceSanitizedNumber(widgetInfo.progressState)
+            local progressState = CoerceSanitizedNumber(widgetInfo.progressState)
+            local tooltipText = type(widgetInfo.tooltip) == "string" and widgetInfo.tooltip or nil
+            local barText = (type(widgetInfo.barText) == "string" and widgetInfo.barText ~= "") and widgetInfo.barText or nil
             widgetQuestID = ExtractWidgetQuestID(widgetInfo)
-            if type(widgetInfo.tooltip) == "string" then
-                tooltipText = widgetInfo.tooltip
-            end
 
-            if type(widgetInfo.barText) == "string" and widgetInfo.barText ~= "" then
-                snapshot.barText = widgetInfo.barText
-                hasSnapshotData = true
-            end
+            local hasData = progressState ~= nil or tooltipText ~= nil or barText ~= nil
+            if hasData then
+                snapshot = {
+                    progressState = progressState,
+                    tooltip = tooltipText,
+                    barText = barText,
+                    captureSource = "setup",
+                }
 
-            local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
-            if type(numericSnapshotKeys) == "table" then
-                for _, keyName in ipairs(numericSnapshotKeys) do
-                    local numericValue = CoerceSanitizedNumber(widgetInfo[keyName])
-                    if numericValue ~= nil then
-                        snapshot[keyName] = numericValue
-                        hasSnapshotData = true
+                local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
+                if type(numericSnapshotKeys) == "table" then
+                    for _, keyName in ipairs(numericSnapshotKeys) do
+                        local numericValue = CoerceSanitizedNumber(widgetInfo[keyName])
+                        if numericValue ~= nil then
+                            snapshot[keyName] = numericValue
+                        end
                     end
                 end
             end
@@ -3507,22 +3444,12 @@ local function EnsurePreyHuntMixinSuppressionHook()
             state.lastWidgetBoundQuestID = state.activeQuestID
         end
 
-        snapshot.shownState = shownState
-        snapshot.progressState = progressState
-        snapshot.tooltip = tooltipText
-        snapshot.questID = state.lastWidgetBoundQuestID
-
-        if shownState ~= nil or progressState ~= nil or tooltipText ~= nil then
-            hasSnapshotData = true
-        end
-
-        if hasSnapshotData then
+        if snapshot then
+            snapshot.questID = state.lastWidgetBoundQuestID
             preyWidgetInfoCache = snapshot
-        else
-            preyWidgetInfoCache = nil
         end
 
-        -- Setup indicates widget freshness, not authoritative zone/progress data.
+        -- Setup indicates widget freshness; defer all bar/zone work to next frame.
         state.zoneCacheDirty = true
         RequestDeferredPreyRefresh()
 
@@ -3861,66 +3788,82 @@ end
 -- Never calls GetAllWidgetsBySetID or reads widgetID/widgetType fields; those are
 -- secret numbers that taint subsequent Blizzard layout/widget operations even inside pcall.
 FindPreyWidgetProgressState = function(activeQuestID)
-    local function BuildSnapshotFromFrame(frameRef, sourceTag)
-        if not frameRef then
+    local function SafeWidgetFieldRead(obj, keyName)
+        if type(obj) ~= "table" then
             return nil
         end
 
-        local frameShown = frameRef.IsShown and frameRef:IsShown() or false
-        local now = (GetTime and GetTime()) or 0
-        local setupFresh = (now - (state.lastWidgetSetupAt or 0)) <= WIDGET_SETUP_FRESH_SECONDS
-        if not frameShown and not setupFresh then
+        local ok, value = pcall(function()
+            return obj[keyName]
+        end)
+        if ok then
+            return value
+        end
+
+        return nil
+    end
+
+    local function BuildSnapshotFromObject(obj, source)
+        if type(obj) ~= "table" then
             return nil
         end
 
-        local shownState, progressState, tooltipText, fieldSource = ResolvePreyFieldsFromFrame(frameRef)
-        if shownState == nil and progressState == nil and tooltipText == nil then
-            return nil
+        local progressState = CoerceSanitizedNumber(SafeWidgetFieldRead(obj, "progressState"))
+        local tooltip = SafeWidgetFieldRead(obj, "tooltip")
+        if type(tooltip) ~= "string" then
+            tooltip = nil
         end
 
-        local captureSource = sourceTag
-        if fieldSource and fieldSource ~= "" then
-            captureSource = captureSource .. ":" .. fieldSource
+        local barText = SafeWidgetFieldRead(obj, "barText")
+        if type(barText) ~= "string" or barText == "" then
+            barText = nil
         end
 
-        local snapshot = {
-            shownState = shownState,
-            progressState = progressState,
-            tooltip = tooltipText,
-            questID = state.lastWidgetBoundQuestID,
-            captureSource = captureSource,
-            argType = "frame-fallback",
-        }
+        local hasData = progressState ~= nil or tooltip ~= nil or barText ~= nil
+        local snapshot = nil
+        if hasData then
+            snapshot = {
+                progressState = progressState,
+                tooltip = tooltip,
+                barText = barText,
+                captureSource = source,
+            }
 
-        local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
-        if type(numericSnapshotKeys) == "table" then
-            for _, keyName in ipairs(numericSnapshotKeys) do
-                local rawValue = ReadPreyValueFromObject(frameRef, keyName)
-                local numericValue = CoerceSanitizedNumber(rawValue)
-                if numericValue ~= nil then
-                    snapshot[keyName] = numericValue
+            local numericSnapshotKeys = Preydator.PreyWidgetNumericSnapshotKeys
+            if type(numericSnapshotKeys) == "table" then
+                for _, keyName in ipairs(numericSnapshotKeys) do
+                    local numericValue = CoerceSanitizedNumber(SafeWidgetFieldRead(obj, keyName))
+                    if numericValue ~= nil then
+                        snapshot[keyName] = numericValue
+                    end
                 end
             end
         end
 
-        local barText = ReadPreyValueFromObject(frameRef, "barText")
-        if type(barText) == "string" and barText ~= "" then
-            snapshot.barText = barText
+        if snapshot then
+            snapshot.questID = ExtractWidgetQuestID(obj)
         end
 
         return snapshot
     end
 
-    local function BuildCacheFromTrackedFrames()
-        local refreshed = BuildSnapshotFromFrame(preyHuntIconFrame, "liveFrame")
-        if refreshed then
-            return refreshed
+    local function BuildSnapshotFromTrackedFrame(frameRef)
+        if not frameRef then
+            return nil
         end
 
-        for frameRef in pairs(PREY_WIDGET_FRAMES) do
-            refreshed = BuildSnapshotFromFrame(frameRef, "trackedFrame")
-            if refreshed then
-                return refreshed
+        local candidateObjects = {
+            { value = frameRef, source = "frame" },
+            { value = SafeWidgetFieldRead(frameRef, "widgetInfo"), source = "frame.widgetInfo" },
+            { value = SafeWidgetFieldRead(frameRef, "widgetData"), source = "frame.widgetData" },
+            { value = SafeWidgetFieldRead(frameRef, "dataSource"), source = "frame.dataSource" },
+            { value = SafeWidgetFieldRead(frameRef, "info"), source = "frame.info" },
+        }
+
+        for _, candidate in ipairs(candidateObjects) do
+            local snapshot = BuildSnapshotFromObject(candidate.value, candidate.source)
+            if snapshot then
+                return snapshot
             end
         end
 
@@ -3928,17 +3871,36 @@ FindPreyWidgetProgressState = function(activeQuestID)
     end
 
     local info = preyWidgetInfoCache
-    local refreshed = BuildCacheFromTrackedFrames()
+
+    local refreshed = BuildSnapshotFromTrackedFrame(preyHuntIconFrame)
+    if not refreshed then
+        for frameRef in pairs(PREY_WIDGET_FRAMES) do
+            refreshed = BuildSnapshotFromTrackedFrame(frameRef)
+            if refreshed then
+                break
+            end
+        end
+    end
+
     if refreshed then
+        if refreshed.questID == nil then
+            refreshed.questID = CoerceSanitizedNumber(state.lastWidgetBoundQuestID)
+                or CoerceSanitizedNumber(info and info.questID)
+        end
+
         if info ~= nil then
-            if refreshed.questID == nil and info.questID ~= nil then
-                refreshed.questID = info.questID
+            local previousProgressState = CoerceSanitizedNumber(info.progressState)
+            local refreshedProgressState = CoerceSanitizedNumber(refreshed.progressState)
+            if previousProgressState ~= nil and (refreshedProgressState == nil or refreshedProgressState < previousProgressState) then
+                refreshed.progressState = info.progressState
             end
 
-            local existingProgressState = CoerceSanitizedNumber(info.progressState)
-            local refreshedProgressState = CoerceSanitizedNumber(refreshed.progressState)
-            if existingProgressState ~= nil and (refreshedProgressState == nil or refreshedProgressState < existingProgressState) then
-                refreshed.progressState = info.progressState
+            if refreshed.tooltip == nil then
+                refreshed.tooltip = info.tooltip
+            end
+
+            if refreshed.barText == nil then
+                refreshed.barText = info.barText
             end
         end
 
@@ -3952,13 +3914,6 @@ FindPreyWidgetProgressState = function(activeQuestID)
 
     local pct = ExtractProgressPercent(info, info.tooltip)
     if info.progressState == nil and pct == nil then
-        return nil, nil, nil, nil
-    end
-
-    local shownStateShown = (Enum and Enum.WidgetShownState and Enum.WidgetShownState.Shown) or 1
-    -- Only reject if shownState is explicitly a non-shown value; nil is allowed because
-    -- shownState can be a protected number that reads as nil in insecure context.
-    if info.shownState ~= nil and info.shownState ~= shownStateShown then
         return nil, nil, nil, nil
     end
 
@@ -4023,9 +3978,15 @@ UpdatePreyState = function()
     local now = GetTime and GetTime() or 0
     local questID = GetCurrentActivePreyQuestCached(0)
     local hasActiveQuest = IsValidQuestID(questID)
+    local trackedQuestID = IsValidQuestID(state.activeQuestID) and state.activeQuestID or nil
     local forceKillStage = (state.killStageUntil or 0) > now
     local forceAmbushAlert = (state.ambushAlertUntil or 0) > now
     local enteredPreyZoneThisPass = false
+
+    if not hasActiveQuest and trackedQuestID and IsQuestStillActive(trackedQuestID) then
+        questID = trackedQuestID
+        hasActiveQuest = true
+    end
 
     if not hasActiveQuest and not forceKillStage then
         local endingQuestID = state.activeQuestID or questID

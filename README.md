@@ -2,10 +2,11 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v2.2.15`
+Current release: `v2.2.16`
 
 Runtime safety note: In restricted instance content (`party`, `raid`, `scenario`, `delve`, `arena`, `pvp`), Preydator is intended to fail closed and keep runtime behavior inactive.
-Widget safety note: Preydator treats Blizzard prey-widget Setup as a freshness signal only and avoids reading live widget payload/frame fields in runtime paths to prevent world-map tooltip taint cascades. When Blizzard omits `progressState` but still exposes widget percent or bar text, Preydator now preserves that percent-only evidence from the sanitized Setup snapshot instead of dropping the hunt update.
+Widget safety note: Preydator captures prey stage data from `Setup` snapshots and a constrained tracked-frame refresh path while explicitly skipping known taint-prone fields (`shownState`, `widgetID`, `widgetType`). Numeric payload handling stays on the sanitized `pcall -> tostring -> tonumber` path to reduce world-map tooltip/layout taint risk.
+Refresh safety note: when Blizzard briefly fails to return the active prey quest during reload or refresh timing windows, Preydator now keeps the already-tracked live prey quest as authoritative as long as it still exists in the quest log, preventing stage/progress resets like `66% -> 0%` mid-hunt.
 
 ## What Preydator tracks
 

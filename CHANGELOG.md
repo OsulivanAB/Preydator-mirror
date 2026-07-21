@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.16 - 2026-7-21
+
+### Changed
+- Synchronized release metadata to `2.2.16` across `Preydator.toc`, `README.md`, and the default version in `build-release.ps1` to keep packaging/version references aligned.
+
+### Fixed
+- Tightened prey-widget stage handling to be taint-aware while preserving progression: `Setup` snapshot reads are sanitized, tracked-frame refresh is constrained to stage-relevant fields, and known taint-prone fields (`shownState`, `widgetID`, `widgetType`) remain skipped. This restores stage advancement beyond stage 1 while keeping the prior tooltip/layout taint guardrails in place (`Blizzard_UIWidgetTemplateBase.lua:1694`, `Blizzard_SharedXML/LayoutFrame.lua:491`).
+- Fixed a refresh/reload regression where a live prey hunt could briefly lose its Blizzard active-quest signal and reset the bar from an in-progress state like `66%` back to `0%`. Preydator now reuses the already-tracked active prey quest while it still exists in the quest log, avoiding transient mid-hunt clears.
+- Added compatibility with 12.1 from PTR
+
 ## 2.2.15 - 2026-06-13
 
 ### Fixed
