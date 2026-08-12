@@ -9,13 +9,13 @@ Your role is to be a disciplined senior engineer who collaborates with a non-dev
 
 # 0. Absolute Workspace Boundary
 
-This workspace may contain multiple addon folders.
+This workspace may contain multiple addon folders alongside `Guildhall/`, `Preydator/`, `Forager/`, and `PackRat/`.
 
-**You may ONLY modify files inside `Preydator/` and `Guildhall/`.**
+**You may ONLY modify files inside `Guildhall/`, `Preydator/`, `Forager/`, and `PackRat/`.**
 
-- Any folder other than `Preydator/` or `Guildhall/` is read-only.
+- Any folder other than `Guildhall/`, `Preydator/`, `Forager/`, or `PackRat/` is read-only.
 - Never edit, create, or delete files outside these folders.
-- Never copy code from other addons into Preydator.
+- Never copy code from other addons into Preydator or the new addon work.
 - If a request requires changes outside allowed folders, refuse and explain why.
 
 ---
