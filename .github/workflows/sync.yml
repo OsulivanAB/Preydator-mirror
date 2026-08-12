@@ -1,0 +1,260 @@
+name: Sync upstream and publish WowUp release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preydator-sync
+  cancel-in-progress: false
+
+jobs:
+  sync_and_release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Mirror upstream into main, but preserve local repo files
+        run: |
+          set -euo pipefail
+
+          upstream_repo="https://github.com/RagingAltoholic/Preydator.git"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          rm -rf /tmp/mirror-preserve
+          mkdir -p /tmp/mirror-preserve
+
+          if [ -d .github/workflows ]; then
+            mkdir -p /tmp/mirror-preserve/.github
+            cp -R .github/workflows /tmp/mirror-preserve/.github/
+          fi
+
+          if [ -f README.md ]; then
+            cp README.md /tmp/mirror-preserve/README.md
+          fi
+
+          if [ -f MIRROR_NOTICE.md ]; then
+            cp MIRROR_NOTICE.md /tmp/mirror-preserve/MIRROR_NOTICE.md
+          fi
+
+          if ! git remote get-url tmp_upstream >/dev/null 2>&1; then
+            git remote add tmp_upstream "$upstream_repo"
+          fi
+
+          git fetch tmp_upstream --prune --tags --force
+
+          upstream_branch="$(git remote show tmp_upstream | sed -n '/HEAD branch/s/.*: //p')"
+          if [ -z "${upstream_branch:-}" ]; then
+            echo "ERROR: Could not determine upstream default branch."
+            exit 1
+          fi
+
+          git checkout -B _mirror "tmp_upstream/${upstream_branch}"
+
+          rm -rf .github/workflows
+
+          if [ -d /tmp/mirror-preserve/.github/workflows ]; then
+            mkdir -p .github
+            cp -R /tmp/mirror-preserve/.github/workflows .github/
+          fi
+
+          if [ -f /tmp/mirror-preserve/README.md ]; then
+            cp /tmp/mirror-preserve/README.md README.md
+          fi
+
+          if [ -f /tmp/mirror-preserve/MIRROR_NOTICE.md ]; then
+            cp /tmp/mirror-preserve/MIRROR_NOTICE.md MIRROR_NOTICE.md
+          fi
+
+          git add -A
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Mirror upstream (preserve local repo files)"
+          fi
+
+          upstream_sha="$(git rev-parse "tmp_upstream/${upstream_branch}")"
+          mirror_sha="$(git rev-parse HEAD)"
+
+          echo "UPSTREAM_BRANCH=${upstream_branch}" >> "$GITHUB_ENV"
+          echo "UPSTREAM_SHA=${upstream_sha}" >> "$GITHUB_ENV"
+          echo "MIRROR_SHA=${mirror_sha}" >> "$GITHUB_ENV"
+
+          git push origin HEAD:main --force
+
+      - name: Fetch updated main branch + tags
+        run: |
+          set -euo pipefail
+          git fetch origin main --force
+          git fetch --tags --force
+
+      - name: Locate TOC and determine addon metadata
+        id: addon
+        run: |
+          set -euo pipefail
+
+          toc_file="$(find . -maxdepth 3 -type f -name 'Preydator.toc' | head -n 1)"
+
+          if [ -z "${toc_file:-}" ] || [ ! -f "$toc_file" ]; then
+            echo "ERROR: Preydator.toc not found."
+            find . -maxdepth 3 -print
+            exit 1
+          fi
+
+          addon_root="$(dirname "$toc_file")"
+          addon_folder="$(basename "$toc_file" .toc)"
+
+          version="$(grep -m1 '^## Version:' "$toc_file" \
+            | sed 's/^## Version:[[:space:]]*//' \
+            | tr -d '[:space:]')"
+
+          if [ -z "${version:-}" ]; then
+            echo "ERROR: Could not extract version from $toc_file"
+            cat "$toc_file"
+            exit 1
+          fi
+
+          short_sha="$(printf "%s" "$UPSTREAM_SHA" | cut -c1-8)"
+          release_tag="upstream-${short_sha}"
+
+          echo "toc_file=$toc_file" >> "$GITHUB_OUTPUT"
+          echo "addon_root=$addon_root" >> "$GITHUB_OUTPUT"
+          echo "addon_folder=$addon_folder" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if this upstream commit was already released
+        id: exists
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.addon.outputs.release_tag }}"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "already_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag for mirrored commit
+        if: steps.exists.outputs.already_exists != 'true'
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.addon.outputs.release_tag }}"
+          mirror_sha="${MIRROR_SHA}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$tag" "$mirror_sha" -m "Mirror upstream commit ${UPSTREAM_SHA} (local repo files preserved)"
+          git push origin "refs/tags/$tag"
+
+      - name: Check out mirrored commit into a worktree for packaging
+        if: steps.exists.outputs.already_exists != 'true'
+        run: |
+          set -euo pipefail
+          git worktree add --force _pkg "${MIRROR_SHA}"
+
+      - name: Package WowUp-ready zip
+        if: steps.exists.outputs.already_exists != 'true'
+        id: package
+        run: |
+          set -euo pipefail
+
+          addon_root="_pkg/${{ steps.addon.outputs.addon_root }}"
+          addon_folder="${{ steps.addon.outputs.addon_folder }}"
+          version="${{ steps.addon.outputs.version }}"
+          tag="${{ steps.addon.outputs.release_tag }}"
+          zip_name="${addon_folder}-${version}-${tag}.zip"
+
+          rm -rf /tmp/preydator-package
+          mkdir -p "/tmp/preydator-package/${addon_folder}"
+
+          shopt -s dotglob nullglob
+
+          for item in "$addon_root"/* "$addon_root"/.*; do
+            name=$(basename "$item")
+            [ -e "$item" ] || continue
+
+            case "$name" in
+              .|..|.git|.github|.gitattributes|.gitignore|.vscode|build-release.ps1|issues|CURSEFORGE_DESCRIPTION.md)
+                echo "skip: $name"
+                ;;
+              *)
+                echo "include: $name"
+                cp -R "$item" "/tmp/preydator-package/${addon_folder}/"
+                ;;
+            esac
+          done
+
+          zip_path="/tmp/preydator-package/${zip_name}"
+          (
+            cd /tmp/preydator-package
+            zip -r "$zip_path" "$addon_folder"
+          )
+
+          if [ ! -s "$zip_path" ]; then
+            echo "ERROR: Zip file was not created correctly."
+            exit 1
+          fi
+
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$zip_name" >> "$GITHUB_OUTPUT"
+
+      - name: Create release notes
+        if: steps.exists.outputs.already_exists != 'true'
+        id: notes
+        run: |
+          set -euo pipefail
+
+          notes_file="/tmp/preydator-release-notes.md"
+
+          cat > "$notes_file" <<EOF
+          ## Automated Mirror Release
+
+          > ⚠️ This is **not an official release**.
+          > Full credit for the addon belongs to **RagingAltoholic**.
+
+          This repository exists only to publish a WowUp-compatible mirror package.
+
+          - Original project: https://github.com/RagingAltoholic/Preydator
+          - Original author: https://github.com/RagingAltoholic
+          - Upstream version: \`${{ steps.addon.outputs.version }}\`
+          - Upstream commit: \`${UPSTREAM_SHA}\`
+          - Upstream branch: \`${UPSTREAM_BRANCH}\`
+
+          Please report addon bugs, issues, and feature requests to the upstream repository, not this mirror.
+
+          ### Installation
+          Download \`${{ steps.package.outputs.zip_name }}\` and extract it into \`Interface/AddOns/\`.
+
+          The resulting addon folder will be:
+          \`${{ steps.addon.outputs.addon_folder }}/\`
+          EOF
+
+          echo "file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.exists.outputs.already_exists != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh release create "${{ steps.addon.outputs.release_tag }}" \
+            "${{ steps.package.outputs.zip_path }}#${{ steps.package.outputs.zip_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "Preydator ${{ steps.addon.outputs.version }} (mirror)" \
+            --notes-file "${{ steps.notes.outputs.file }}"
