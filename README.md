@@ -2,7 +2,7 @@
 
 Preydator is a focused Prey Hunt companion addon for World of Warcraft, featuring Predator-inspired audio cues, a customizable hunt progress bar, and stage-based tracking built from Blizzard quest/widget APIs.
 
-Current release: `v2.2.16`
+Current release: `v3.0.0`
 
 Runtime safety note: In restricted instance content (`party`, `raid`, `scenario`, `delve`, `arena`, `pvp`), Preydator is intended to fail closed and keep runtime behavior inactive.
 Widget safety note: Preydator captures prey stage data from `Setup` snapshots and a constrained tracked-frame refresh path while explicitly skipping known taint-prone fields (`shownState`, `widgetID`, `widgetType`). Numeric payload handling stays on the sanitized `pcall -> tostring -> tonumber` path to reduce world-map tooltip/layout taint risk.
@@ -31,23 +31,18 @@ Important: Blizzard does not expose a true percent completion for Prey Hunts. Pr
 
 ## UI and layout features (2.0.3)
 
-- New module runtime controls for Bar, Sounds, Currency, Hunt Table, and Warband
+- New module runtime controls for Bar, Sounds, Hunt Table, and a standalone launcher
 - Module-aware settings locking with reload detection when module state changes
 - CPU optimizations for zone caching and reduced unnecessary update routes
 - New installs start with the bar unlocked for quick placement; lock it in Options when finished
 - 4K display support with corrected dropdown scaling and UI-scale normalization
 - Account-wide prey unlock tracking for Nightmare difficulty
 - Bar position persistence across reloads with resilient backup coordinate sync
-- New Currency Tracker window for approved Prey currencies
-- New Warband currency table with sortable columns and realm grouping
 - Hunt Table tracker with grouping/sorting, reward icons, collapsible headers, and direct accept/open actions
-- Warband `Prey Track (Alts)` with `N/H/Ni` available/completed modes and weekly-aware tracking snapshots
+- Hunt Table `Prey Track (Alts)` with `N/H/Ni` available/completed modes and weekly-aware tracking snapshots
 - Hunt Table achievement signals resolve from explicit questID criteria mappings only (no title/name fallback matching)
 - Hunt Table achievement signals on higher-tier rows can cumulatively include unmet lower-tier mapped achievements for the same prey target while remaining questID/criteria anchored
-- Session delta tracking for approved Prey currencies
-- Theme support in currency windows: `Light`, `Brown`, `Dark`
-- One-time What's New splash for currency launch (with Show Again in Advanced tab)
-- Currencies tab now includes direct controls for tracker/warband visibility, tracked currency selection, random hunt cost context, and panel layout sliders
+- One-time splash screen for Preydator 3.0 (with Show What's New in Advanced tab)
 
 - Modular tabbed settings panel: `General`, `Display`, `Text`, `Audio`, `Advanced`
 - Compact Edit Mode quick-settings window
@@ -196,10 +191,8 @@ Bundled default files:
 	- `/pd hinspectcopy bs` - open the last captured hunt payload in the built-in report window.
 
 - Launcher shortcuts (minimap button / addon compartment):
-	- `Left Click` - toggle Currency window.
-	- `Shift + Left Click` - open the built-in report window (no command execution).
-	- `Right Click` - toggle Warband window.
-	- `Shift + Right Click` - open Options.
+	- `Left Click` - open Options.
+	- `Right Click` - open the built-in report window.
 
 Removed legacy aliases: `/preydator`, `/pd open`, `/pd mem`, `/pd memory`, `inspectquest*`, and `huntdebug*`.
 

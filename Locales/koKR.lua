@@ -64,7 +64,6 @@ local L = _G.PreydatorL
   L["Show bar during Edit Mode"]         = "편집 모드 중에 바 표시"
 
 ---- Dropdown field titles
-  L["Currency Theme"]           = "화폐 테마"
   L["Progress Segments"]        = "진행도 구분"
   L["Sound Channel"]            = "효과음 채널"
   L["Hunt Panel Side"]          = "사냥 패널 위치"
@@ -221,19 +220,13 @@ local L = _G.PreydatorL
   L["Preydator Edit Mode"]       = "Preydator 편집 모드"
   L["HINT_EDITMODE_SUBTITLE"]    = "블리자드 편집 모드가 열려 있는 동안 사용할 수 있는 간편 레이아웃 설정입니다. 전체 옵션은 설정 > 애드온 > Preydator에서 확인하세요."
 
----- Currency Tracker windows
-  L["Preydator Currency"]        = "Preydator 화폐"
-  L["Preydator Warband"]         = "Preydator 전투부대"
-  L["Currency Tracker"]          = "화폐 추적기"
-  L["Preydator Updates: New in 2.1.1"] = "Preydator 업데이트: 2.1.1 새로운 기능"
+---- Preydator 3.0 splash / launcher
+  L["Preydator Updates: New in 3.0"] = "Preydator 업데이트: 3.0 새로운 기능"
   L["Got It"]                    = "확인"
   L["Open Settings"]             = "설정 열기"
   L["Toggle Tracker"]            = "추적기 켜기/끄기"
-  L["Toggle Warband"]            = "전투부대 켜기/끄기"
   L["Open Tracker"]              = "추적기 열기"
   L["Close Tracker"]             = "추적기 닫기"
-  L["Open Warband"]              = "전투부대 열기"
-  L["Close Warband"]             = "전투부대 닫기"
   L["Gain Color"]                = "획득 색상"
   L["Spend Color"]               = "소비 색상"
 
@@ -244,37 +237,6 @@ local L = _G.PreydatorL
   L["Reward data pending"]                             = "보상 데이터 대기 중"
   L["No available hunts"]                              = "가능한 사냥 없음"
   L["Use /pd huntdebug at a hunt table to print payload data."] = "사냥 탁자에서 /pd hinspect를 입력하여 데이터를 확인하세요."
-
----- Currency config page labels
-  L["Currencies to Track"]          = "추적할 화폐"
-  L["Random Hunt Cost (Anguish)"]   = "무작위 사냥 비용 (고뇌)"
-  L["Panel Layout"]                 = "패널 레이아웃"
-  L["Adjust"]                       = "조정"
-  L["Delta Preview"]                = "변동치 미리보기"
-  L["Normal"]                       = "일반"
-  L["Hard"]                         = "어려움"
-  L["Nightmare"]                    = "악몽"
-  L["Currency Window"]              = "화폐 창"
-  L["Warband Window"]               = "전투부대 창"
-
----- Warband column headers
-  L["Realm"]     = "서버"
-  L["Character"] = "캐릭터"
-  L["Anguish"]   = "고뇌"
-  L["Voidlight"] = "공허불빛"
-  L["Adv"]       = "모험가"
-  L["Vet"]       = "노련가"
-  L["Champ"]     = "챔피언"
-  L["N/H/Ni"]    = "일/어/악"
-
----- Warband dynamic row labels
-  L["Total"]     = "합계"
-  L["All Realms"] = "모든 서버"
-  L["Totals"]    = "총계"
-  L["Subtotal"]  = "소계"
-
----- Currency tracker summary format
-  L["Normal %d | Hard %d | Nightmare %s"] = "일반 %d | 영웅 %d | 신화 %s"
 
 ---- Modules page
   L["Module Status"]                                                                                    = "모듈 상태"
@@ -294,11 +256,8 @@ local L = _G.PreydatorL
   L["Module changes require a reload to fully apply. Achievement module remains disabled until it is released."] = "모듈 변경 사항을 완전히 적용하려면 UI 재시작이 필요합니다. 업적 모듈은 출시 전까지 비활성화 상태로 유지됩니다."
 
 ---- Minimap / LDB tooltip
-  L["Left Click: Toggle Currency Window"]  = "왼쪽 클릭: 화폐 창 켜기/끄기"
-  L["Shift + Left Click: Open Report Window"] = "Shift + 왼쪽 클릭: 보고서 창 열기"
-  L["Right Click: Toggle Warband Window"]  = "오른쪽 클릭: 전투부대 창 켜기/끄기"
-  L["Shift + Right Click: Open Options"]   = "Shift + 오른쪽 클릭: 설정 열기"
-  L["Preydator Currency Tracker"]          = "Preydator 화폐 추적기"
+  L["Left Click: Open Options"] = "왼쪽 클릭: 설정 열기"
+  L["Right Click: Open Report Window"] = "오른쪽 클릭: 보고서 창 열기"
 
 ---- 2.1.2+ missing keys (Hunt Table / Settings / Profiles / Panels)
   L["WHATS_NEW_BODY"] = "Preydator 2.1.1이 적용되었습니다.\n\n- 사냥 추적기에서 미완료 업적에 도움이 되는 사냥 안내를 표시합니다\n- 사냥 탁자 업적 마커의 배치, 크기, 개수 표시를 개선했습니다\n- 사냥 보상 표시에 아이콘+텍스트, 텍스트 전용, 아이콘+개수 스타일을 지원합니다\n- 전리품 기반 화폐 갱신을 최적화해 불필요한 CPU 사용 급증을 줄였습니다\n\n기존 창 위치를 사용 중이라면 저장된 레이아웃은 그대로 유지됩니다."

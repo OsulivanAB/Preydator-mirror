@@ -62,7 +62,6 @@ L["Show Group By Realm In Warband"] = "在战团中按服务器分组显示"
 L["Show bar during Edit Mode"] = "在编辑模式下显示进度条"
 
 ---- Dropdown field titles
-L["Currency Theme"] = "货币主题"
 L["Progress Segments"] = "进度分段"
 L["Sound Channel"] = "音效通道"
 L["Hunt Panel Side"] = "狩猎面板侧边"
@@ -242,44 +241,9 @@ L["Reward data pending"] = "奖励数据待定"
 L["No available hunts"] = "没有可用狩猎"
 L["Use /pd huntdebug at a hunt table to print payload data."] = "在狩猎面板使用/pd hinspect来打印载荷数据。"
 
----- Currency config page labels
-L["Currencies to Track"] = "要追踪的货币"
-L["Random Hunt Cost (Anguish)"] = "随机狩猎消耗(痛苦残渣)"
-L["Panel Layout"] = "面板布局"
-L["Adjust"] = "调整"
-L["Delta Preview"] = "变化预览"
-L["Normal"] = "普通"
-L["Hard"] = "困难"
-L["Nightmare"] = "噩梦"
-L["Currency Window"] = "货币窗口"
-L["Warband Window"] = "战团窗口"
-
----- Warband column headers
-L["Realm"] = "服务器"
-L["Character"] = "角色"
-L["Anguish"] = "痛苦残渣"
-L["Voidlight"] = "虚光灰岩"
-L["Adv"] = "冒险者"
-L["Vet"] = "老兵"
-L["Champ"] = "冠军"
-L["Shards"] = "碎片"
-L["Keys"] = "钥匙"
-
----- Warband dynamic row labels
-L["Total"] = "总计"
-L["All Realms"] = "所有服务器"
-L["Totals"] = "合计"
-L["Subtotal"] = "小计"
-
----- Currency tracker summary format
-L["Normal %d | Hard %d | Nightmare %s"] = "普通 %d | 困难 %d | 噩梦 %s"
-
 ---- Minimap / LDB tooltip
-L["Left Click: Toggle Currency Window"] = "左键点击: 切换货币窗口"
-L["Shift + Left Click: Open Report Window"] = "Shift+左键点击: 打开报告窗口"
-L["Right Click: Toggle Warband Window"] = "右键点击: 切换战团窗口"
-L["Shift + Right Click: Open Options"] = "Shift+右键点击: 打开选项"
-L["Preydator Currency Tracker"] = "Preydator货币追踪器"
+L["Left Click: Open Options"] = "左键点击: 打开设置"
+L["Right Click: Open Report Window"] = "右键点击: 打开报告窗口"
 
 ---- Hunt Scanner - Preview and Rewards
 L["Preview: Normal Hunt"] = "预览: 普通狩猎"

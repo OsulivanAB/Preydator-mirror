@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.0.0 - 2026-08-11
+
+### Added
+- Added the Preydator 3.0 splash screen and the gated “Show What’s New” launch flow for first-run updates.
+- Simplified the minimap/addon-compartment launcher to a two-button flow: left click opens Options, right click opens the report window.
+
+### Changed
+- Removed the legacy Currency and Warband core feature set from the active runtime and settings surface while preserving Hunt, Bar, and Sounds functionality.
+- Cleaned stale settings/theme defaults and launcher strings so the active addon matches the 3.0 product scope.
+- Tightened the bar runtime and widget handling to keep the active Hunt flow safe while removing the taint-prone legacy paths.
+
+### Fixed
+- Fixed the splash-frame nil locale crash by ensuring the splash uses the same safe localization fallback pattern as the rest of the addon.
+- Fixed the blank, non-closable splash state caused by the raw localization key being displayed instead of the intended 3.0 text.
+
 ## 2.2.16 - 2026-7-21
 
 ### Changed

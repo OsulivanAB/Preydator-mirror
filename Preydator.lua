@@ -99,6 +99,7 @@ local PROTECTED_SOUND_FILENAMES = {
     ["predator-kills-its-prey-to-survive.ogg"] = true,
     ["echo-of-predation.ogg"] = true,
 }
+local PREYDATOR_THREE_SPLASH_VERSION = "3.0.0"
 
 local function GetExternalSoundCatalog()
     local entries = {}
@@ -267,51 +268,6 @@ local DEFAULTS = {
     },
     debugSounds = false,
     debugBloodyCommand = false,
-    currencyDebugEvents = false,
-    currencyWindowEnabled = false,
-    currencyMinimapButton = true,
-    currencyMinimapAngle = 225,
-    currencyMinimap = {
-        hide = false,
-        minimapPos = 225,
-    },
-    currencyWindowPoint = { anchor = "CENTER", relativePoint = "CENTER", x = 340, y = -80 },
-    currencyWindowWidth = 276,
-    currencyWindowHeight = 236,
-    currencyWindowFontSize = 14,
-    currencyWindowScale = 1,
-    currencyWindowHideInInstance = false,
-    currencyWarbandWindowEnabled = false,
-    currencyWarbandWindowPoint = { anchor = "CENTER", relativePoint = "CENTER", x = 660, y = -80 },
-    currencyWarbandWidth = 420,
-    currencyWarbandHeight = 250,
-    currencyWarbandFontSize = 12,
-    currencyWarbandScale = 1,
-    currencyWarbandWindowHideInInstance = false,
-    currencyWarbandCollapsedRealms = {},
-    currencyWarbandShowPreyTrack = true,
-    currencyWarbandPreyMode = "available",
-    currencyWarbandTrackedIDs = {
-        [3392] = true,
-        [3316] = true,
-        [3383] = true,
-        [3341] = true,
-        [3343] = true,
-    },
-    currencyWarbandUseCurrencyTheme = true,
-    currencyWarbandTheme = "brown",
-    currencyShowAffordableHunts = false,
-    currencyShowRealmInWarband = false,
-    currencyTheme = "brown",
-    currencyDeltaGainColor = { 0.00, 0.56, 0.32, 1 },
-    currencyDeltaLossColor = { 0.72, 0.24, 0.15, 1 },
-    currencyTrackedIDs = {
-        [3392] = true,
-        [3316] = true,
-        [3383] = true,
-        [3341] = true,
-        [3343] = true,
-    },
     randomHuntCosts = {
         normal = 50,
         hard = 50,
@@ -319,8 +275,6 @@ local DEFAULTS = {
     },
     huntScannerEnabled = true,
     huntScannerSide = "right",
-    huntScannerMatchCurrencyTheme = true,
-    huntScannerUseCurrencyTheme = true,
     huntScannerTheme = "brown",
     huntScannerGroupBy = "difficulty",
     huntScannerSortBy = "zone",
@@ -352,6 +306,7 @@ local DEFAULTS = {
     bloodyCommandSoundPath = "Interface\\AddOns\\Preydator\\sounds\\predator-kills-its-prey-to-survive.ogg",
     echoOfPredationSoundPath = "Interface\\AddOns\\Preydator\\sounds\\echo-of-predation.ogg",
     soundDefaultsPromptSeenVersion = nil,
+    preydatorThreeSplashSeenVersion = nil,
     showTicks = true,
     showSparkLine = false,
     tickLayerMode = LAYER_MODE_ABOVE,
@@ -383,9 +338,7 @@ local DEFAULTS = {
         moduleEnabled = {
             bar = true,
             sounds = true,
-            currency = true,
             hunt = true,
-            warband = true,
         },
     },
 }
@@ -673,6 +626,83 @@ function Preydator:ShowSoundDefaultsPromptIfNeeded()
     -- Retire the legacy 2.2.0 prompt so updates cannot accidentally replace
     -- existing user-selected sound mappings.
     settings.soundDefaultsPromptSeenVersion = "2.2.9-sound-prompt-retired"
+end
+
+function Preydator:EnsurePreydatorThreeSplashFrame()
+    if self and self._preydatorThreeSplashFrame then
+        return self._preydatorThreeSplashFrame
+    end
+
+    local L = _G.PreydatorL or setmetatable({}, { __index = function(_, k) return k end })
+    local frame = CreateFrame("Frame", "PreydatorThreeSplashFrame", UIParent, "BackdropTemplate")
+    frame:SetSize(520, 320)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+    end)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    frame:SetBackdropColor(0.05, 0.04, 0.03, 0.96)
+    frame:SetBackdropBorderColor(0.78, 0.62, 0.20, 1)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -18)
+    title:SetText(L["Preydator Updates: New in 3.0"])
+
+    local body = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    body:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -52)
+    body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -18, -52)
+    body:SetJustifyH("LEFT")
+    body:SetJustifyV("TOP")
+    body:SetWordWrap(true)
+    body:SetText(L["PREYDATOR_3_0_WHATS_NEW_BODY"])
+
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    closeButton:SetSize(120, 24)
+    closeButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 16)
+    closeButton:SetText(L["Got It"])
+
+    closeButton:SetScript("OnClick", function()
+        if settings then
+            settings.preydatorThreeSplashSeenVersion = PREYDATOR_THREE_SPLASH_VERSION
+        end
+        frame:Hide()
+    end)
+
+    frame:Hide()
+    self._preydatorThreeSplashFrame = frame
+    return frame
+end
+
+function Preydator:ShowPreydatorThreeSplashIfNeeded(force)
+    if type(settings) ~= "table" then
+        return
+    end
+
+    local shouldShow = force == true or settings.preydatorThreeSplashSeenVersion ~= PREYDATOR_THREE_SPLASH_VERSION
+    if not shouldShow then
+        return
+    end
+
+    settings.preydatorThreeSplashSeenVersion = PREYDATOR_THREE_SPLASH_VERSION
+    local frame = self:EnsurePreydatorThreeSplashFrame()
+    if frame and frame.Show then
+        frame:Show()
+    end
 end
 
 local function RunModuleHook(hookName, ...)
@@ -4434,28 +4464,19 @@ local function GetLauncherSettings()
 end
 
 local function HandleAddonLauncherClick(mouseButton)
-    local ct = Preydator and Preydator.GetModule and Preydator:GetModule("CurrencyTracker")
-    local isShiftHeld = _G.IsShiftKeyDown and _G.IsShiftKeyDown()
-    if mouseButton == "LeftButton" and isShiftHeld then
-        local reportModule = Preydator and Preydator.GetModule and Preydator:GetModule("ReportWindow")
-        if reportModule and type(reportModule.OpenWindow) == "function" then
-            reportModule:OpenWindow()
-        end
-        return
-    end
     if mouseButton == "LeftButton" then
-        if ct and type(ct.ToggleCurrencyWindow) == "function" then
-            ct:ToggleCurrencyWindow()
-        end
-        return
-    end
-    if mouseButton == "RightButton" and isShiftHeld then
         OpenOptionsPanel()
         return
     end
     if mouseButton == "RightButton" then
-        if ct and type(ct.ToggleWarbandWindow) == "function" then
-            ct:ToggleWarbandWindow()
+        local reportModule = Preydator and Preydator.GetModule and Preydator:GetModule("ReportWindow")
+        if reportModule and type(reportModule.OpenWindow) == "function" then
+            reportModule:OpenWindow()
+            return
+        end
+        local fallback = _G.PreydatorOpenReportWindow and _G.PreydatorOpenReportWindow
+        if type(fallback) == "function" then
+            fallback()
         end
     end
 end
@@ -4530,10 +4551,8 @@ local function EnsureLauncherLdb()
                 return
             end
             tooltip:AddLine("Preydator")
-            tooltip:AddLine(L["Left Click: Toggle Currency Window"], 1, 1, 1)
-            tooltip:AddLine(L["Shift + Left Click: Open Report Window"], 1, 1, 1)
-            tooltip:AddLine(L["Right Click: Toggle Warband Window"], 1, 1, 1)
-            tooltip:AddLine(L["Shift + Right Click: Open Options"], 1, 1, 1)
+            tooltip:AddLine(L["Left Click: Open Options"], 1, 1, 1)
+            tooltip:AddLine(L["Right Click: Open Report Window"], 1, 1, 1)
         end,
     })
     return launcherLdbObject
@@ -4657,10 +4676,8 @@ function _G.Preydator_OnAddonCompartmentEnter()
     gt:SetOwner(_G.AddonCompartmentFrame or UIParent, "ANCHOR_LEFT")
     gt:ClearLines()
     gt:AddLine("Preydator")
-    gt:AddLine(L["Left Click: Toggle Currency Window"], 1, 1, 1)
-    gt:AddLine(L["Shift + Left Click: Open Report Window"], 1, 1, 1)
-    gt:AddLine(L["Right Click: Toggle Warband Window"], 1, 1, 1)
-    gt:AddLine(L["Shift + Right Click: Open Options"], 1, 1, 1)
+    gt:AddLine(L["Left Click: Open Options"], 1, 1, 1)
+    gt:AddLine(L["Right Click: Open Report Window"], 1, 1, 1)
     gt:Show()
 end
 
@@ -4699,6 +4716,7 @@ local function OnAddonLoaded()
     Preydator:ApplyRuntimeSettings(settings, false, false)
     ApplyAratorSilencing()
     Preydator:ShowSoundDefaultsPromptIfNeeded()
+    Preydator:ShowPreydatorThreeSplashIfNeeded()
     AddDebugLog("OnAddonLoaded", "debug=" .. tostring(debugDB.enabled) .. " | stage" .. tostring(MAX_STAGE) .. "=" .. tostring(settings.stageSounds[MAX_STAGE]), true)
 
     -- Reload/login bootstrap from live quest context only.

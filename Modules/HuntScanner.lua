@@ -769,16 +769,8 @@ local function EnsureSettings()
         settings.huntScannerSide = "right"
     end
 
-    if settings.huntScannerMatchCurrencyTheme == nil then
-        settings.huntScannerMatchCurrencyTheme = true
-    end
-
-    if settings.huntScannerUseCurrencyTheme == nil then
-        settings.huntScannerUseCurrencyTheme = settings.huntScannerMatchCurrencyTheme ~= false
-    end
-
     if type(settings.huntScannerTheme) ~= "string" or settings.huntScannerTheme == "" then
-        settings.huntScannerTheme = settings.currencyTheme or "brown"
+        settings.huntScannerTheme = "brown"
     end
 
     if settings.huntScannerPreviewInOptions == nil then
@@ -1352,9 +1344,7 @@ local function GetTheme()
         return previewTheme
     end
 
-    local useCurrencyTheme = not settings or settings.huntScannerUseCurrencyTheme ~= false
-    local key = useCurrencyTheme and (settings and settings.currencyTheme or "brown") or (settings and settings.huntScannerTheme or "brown")
-    return ResolveThemeValue(key, settings)
+    return ResolveThemeValue(settings and settings.huntScannerTheme or "brown", settings)
 end
 
 local function GetThemeKey()
@@ -1364,8 +1354,7 @@ local function GetThemeKey()
         return settings.themeEditorLoadKey or "brown"
     end
 
-    local useCurrencyTheme = not settings or settings.huntScannerUseCurrencyTheme ~= false
-    return useCurrencyTheme and (settings and settings.currencyTheme or "brown") or (settings and settings.huntScannerTheme or "brown")
+    return settings and settings.huntScannerTheme or "brown"
 end
 
 local function GetCoreState()
