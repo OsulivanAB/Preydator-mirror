@@ -99,7 +99,7 @@ local PROTECTED_SOUND_FILENAMES = {
     ["predator-kills-its-prey-to-survive.ogg"] = true,
     ["echo-of-predation.ogg"] = true,
 }
-local PREYDATOR_THREE_SPLASH_VERSION = "3.0.0"
+local PREYDATOR_THREE_SPLASH_VERSION = "3.0.1"
 
 local function GetExternalSoundCatalog()
     local entries = {}

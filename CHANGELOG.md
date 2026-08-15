@@ -1,10 +1,20 @@
 # Changelog
 
+## 3.0.1 - 2026-08-14
+
+### Changed
+- Bumped release metadata to `3.0.1` across the addon toc, splash version, README, and release packaging defaults.
+
+### Fixed
+- Restored the report-window selection flow to the last known-good behavior by removing the protected clipboard path and keeping the panel in a safe manual-select mode instead of forcing a protected copy call.
+- Fixed stale prey-zone map caching that could keep a previous quest-zone map active when the player entered a different map, preventing the bar from appearing in the correct zone.
+- Fixed the report panel text so it stays contained in the frame and does not float over other UI elements when focused.
+
 ## 3.0.0 - 2026-08-11
 
 ### Added
 - Added the Preydator 3.0 splash screen and the gated “Show What’s New” launch flow for first-run updates.
-- Simplified the minimap/addon-compartment launcher to a two-button flow: left click opens Options, right click opens the report window.
+- Simplified the minimap/addopowershell -NoProfile -ExecutionPolicy Bypass -File "d:\Program Files\World of Warcraft\_retail_\Interface\AddOns\Guildhall\.vscode\install-stylua.ps1"n-compartment launcher to a two-button flow: left click opens Options, right click opens the report window.
 
 ### Changed
 - Removed the legacy Currency and Warband core feature set from the active runtime and settings surface while preserving Hunt, Bar, and Sounds functionality.
@@ -49,7 +59,103 @@
 - Improved prey-widget value safety checks to avoid protected-value edge cases causing bad comparisons or stale progress behavior.
 - Improved prey icon handling during combat by deferring protected visibility changes until combat ends.
 - Improved update timing for prey refreshes to reduce tooltip jitter and temporary 0% flicker during rapid widget updates.
-- Removed extra noisy widget fanout paths to reduce update churn and taint interaction surface.
+- Removed extra noisy widget fanout paths to reduce update churn$ErrorActionPreference = "Stop"
+
+$luaRoot = Join-Path $env:LOCALAPPDATA "Programs\Lua"
+$binDir = Join-Path $luaRoot "bin"
+
+New-Item -ItemType Directory -Path $luaRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+
+$urls = @(
+    "https://www.lua.org/ftp/lua-5.4.7.tar.gz",
+    "https://www.lua.org/ftp/lua-5.4.6.tar.gz",
+    "https://www.lua.org/ftp/lua-5.3.6.tar.gz"
+)
+
+$downloadUrl = $null
+foreach ($url in $urls) {
+    try {
+        $resp = Invoke-WebRequest -Uri $url -Method Head -SkipHttpErrorCheck
+        if ($resp.StatusCode -eq 200) {
+            $downloadUrl = $url
+            break
+        }
+    }
+    catch {
+        # keep trying
+    }
+}
+
+if (-not $downloadUrl) {
+    throw "No valid Lua distribution URL was reachable."
+}
+
+$archive = Join-Path $env:TEMP "lua-source.tar.gz"
+Invoke-WebRequest -Uri $downloadUrl -OutFile $archive
+
+$extractRoot = Join-Path $env:TEMP "lua-src"
+if (Test-Path $extractRoot) {
+    Remove-Item -Path $extractRoot -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+tar -xzf $archive -C $extractRoot
+
+$sourceDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+if (-not $sourceDir) {
+    throw "Lua source directory was not extracted."
+}
+
+Write-Host "Lua source extracted to: $($sourceDir.FullName)"$ErrorActionPreference = "Stop"
+
+$luaRoot = Join-Path $env:LOCALAPPDATA "Programs\Lua"
+$binDir = Join-Path $luaRoot "bin"
+
+New-Item -ItemType Directory -Path $luaRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+
+$urls = @(
+    "https://www.lua.org/ftp/lua-5.4.7.tar.gz",
+    "https://www.lua.org/ftp/lua-5.4.6.tar.gz",
+    "https://www.lua.org/ftp/lua-5.3.6.tar.gz"
+)
+
+$downloadUrl = $null
+foreach ($url in $urls) {
+    try {
+        $resp = Invoke-WebRequest -Uri $url -Method Head -SkipHttpErrorCheck
+        if ($resp.StatusCode -eq 200) {
+            $downloadUrl = $url
+            break
+        }
+    }
+    catch {
+        # keep trying
+    }
+}
+
+if (-not $downloadUrl) {
+    throw "No valid Lua distribution URL was reachable."
+}
+
+$archive = Join-Path $env:TEMP "lua-source.tar.gz"
+Invoke-WebRequest -Uri $downloadUrl -OutFile $archive
+
+$extractRoot = Join-Path $env:TEMP "lua-src"
+if (Test-Path $extractRoot) {
+    Remove-Item -Path $extractRoot -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+tar -xzf $archive -C $extractRoot
+
+$sourceDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+if (-not $sourceDir) {
+    throw "Lua source directory was not extracted."
+}
+
+Write-Host "Lua source extracted to: $($sourceDir.FullName)" and taint interaction surface.
 - Removed the built-in `Copy` button from the report window. Reports are now keyboard-copy only with automatic focus/selection.
 - Added launcher shortcut `Shift + Left Click` (minimap/addon compartment) to open the built-in report window directly.
 - Added report-window history persistence across likely `/reload` sessions, while full login clears stale history.
