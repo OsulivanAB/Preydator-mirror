@@ -99,7 +99,7 @@ local PROTECTED_SOUND_FILENAMES = {
     ["predator-kills-its-prey-to-survive.ogg"] = true,
     ["echo-of-predation.ogg"] = true,
 }
-local PREYDATOR_THREE_SPLASH_VERSION = "3.0.1"
+local PREYDATOR_THREE_SPLASH_VERSION = "3.0.3"
 
 local function GetExternalSoundCatalog()
     local entries = {}
@@ -1472,6 +1472,8 @@ local FALLBACK_MAP_ID_EQUIVALENTS = {
     [2576] = 2413,
     [2405] = 2405,
     [2444] = 2405,
+    [2438] = 2437,
+    [2512] = 2512,
 }
 
 local function CanonicalizeFallbackMapID(mapID)

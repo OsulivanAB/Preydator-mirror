@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.3 - 2026-08-16
+
+### Fixed
+- Fixed typo for for release version from 121000 to 120100 so not showing as out of date. Thank you CYREX808 for bringing this to my attention.
+
+## 3.0.2 - 2026-08-15
+
+### Fixed
+- Fixed the Hunt Table panel staying hidden after a valid table reopen when a stale active-prey or `huntInteractionActive` condition blocked the render path; the panel now re-renders correctly after quest accept/abandon flows without needing a reload or a later quest lifecycle event.
+- Added The Coiled Isle live-map handling so the actual player map ID `2512` remains authoritative while legacy Coiled Isle/Zul'Aman family IDs remain accepted for compatibility and grouping in Hunt Table zone inference.
+- Added The Coiled Isle to the known Hunt Table zone canonicalization and coordinate inference so hunts from that zone are included in the panel and grouped with the Zul'Aman family of hunt locations.
+
 ## 3.0.1 - 2026-08-14
 
 ### Changed
