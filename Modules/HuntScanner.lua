@@ -89,6 +89,7 @@ local INFERRED_HUNT_ZONE_MAP_IDS = {
     ["Voidstorm"] = 2405,
     ["Eversong Woods"] = 2395,
     ["Zul'Aman"] = 2437,
+    ["The Coiled Isle"] = 2512,
 }
 local queueDebounceUntil = 0
 local SNAPSHOT_QUEUE_DEBOUNCE_SECONDS = 0.15
@@ -2049,6 +2050,10 @@ local function BlockHuntTableWhileActivePrey()
         return false
     end
 
+    if IsMissionFrameVisible() or huntInteractionActive or IsOptionsPreviewVisible() then
+        return false
+    end
+
     local mission = _G.CovenantMissionFrame
     if mission and mission:IsShown() and type(HideUIPanel) == "function" then
         HideUIPanel(mission)
@@ -2393,7 +2398,7 @@ local function InferZoneFromCoords(x, y)
 
     -- Hardcoded coordinate buckets derived from all 12 hunt quest pins.
     -- Threshold calibration: Harandar (northeast: x>0.78), Voidstorm (southeast: x>0.50 && y<0.30),
-    -- Eversong (southwest: x<0.35), Zul'Aman (northwest/center-high: else).
+    -- Eversong (southwest: x<0.35), The Coiled Isle (upper-mid/high-right), Zul'Aman (northwest/center-high: else).
     if x > 0.78 then
         return "Harandar"
     end
@@ -2404,6 +2409,10 @@ local function InferZoneFromCoords(x, y)
 
     if x < 0.35 then
         return "Eversong Woods"
+    end
+
+    if x > 0.60 and y > 0.55 then
+        return "The Coiled Isle"
     end
 
     return "Zul'Aman"
@@ -4595,9 +4604,13 @@ QueueInteractionSnapshotPasses = function(force)
         return
     end
 
-    if HasActivePreyQuest() and not IsOptionsPreviewVisible() then
-        HidePanel()
-        return
+    if HasActivePreyQuest() and not IsOptionsPreviewVisible() and not IsMissionFrameVisible() and not huntInteractionActive then
+        local options = GetGossipOptionsSafe()
+        local isHuntContext = IsHuntTableContext(options)
+        if not isHuntContext then
+            HidePanel()
+            return
+        end
     end
 
     if not force and not IsOptionsPreviewVisible() and not IsMissionFrameVisible() and not huntInteractionActive then

@@ -17,6 +17,8 @@ local MAP_ID_EQUIVALENTS = {
     [2405] = 2405,
     [2444] = 2405,
     [2395] = 2395, -- Eversong Woods
+    [2438] = 2437, -- The Coiled Isle sub-map canonicalized to Zul'Aman
+    [2512] = 2512,
 }
 
 local function CanonicalizeMapID(mapID)
