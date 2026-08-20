@@ -99,7 +99,10 @@ local PROTECTED_SOUND_FILENAMES = {
     ["predator-kills-its-prey-to-survive.ogg"] = true,
     ["echo-of-predation.ogg"] = true,
 }
-local PREYDATOR_THREE_SPLASH_VERSION = "3.0.3"
+-- Keep the splash popup tied to the splash-content revision, not the addon release.
+-- This prevents the promo from reappearing on every patch release while still allowing
+-- it to re-show when the 3.0 announcement content changes or the user manually reopens it.
+local PREYDATOR_THREE_SPLASH_VERSION = "3.0.0"
 
 local function GetExternalSoundCatalog()
     local entries = {}
@@ -698,6 +701,9 @@ function Preydator:ShowPreydatorThreeSplashIfNeeded(force)
         return
     end
 
+    -- Keep the popup tied to the splash-content version instead of the patch release.
+    -- A new patch version should not reopen the 3.0 update screen unless the splash
+    -- content itself changed or the user explicitly triggers it from settings.
     settings.preydatorThreeSplashSeenVersion = PREYDATOR_THREE_SPLASH_VERSION
     local frame = self:EnsurePreydatorThreeSplashFrame()
     if frame and frame.Show then
@@ -1474,6 +1480,7 @@ local FALLBACK_MAP_ID_EQUIVALENTS = {
     [2444] = 2405,
     [2438] = 2437,
     [2512] = 2512,
+    [2641] = 2512,
 }
 
 local function CanonicalizeFallbackMapID(mapID)
@@ -1529,6 +1536,15 @@ end
 local function RefreshInPreyZoneStatus(questID, force)
     local runtime = GetRuntimeModule("PreyContextRuntime")
     if runtime and type(runtime.RefreshInPreyZoneStatus) == "function" then
+        if not IsValidQuestID(questID) and ((state.questListenUntil or 0) <= (GetTime and GetTime() or 0)) then
+            state.inPreyZone = nil
+            state.preyZoneName = nil
+            state.preyZoneMapID = nil
+            state.confirmedPreyZoneMapID = nil
+            state.zoneCacheDirty = false
+            return nil
+        end
+
         return runtime:RefreshInPreyZoneStatus(questID, force, state, {
             isValidQuestID = IsValidQuestID,
             getTime = GetTime,
@@ -1572,8 +1588,15 @@ local function RefreshInPreyZoneStatus(questID, force)
     end
 
     if not IsValidQuestID(questID) then
-        state.inPreyZone = nil
-        return nil
+        local now = GetTime and GetTime() or 0
+        if ((state.questListenUntil or 0) <= now) then
+            state.inPreyZone = nil
+            state.preyZoneName = nil
+            state.preyZoneMapID = nil
+            state.confirmedPreyZoneMapID = nil
+            state.zoneCacheDirty = false
+            return nil
+        end
     end
 
     local now = GetTime and GetTime() or 0
@@ -1733,6 +1756,29 @@ local function GetCurrentActivePreyQuestCached(maxAgeSeconds)
     end
 
     return state.cachedActivePreyQuestID
+end
+
+local function ShouldScanPreyRuntimeNow()
+    local now = GetTime and GetTime() or 0
+
+    if type(IsQuestStillActive) ~= "function" then
+        return ((state and state.questListenUntil) or 0) > now
+    end
+
+    if IsValidQuestID(state and state.activeQuestID) and IsQuestStillActive(state.activeQuestID) then
+        return true
+    end
+
+    local liveQuestID = GetCurrentActivePreyQuestCached(ACTIVE_PREY_QUEST_CACHE_SECONDS)
+    if IsValidQuestID(liveQuestID) and IsQuestStillActive(liveQuestID) then
+        return true
+    end
+
+    if ((state and state.questListenUntil) or 0) > now then
+        return true
+    end
+
+    return false
 end
 
 local function ArmQuestListenBurst(durationSeconds)
@@ -4007,6 +4053,22 @@ local function ResetStateForNewQuest(questID, forceReset)
 end
 
 UpdatePreyState = function()
+    if not ShouldScanPreyRuntimeNow() then
+        state.inPreyZone = nil
+        state.preyZoneName = nil
+        state.preyZoneMapID = nil
+        state.confirmedPreyZoneMapID = nil
+        state.zoneCacheDirty = false
+        state.preyTooltipText = nil
+        state.progressState = nil
+        state.progressPercent = nil
+        state.lastWidgetSeenAt = 0
+        state.lastWidgetSetupAt = 0
+        state.lastWidgetBoundQuestID = nil
+        preyWidgetInfoCache = nil
+        return
+    end
+
     local now = GetTime and GetTime() or 0
     local questID = GetCurrentActivePreyQuestCached(0)
     local hasActiveQuest = IsValidQuestID(questID)

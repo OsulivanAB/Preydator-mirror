@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.0.5 - 2026-08-20
+
+### Fixed
+- Fixed the nil-call regression in the active-prey runtime gate caused by the quest-state check being invoked before the helper was safely initialized.
+- Kept the 3.0 update splash from reappearing on every patch while still allowing manual re-open from settings.
+- Updated the addon release metadata to 3.0.5 across the TOC, README, Wago metadata, and release packaging defaults.
+
+## 3.0.4 - 2026-08-19
+
+### Fixed
+- Updated the addon release metadata to 3.0.4 across the TOC, README, splash version, Wago metadata, and release packaging defaults.
+- Fixed the 3.0 splash screen so it only reappears for the actual splash-content version or when the user manually reopens it from settings, instead of every patch release.
+- Added MapID 2641 to MapID 2512 to properly map to The Coiled Isle.
+- Added Wago project information.
+
 ## 3.0.3 - 2026-08-16
 
 ### Fixed
