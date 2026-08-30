@@ -1,7 +1,14 @@
--- PreyQuestData.lua
--- Static lookup table mapping every prey questID to its difficulty index and achievement criteriaID.
+-- Preydator :: Modules/HuntScanner/PreyQuestData.lua
+-- Author: RagingAltoholic
+-- Responsibility: static questID -> {difficultyIndex, achievementCriteriaID} data.
+-- No functions, no Blizzard calls. Carried forward unchanged from the old
+-- Modules/PreyQuestData.lua (architecture doc Decisions Log, item 3) -- only
+-- relocated and registered as a module.
+-- Reads: nothing.
+-- Writes: nothing.
+--
 -- Difficulty: 1 = Normal, 2 = Hard, 3 = Nightmare
--- Usage: PreyQuestData[questID] = { difficultyIndex, criteriaID }
+-- Usage: PreyQuestData.PreyQuestData[questID] = { difficultyIndex, criteriaID }
 --
 -- These IDs are sourced from WoW game data and match the criteria inside the
 -- three primary hunt achievement series:
@@ -11,16 +18,18 @@
 --
 -- To check completion: GetAchievementCriteriaInfoByID(PREY_HUNT_ACHIEVEMENT_IDS[difficultyIndex], criteriaID)
 
-local addonName, addon = ...
+local Preydator = _G.Preydator
+
+local PreyQuestData = {}
 
 -- The three achievement IDs used for per-target completion checks.
 -- Index maps to difficulty: [1]=Normal, [2]=Hard, [3]=Nightmare
-addon.PREY_HUNT_ACHIEVEMENT_IDS = { 42701, 42702, 42703 }
+PreyQuestData.PREY_HUNT_ACHIEVEMENT_IDS = { 42701, 42702, 42703 }
 
 -- Per-difficulty progression achievements (I/II/III).
 -- These are checked against quest criteria at runtime; entries with no matching
 -- quest criteria are ignored for per-row reporting.
-addon.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY = {
+PreyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY = {
     [1] = { 61387, 61386, 42701 }, -- Normal I, II, III
     [2] = { 61389, 61388, 42702 }, -- Hard I, II, III
     [3] = { 61392, 61391, 42703 }, -- Nightmare I, II, III
@@ -28,7 +37,7 @@ addon.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY = {
 
 -- Additional per-quest achievements explicitly tracked in issues/achievements.md.
 -- Meta/overall achievements are intentionally excluded.
-addon.PREY_HUNT_ACHIEVEMENTS_BY_QUEST = {
+PreyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST = {
     [91210] = { 62144 }, [91212] = { 62144 },
     [91214] = { 62153 }, [91216] = { 62153 },
     [91218] = { 62154 }, [91220] = { 62154 },
@@ -62,7 +71,7 @@ addon.PREY_HUNT_ACHIEVEMENTS_BY_QUEST = {
 }
 
 -- [questID] = { difficultyIndex, criteriaID }
-addon.PreyQuestData = {
+PreyQuestData.PreyQuestData = {
     -- Normal (difficulty 1)
     [91095] = { 1, 105912 }, -- Magister Sunbreaker (Normal)
     [91096] = { 1, 105913 }, -- Magistrix Emberlash (Normal)
@@ -159,3 +168,6 @@ addon.PreyQuestData = {
     [91268] = { 3, 106000 }, -- Grothoz, the Burning Shadow (Nightmare)
     [91269] = { 3, 106001 }, -- Dengzag, the Darkened Blaze (Nightmare)
 }
+
+Preydator:RegisterModule("PreyQuestData", PreyQuestData)
+return PreyQuestData

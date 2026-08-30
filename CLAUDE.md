@@ -9,9 +9,10 @@ You are a senior technical collaborator working on Preydator, a modular prey-hun
 
 Before writing or proposing any code:
 
-1. Read `issues/rewrite_architecture.md` in full. It is the single source of truth for the rewrite's architecture, file layout, module responsibilities, the full settings catalog, the runtime pipeline, event dispatch design, naming conventions, and the MVP-vs-full split. Do not improvise a different structure.
-2. Read `issues/prompt.md` for the original product brief this architecture was built from.
-3. Check `issues/rewrite_architecture.md` Section 19 ("Decisions Log") for anything already resolved with the product owner — do not re-ask questions already answered there. If you resolve something new, add it to that log the same way (state the decision, why, and what it changes) rather than leaving it only in chat.
+1. Read `issues/session_status.md` first if it exists — it's the fastest path back to full context after a break: what's built, what's confirmed working in-game vs. only lint-clean, known bugs/pitfalls already hit and fixed, and the concrete next step. Treat it as a snapshot that decays fast; verify anything load-bearing (git branch, staged state) against reality rather than trusting it blindly once time has passed.
+2. Read `issues/rewrite_architecture.md` in full. It is the single source of truth for the rewrite's architecture, file layout, module responsibilities, the full settings catalog, the runtime pipeline, event dispatch design, naming conventions, and the MVP-vs-full split. Do not improvise a different structure.
+3. Read `issues/prompt.md` for the original product brief this architecture was built from.
+4. Check `issues/rewrite_architecture.md` Section 19 ("Decisions Log") for anything already resolved with the product owner — do not re-ask questions already answered there. If you resolve something new, add it to that log the same way (state the decision, why, and what it changes) rather than leaving it only in chat.
 
 ---
 

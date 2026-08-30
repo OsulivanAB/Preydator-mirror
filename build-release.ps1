@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "3.0.5",
+    [string]$Version = "4.0.0",
     [string]$OutputDirectory
 )
 
@@ -28,16 +28,34 @@ $stagingAddonDir = Join-Path $stagingDir $addonName
 try {
     New-Item -ItemType Directory -Path $stagingAddonDir -Force | Out-Null
 
+    # Only files actually reachable from Preydator.toc's active load list, plus the
+    # media/sound assets code paths reference at runtime. Superseded pre-rewrite files
+    # (old Modules/*.lua monoliths, unused media, the sounds placeholder note) are
+    # intentionally excluded -- see Preydator.toc's trailing comment block for why each
+    # superseded file is still kept in the working tree but must not ship.
     $releaseInclude = @(
         "Preydator.toc",
         "Preydator.lua",
-        "README.md",
-        "CHANGELOG.md",
-        "Core",
-        "Modules",
         "Locales",
-        "media",
-        "sounds"
+        "Core\State.lua",
+        "Core\Settings.lua",
+        "Core\SlashCommands.lua",
+        "Core\Adapters",
+        "Core\Runtime",
+        "Modules\HuntScanner",
+        "UI",
+        "media\Preydator_64.png",
+        "media\Preydator_Normal_Difficulty.png",
+        "media\Preydator_Hard_Difficulty.png",
+        "media\Preydator_Nightmare_Difficulty.png",
+        "sounds\predator-alert.ogg",
+        "sounds\predator-ambush.ogg",
+        "sounds\predator-snarl-01.ogg",
+        "sounds\predator-torment.ogg",
+        "sounds\predator-kill.ogg",
+        "sounds\well-we-ve-prepared-a-trap-for-this-predator.ogg",
+        "sounds\predator-kills-its-prey-to-survive.ogg",
+        "sounds\echo-of-predation.ogg"
     )
 
     foreach ($entry in $releaseInclude) {
@@ -46,7 +64,13 @@ try {
             throw ("Release include is missing: {0}" -f $entry)
         }
 
-        Copy-Item -LiteralPath $sourcePath -Destination $stagingAddonDir -Recurse -Force
+        $destinationPath = Join-Path $stagingAddonDir $entry
+        $destinationParent = Split-Path -Parent $destinationPath
+        if (-not (Test-Path -LiteralPath $destinationParent)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+        }
+
+        Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Recurse -Force
     }
 
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
