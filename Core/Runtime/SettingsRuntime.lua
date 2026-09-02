@@ -60,6 +60,7 @@ local NUMERIC_RANGES = {
     { path = { "bar", "height_vertical" }, min = 100, max = 350 },
     { path = { "text", "font_size" }, min = 8, max = 24 },
     { path = { "sound", "alert_cooldown_seconds" }, min = 0, max = 300 },
+    { path = { "general", "minimap_angle" }, min = 0, max = 360 },
 }
 
 local COLOR_FIELDS = {
@@ -81,9 +82,13 @@ local ENUM_FIELDS = {
     { path = { "hunt", "group_by" }, allowed = { "none", "difficulty", "zone" } },
     { path = { "hunt", "sort_by" }, allowed = { "difficulty", "zone", "title" } },
     { path = { "hunt", "sort_direction" }, allowed = { "asc", "desc" } },
-    { path = { "hunt", "reward_display_style" }, allowed = { "icon_inline", "icon_count", "text_only" } },
+    { path = { "hunt", "reward_display_style" }, allowed = { "icon_inline", "icon_count" } },
     { path = { "hunt", "achievement_signal_style" }, allowed = { "icon_count" } },
     { path = { "text", "label_row_position" }, allowed = { "above", "below" } },
+    { path = { "text", "stage_label_mode" }, allowed = {
+        "center", "left", "left_combined", "left_suffix",
+        "right", "right_combined", "right_prefix", "separate", "none",
+    } },
 }
 
 local function getPath(root, path)
@@ -183,21 +188,27 @@ local SIMPLE_KEY_MIGRATIONS = {
     outOfZonePrefix = { "text", "out_of_zone_prefix" },
     outOfZoneLabel = { "text", "out_of_zone_suffix" },
     ambushPrefix = { "text", "ambush_prefix" },
-    bloodyCommandPrefix = { "text", "bloody_command_prefix" },
+    -- Old flat key from the already-shipped addon predates the Season 2
+    -- rename -- still migrated (preserving an upgrading user's real
+    -- preference) but into the new pack_ambush_* path, since Bloody Command
+    -- was replaced, not kept alongside (2026-08-28, architecture doc
+    -- Decisions Log item 34).
+    bloodyCommandPrefix = { "text", "pack_ambush_prefix" },
     stageLabelMode = { "text", "stage_label_mode" },
     labelRowPosition = { "text", "label_row_position" },
     soundChannel = { "sound", "channel" },
     ambushSoundEnabled = { "sound", "ambush_enabled" },
     ambushSoundPath = { "sound", "ambush_path" },
-    bloodyCommandSoundEnabled = { "sound", "bloody_command_enabled" },
-    bloodyCommandSoundPath = { "sound", "bloody_command_path" },
-    echoOfPredationSoundPath = { "sound", "echo_of_predation_path" },
+    bloodyCommandSoundEnabled = { "sound", "pack_ambush_enabled" },
+    bloodyCommandSoundPath = { "sound", "pack_ambush_path" },
+    echoOfPredationSoundPath = { "sound", "exploding_corpse_snakes_path" },
     soundFileNames = { "sound", "custom_file_names" },
     huntScannerEnabled = { "hunt", "enabled" },
     huntScannerSide = { "hunt", "panel_side" },
     huntScannerGroupBy = { "hunt", "group_by" },
     huntScannerSortBy = { "hunt", "sort_by" },
     huntScannerSortDir = { "hunt", "sort_direction" },
+    huntScannerCollapsedGroups = { "hunt", "collapsed_groups" },
     huntScannerWidth = { "hunt", "width" },
     huntScannerHeight = { "hunt", "height" },
     huntScannerFontSize = { "hunt", "font_size" },
@@ -205,7 +216,7 @@ local SIMPLE_KEY_MIGRATIONS = {
     huntScannerAchievementSignals = { "hunt", "achievement_signals_enabled" },
     huntScannerAchievementSignalStyle = { "hunt", "achievement_signal_style" },
     huntScannerTheme = { "hunt", "theme" },
-    debugBloodyCommand = { "debug", "bloody_command_verbose" },
+    debugBloodyCommand = { "debug", "pack_ambush_verbose" },
 }
 
 local function wrapToken(value, bareToken, token)
@@ -248,12 +259,24 @@ function SettingsRuntime.MigrateAll(rawTable)
             wrapToken(rawTable.ambushSuffix, "preyTargetName", "{preyTargetName}"))
     end
     if rawTable.bloodyCommandSuffix ~= nil then
-        setPath(migrated, { "text", "bloody_command_suffix_template" },
-            wrapToken(rawTable.bloodyCommandSuffix, "bloodyCommandSourceName", "{bloodyCommandSourceName}"))
+        setPath(migrated, { "text", "pack_ambush_suffix_template" },
+            wrapToken(rawTable.bloodyCommandSuffix, "bloodyCommandSourceName", "{packAmbushSourceName}"))
     end
 
     if type(rawTable.stageSounds) == "table" then
         setPath(migrated, { "sound", "stage_path" }, rawTable.stageSounds)
+    end
+
+    -- Old flat key's semantics were inverted relative to the new one
+    -- (currencyMinimapButton == false meant "hidden"; the new field is a
+    -- plain minimap_hidden boolean) -- can't reuse SIMPLE_KEY_MIGRATIONS'
+    -- direct copy for this one. Only migrated when explicitly false so a
+    -- real upgrading user's "I hid this button" choice carries forward.
+    if rawTable.currencyMinimapButton == false then
+        setPath(migrated, { "general", "minimap_hidden" }, true)
+    end
+    if type(rawTable.currencyMinimapAngle) == "number" then
+        setPath(migrated, { "general", "minimap_angle" }, rawTable.currencyMinimapAngle)
     end
 
     if rawTable.huntScannerRewardStyle ~= nil then

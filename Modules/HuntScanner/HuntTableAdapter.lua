@@ -156,6 +156,14 @@ end
 --     these NPCs have unrelated gossip/quest dialogue too).
 --  3. Pins are actually present once the mission frame is shown -- the most
 --     robust signal once the map tab itself is open, regardless of gossip state.
+--
+-- The `missionVisible` gate below is confirmed (live trace, 2026-08-27) to
+-- lag several seconds behind the interaction actually starting -- a single
+-- call right when GOSSIP_SHOW/PLAYER_INTERACTION_MANAGER_FRAME_SHOW fires
+-- can genuinely see this whole function return false even though the player
+-- really is opening a Hunt Table. This is why Core/Runtime/EventRuntime.lua
+-- calls this function repeatedly over a staggered watch rather than once --
+-- not a bug in this gate itself, just a real limitation callers must handle.
 function HuntTableAdapter.IsHuntTableActive()
     local mission = getMissionFrame()
     local missionVisible = mission and mission.IsShown and mission:IsShown()
@@ -293,6 +301,99 @@ function HuntTableAdapter.AcceptHunt(questID)
     end)
 
     return ok == true
+end
+
+-- Returns { {name, icon, quantity, rewardType}, ... } (rewardType is
+-- Blizzard's own "currency"/"item" string, straight off the widget -- no
+-- name-guessing needed to identify the chest/bag) by briefly showing the
+-- real AdventureMapQuestChoiceDialog off-screen (the same technique
+-- AcceptHunt already uses safely) and reading its rewardPool widgets'
+-- .Name/.Icon/.Count fields. Confirmed live (2026-08-28, no taint on
+-- Escape immediately after) that this read-only extraction -- type()/
+-- GetText()/GetTexture() only, no arithmetic on any scraped value, no
+-- protected-method calls on any widget -- does not reproduce the taint the
+-- old codebase's own comments flagged for "reward-frame introspection."
+-- Field names (.Name/.Icon/.Count/.rewardType) confirmed against this
+-- client's actual live structure via a temporary diagnostic dump, not
+-- guessed from the old (different-patch) codebase's ~8-alias approach.
+-- Callers should only need to do this once per difficulty, not per quest --
+-- rewards are shared across every hunt of the same difficulty and only
+-- rotate every 2 completions/week (product owner, 2026-08-28) -- see
+-- HuntScannerRuntime's rewardWidgetsByDifficulty cache.
+function HuntTableAdapter.GetRewardWidgets(questID)
+    questID = safeToNumber(questID)
+    if not questID then
+        return {}
+    end
+
+    local mission = getMissionFrame()
+    local dialog = _G.AdventureMapQuestChoiceDialog
+    if not (mission and mission.IsShown and mission:IsShown()
+        and dialog and type(dialog.ShowWithQuest) == "function") then
+        return {}
+    end
+
+    local pin = findPinByQuestID(questID)
+    if not pin then
+        return {}
+    end
+
+    local prevAlpha = (dialog.GetAlpha and dialog:GetAlpha()) or 1
+    local rewards = {}
+
+    local ok = pcall(function()
+        dialog:SetAlpha(0)
+        dialog:ClearAllPoints()
+        dialog:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -4000, 4000)
+        dialog:Hide()
+        dialog:ShowWithQuest(mission, pin, questID)
+
+        local pool = dialog.rewardPool
+        if pool and type(pool.EnumerateActive) == "function" then
+            for reward in pool:EnumerateActive() do
+                if type(reward) == "table" then
+                    local name = nil
+                    if type(reward.Name) == "table" and type(reward.Name.GetText) == "function" then
+                        local okName, text = pcall(reward.Name.GetText, reward.Name)
+                        name = (okName and type(text) == "string" and text ~= "") and text or nil
+                    end
+
+                    local icon = nil
+                    if type(reward.Icon) == "table" and type(reward.Icon.GetTexture) == "function" then
+                        local okIcon, tex = pcall(reward.Icon.GetTexture, reward.Icon)
+                        icon = okIcon and tex or nil
+                    end
+
+                    local quantity = nil
+                    if type(reward.Count) == "table" and type(reward.Count.GetText) == "function" then
+                        local okCount, text = pcall(reward.Count.GetText, reward.Count)
+                        quantity = (okCount and type(text) == "string" and text ~= "") and text or nil
+                    end
+
+                    local rewardType = type(reward.rewardType) == "string" and reward.rewardType or nil
+
+                    if name or icon then
+                        rewards[#rewards + 1] = {
+                            name = name, icon = icon, quantity = quantity, rewardType = rewardType,
+                        }
+                    end
+                end
+            end
+        end
+
+        dialog:Hide()
+        dialog:SetAlpha(prevAlpha)
+    end)
+
+    if not ok then
+        pcall(function()
+            dialog:Hide()
+            dialog:SetAlpha(prevAlpha)
+        end)
+        return {}
+    end
+
+    return rewards
 end
 
 Preydator:RegisterModule("HuntTableAdapter", HuntTableAdapter)

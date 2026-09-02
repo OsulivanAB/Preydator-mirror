@@ -6,7 +6,11 @@
 -- Reads: QuestApiAdapter, MapContextAdapter, WidgetAdapter, Settings,
 -- Modules/HuntScanner/HuntScannerRuntime (expected-zone cache, read-only, via
 -- its public API -- not yet built, looked up defensively).
--- Writes: Core/State.lua, via setters only.
+-- Writes: Core/State.lua, via setters only. Also triggers
+-- SoundsRuntime.PlayStageSound and WidgetAdapter.SuppressDefaultPreyIcon on
+-- every refresh (both self-guarded/idempotent, safe to call every tick) --
+-- not State writes, but the two side effects this file causes outside its
+-- own State ownership.
 
 local Preydator = _G.Preydator
 
@@ -22,6 +26,10 @@ local STAGE_PERCENT_BY_SEGMENT_MODE = {
 local WIDGET_PERCENT_FIELDS = {
     "progressPercentage", "progressPercent", "fillPercentage", "percentage", "percent", "progress",
 }
+
+-- The final stage ("prey found") -- matches STAGE_PERCENT_BY_SEGMENT_MODE's
+-- last entry (both tables map stage 4 to 100%).
+local FOUND_STAGE = 4
 
 local function getModules()
     return
@@ -83,6 +91,34 @@ local function resolveStageFallbackPercent(stage, settings)
     return table_[stage]
 end
 
+-- Applies general.disable_default_prey_icon while a hunt is actively being
+-- tracked -- found live (2026-08-28) that WidgetAdapter.SuppressDefaultPreyIcon
+-- was fully built but never actually called from anywhere, same gap as
+-- SoundsRuntime.PlayStageSound.
+--
+-- Deliberately ONLY ever called while a hunt is active (from the end of a
+-- successful refresh below) -- an earlier version of this function also
+-- called an explicit un-suppress (desiredSuppress=false) from the "no active
+-- quest"/restricted-instance early-return branches, intending to "restore"
+-- the icon once tracking stopped. That was itself the bug: un-suppressing
+-- calls WidgetAdapter's applyFrameSuppression(frame, false), which explicitly
+-- calls frame:Show() if the frame was shown at the moment suppression was
+-- captured -- forcing Blizzard's default prey icon to visibly reappear,
+-- showing its last (now-stale, "partially completed") progress, right as a
+-- hunt turned in. Blizzard's own icon is never shown at all without an
+-- active/in-zone hunt (product owner's own domain knowledge, 2026-08-28) --
+-- so there is nothing to "restore" once a hunt ends; simply not touching
+-- suppression state at all is correct, and leaves the live in-hunt case
+-- (the setting toggled off mid-hunt) as the only place un-suppression
+-- legitimately happens, which the every-refresh-tick call below still covers.
+local function applyIconSuppression(widgetAdapter, settings)
+    if not widgetAdapter or type(widgetAdapter.SuppressDefaultPreyIcon) ~= "function" then
+        return
+    end
+    local desiredSuppress = settings and settings.Get("general.disable_default_prey_icon") == true
+    widgetAdapter.SuppressDefaultPreyIcon(desiredSuppress == true)
+end
+
 function PreyContextRuntime.RefreshPreyContext()
     local questApi, mapContext, widgetAdapter, state, settings, huntScanner = getModules()
     if not (questApi and mapContext and state) then
@@ -118,21 +154,29 @@ function PreyContextRuntime.RefreshPreyContext()
         state.SetExpectedZoneMapID(expectedZone)
     end
 
-    -- Section 8, steps 1-3: cheap map-ID pre-filter before the authoritative
-    -- quest-log check. The pre-filter only ever short-circuits to false or
-    -- defers -- it never itself asserts "in zone".
-    local expectedZone = state.GetSnapshot().expectedZoneMapID
-    local playerMapID = mapContext.GetPlayerMapID()
-
-    if expectedZone and playerMapID and expectedZone ~= playerMapID then
-        state.SetInPreyZone(false)
-    else
-        local isOnMap = questApi.GetQuestIsOnMap(activeQuestID)
-        if isOnMap ~= nil then
-            state.SetInPreyZone(isOnMap)
-        end
-        -- isOnMap == nil (unknown) leaves inPreyZone untouched; never guessed.
+    -- Section 8's original design used a cheap map-ID pre-filter
+    -- (expectedZoneMapID vs playerMapID) to short-circuit to "not in zone"
+    -- before ever calling the authoritative quest-log check. Removed
+    -- 2026-08-28 after three separate live false negatives from the
+    -- pre-filter's own heuristic (Decisions 29, 32, 35) -- each a different
+    -- zone-hierarchy shape (a continent map containing a specific leaf zone;
+    -- a specific sub-area nested inside a broader zone; and a third shape in
+    -- Zul'Aman that didn't fit either pattern) -- while GetQuestIsOnMap()
+    -- itself was correct in every one of them. It's two lightweight,
+    -- pcall-guarded quest-log lookups (GetLogIndexForQuestID + GetInfo, no
+    -- map/pathing work at all) -- not meaningfully more expensive than the
+    -- pre-filter's own up-to-10-hop parentMapID walk it replaces, so calling
+    -- it directly every refresh isn't a performance concern. Both
+    -- AlertsRuntime sound triggers (ambush, Mob Scanner) already made this
+    -- same switch (Decisions 34/35); this brings the bar in line with them
+    -- instead of leaving it on the older, repeatedly-patched heuristic.
+    -- expectedZoneMapID is still captured above (for Hunt Table zone display
+    -- and diagnostics) -- just no longer used to gate inPreyZone.
+    local isOnMap = questApi.GetQuestIsOnMap(activeQuestID)
+    if isOnMap ~= nil then
+        state.SetInPreyZone(isOnMap)
     end
+    -- isOnMap == nil (unknown) leaves inPreyZone untouched; never guessed.
 
     -- Stage/progress: prefer the live Blizzard widget snapshot; fall back to
     -- the single stage-based percent table (progress.fallback_mode = "stage")
@@ -142,13 +186,39 @@ function PreyContextRuntime.RefreshPreyContext()
     if stage == nil then
         stage = state.GetSnapshot().stage or 1
     end
+
+    -- The quest's own "Hunt your Prey" objective reaching finished=true is a
+    -- reliable, widget-independent signal for the final stage (product
+    -- owner's own domain knowledge, 2026-08-28: ambushes only occur through
+    -- stages 1-3; the objective flips to finished exactly at stage 4,
+    -- regardless of whether the widget system has reported anything).
+    -- Overrides whatever the widget/fallback path computed, never lowers a
+    -- stage that's already correctly at FOUND_STAGE.
+    local objectives = questApi.GetQuestObjectives(activeQuestID)
+    local firstObjective = type(objectives) == "table" and objectives[1]
+    if firstObjective and firstObjective.finished == true then
+        stage = FOUND_STAGE
+    end
+
     state.SetStage(stage)
+
+    -- SoundsRuntime.PlayStageSound was defined but never called anywhere in
+    -- the rewrite (found live, 2026-08-28) -- it already self-guards against
+    -- replaying the same/a lower stage for the current quest
+    -- (lastPlayedStage), so calling it every refresh tick is safe; it only
+    -- actually plays on a genuine stage advance.
+    local sounds = Preydator:GetModule("SoundsRuntime")
+    if sounds then
+        sounds.PlayStageSound(stage)
+    end
 
     local percent = resolveWidgetPercent(widgetSnapshot)
     if percent == nil then
         percent = resolveStageFallbackPercent(stage, settings)
     end
     state.SetProgressPercent(percent)
+
+    applyIconSuppression(widgetAdapter, settings)
 end
 
 function PreyContextRuntime.GetExpectedZoneForActiveQuest()

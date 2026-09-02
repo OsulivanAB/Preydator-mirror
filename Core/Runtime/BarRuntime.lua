@@ -1,7 +1,11 @@
 -- Preydator :: Core/Runtime/BarRuntime.lua
 -- Author: RagingAltoholic
 -- Responsibility: pure computation of a bar view-model. Does not touch a single
--- Blizzard frame or texture -- that's UI/BarFrame.lua's job entirely.
+-- Blizzard frame or texture -- that's UI/BarFrame.lua's job entirely. The
+-- view-model carries only game-state-derived values (visible, fillPercent,
+-- stage, prefixText, suffixText, tickPositions) -- pure presentation settings
+-- (orientation, colors, fonts, texture, percent_display, etc.) have no
+-- game-state dependency and are read directly by UI/BarFrame.lua instead.
 -- Reads: Core/State.lua, Settings.
 -- Writes: nothing (pure function of its inputs).
 
@@ -44,12 +48,11 @@ function BarRuntime.ComputeBarViewModel()
 
         return {
             visible = Settings.Get("general.only_show_in_prey_zone") ~= true,
-            labelText = prefix .. suffix,
+            prefixText = prefix,
+            suffixText = suffix,
             fillPercent = 0,
             stage = nil,
             tickPositions = tickPositions,
-            orientation = Settings.Get("bar.orientation") or "horizontal",
-            percentDisplay = Settings.Get("bar.percent_display") or "inside",
         }
     end
 
@@ -61,12 +64,11 @@ function BarRuntime.ComputeBarViewModel()
 
     return {
         visible = true,
-        labelText = prefix .. suffix,
+        prefixText = prefix,
+        suffixText = suffix,
         fillPercent = snapshot.progressPercent or 0,
         stage = stage,
         tickPositions = tickPositions,
-        orientation = Settings.Get("bar.orientation") or "horizontal",
-        percentDisplay = Settings.Get("bar.percent_display") or "inside",
     }
 end
 

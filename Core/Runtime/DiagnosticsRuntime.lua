@@ -1,10 +1,14 @@
 -- Preydator :: Core/Runtime/DiagnosticsRuntime.lua
 -- Author: RagingAltoholic
--- Responsibility: assembles the qinspect/pinspect/inspect reports by reading
--- State, Settings, and Adapters, and returning formatted text for a caller
--- (a future UI/ReportWindow.lua, or chat) to display.
+-- Responsibility: assembles the hinspect/qinspect/pinspect/inspect/sinspect
+-- reports by reading State, Settings, and Adapters, and returning formatted
+-- text for a caller (Core/SlashCommands.lua) to print/dispatch to BugSack.
 -- Reads: Core/State.lua, Settings, QuestApiAdapter, MapContextAdapter,
--- WidgetAdapter, DiagnosticsAdapter.
+-- WidgetAdapter, DiagnosticsAdapter, HuntTableAdapter, HuntScannerRuntime,
+-- BarRuntime (pure computation, read-only), SoundsRuntime (recent play
+-- history only, via its GetRecentPlays getter), EventRuntime (debug state
+-- only, via its GetHuntTrackingDebugState getter), and UI/BarFrame.lua's
+-- PreydatorBarFrame global for its live IsShown() state only (no writes).
 -- Writes: nothing.
 
 local Preydator = _G.Preydator
@@ -81,6 +85,18 @@ function DiagnosticsRuntime.BuildGeneralInspectReport()
 
     local widgetSnapshot = widgetAdapter and widgetAdapter.GetWidgetStage()
     add("- widgetSnapshot=" .. formatTablePairs(widgetSnapshot))
+
+    -- Bridges all 3 layers (State -> BarRuntime -> UI/BarFrame) in one line so
+    -- a "bar isn't showing" report can pinpoint which layer is wrong, rather
+    -- than the caller having to manually reason through settings + inPreyZone
+    -- themselves. BarRuntime.ComputeBarViewModel is a pure function of
+    -- State/Settings (no frame access, per its own header comment), so
+    -- calling it here for inspection is safe/side-effect-free.
+    local barRuntime = Preydator:GetModule("BarRuntime")
+    local viewModel = barRuntime and barRuntime.ComputeBarViewModel()
+    add("- BarRuntime viewModel=" .. formatTablePairs(viewModel))
+    local barFrame = _G.PreydatorBarFrame
+    add("- UI/BarFrame.lua frame IsShown=" .. safeValue(barFrame and barFrame.IsShown and barFrame:IsShown()))
 
     return table.concat(lines, "\n")
 end
@@ -160,6 +176,120 @@ function DiagnosticsRuntime.BuildQuestInspectReport(requestedQuestID)
         end
     else
         add("- objectives count=0")
+    end
+
+    return table.concat(lines, "\n")
+end
+
+-- New (2026-08-28), built for diagnosing "why hunts are/aren't appearing"
+-- live reports. Covers the whole Hunt Table detection/scan pipeline in one
+-- shot: is the table considered active, what does EventRuntime's private
+-- interaction-tracking state say (only reachable via its debug getter,
+-- otherwise invisible), and the actually-scanned hunt list with each hunt's
+-- resolved zone/reward summary.
+function DiagnosticsRuntime.BuildHuntInspectReport()
+    local adapter = Preydator:GetModule("HuntTableAdapter")
+    local huntScanner = Preydator:GetModule("HuntScannerRuntime")
+    local eventRuntime = Preydator:GetModule("EventRuntime")
+    local settings = Preydator:GetModule("Settings")
+
+    local lines = {}
+    local function add(line) lines[#lines + 1] = tostring(line or "") end
+
+    add("Preydator Hunt Inspect | addon=" .. getAddonVersion())
+
+    local isActive = adapter and type(adapter.IsHuntTableActive) == "function" and adapter.IsHuntTableActive()
+    add("- IsHuntTableActive=" .. safeValue(isActive))
+
+    local trackingState = eventRuntime and type(eventRuntime.GetHuntTrackingDebugState) == "function"
+        and eventRuntime.GetHuntTrackingDebugState()
+    add("- EventRuntime tracking=" .. formatTablePairs(trackingState))
+
+    add("- settings hunt.enabled=" .. safeValue(settings and settings.Get("hunt.enabled"))
+        .. " | general.hunt_enabled=" .. safeValue(settings and settings.Get("general.hunt_enabled"))
+        .. " | hunt.preview_enabled=" .. safeValue(settings and settings.Get("hunt.preview_enabled")))
+    add("- settings hunt.achievement_signals_enabled="
+        .. safeValue(settings and settings.Get("hunt.achievement_signals_enabled"))
+        .. " | hunt.achievement_signal_style=" .. safeValue(settings and settings.Get("hunt.achievement_signal_style")))
+
+    local offeredHunts = adapter and type(adapter.GetOfferedHunts) == "function" and adapter.GetOfferedHunts() or {}
+    add("- raw offered pins (HuntTableAdapter)=" .. tostring(#offeredHunts))
+
+    local huntList = huntScanner and type(huntScanner.GetHuntList) == "function" and huntScanner.GetHuntList() or {}
+    add("- scanned hunt list (HuntScannerRuntime)=" .. tostring(#huntList))
+
+    for i, hunt in ipairs(huntList) do
+        -- Routed through HuntScannerRuntime.ResolveZoneDisplayName (not a
+        -- direct MapContextAdapter.GetMapInfo call) so this diagnostic shows
+        -- the same name the panel/sorting actually use, overrides included.
+        local zoneName = huntScanner and type(huntScanner.ResolveZoneDisplayName) == "function"
+            and huntScanner.ResolveZoneDisplayName(hunt.zoneMapID)
+        local rewardCount = type(hunt.rewardEntries) == "table" and #hunt.rewardEntries or 0
+        local achievementNeeds = type(hunt.achievementNeeds) == "table" and hunt.achievementNeeds or {}
+        add("  - [" .. i .. "] questID=" .. safeValue(hunt.questID)
+            .. " | difficulty=" .. safeValue(hunt.difficulty)
+            .. " | zoneMapID=" .. safeValue(hunt.zoneMapID) .. " (" .. safeValue(zoneName) .. ")"
+            .. " | rewards=" .. tostring(rewardCount)
+            .. " | hasBonusItemReward=" .. safeValue(hunt.hasBonusItemReward)
+            .. " | achievementNeeds=" .. tostring(#achievementNeeds))
+        for _, need in ipairs(achievementNeeds) do
+            add("      * achievementID=" .. safeValue(need.achievementID) .. " | " .. safeValue(need.name))
+        end
+    end
+
+    return table.concat(lines, "\n")
+end
+
+-- New (2026-08-28), built after live debugging needed to know not just
+-- whether a sound played but which trigger it was and, when it didn't,
+-- why not. Shows the most recent play attempts oldest-first (SoundsRuntime
+-- keeps the last 12).
+function DiagnosticsRuntime.BuildSoundInspectReport()
+    local sounds = Preydator:GetModule("SoundsRuntime")
+    local settings = Preydator:GetModule("Settings")
+
+    local lines = {}
+    local function add(line) lines[#lines + 1] = tostring(line or "") end
+
+    add("Preydator Sound Inspect | addon=" .. getAddonVersion())
+    add("- settings sounds_enabled=" .. safeValue(settings and settings.Get("general.sounds_enabled"))
+        .. " | channel=" .. safeValue(settings and settings.Get("sound.channel"))
+        .. " | alert_cooldown_seconds=" .. safeValue(settings and settings.Get("sound.alert_cooldown_seconds")))
+
+    local recentPlays = sounds and type(sounds.GetRecentPlays) == "function" and sounds.GetRecentPlays() or {}
+    add("- recent play attempts=" .. tostring(#recentPlays) .. " (oldest first)")
+    for i, entry in ipairs(recentPlays) do
+        add("  - [" .. i .. "] time=" .. string.format("%.3f", entry.time or 0)
+            .. " | trigger=" .. safeValue(entry.key)
+            .. " | outcome=" .. safeValue(entry.outcome)
+            .. " | detail=" .. safeValue(entry.detail)
+            .. " | path=" .. safeValue(entry.path))
+    end
+
+    return table.concat(lines, "\n")
+end
+
+-- New (2026-08-28), built after a real ambush miss produced zero /pd
+-- sinspect entries -- sinspect only ever sees actual sound-play attempts,
+-- so it's silent for a nameplate that never reached a match at all. This
+-- shows the raw nameplate trace instead (AlertsRuntime.GetNameplateTrace,
+-- gated on debug.pack_ambush_verbose -- opt-in recording, off by default).
+function DiagnosticsRuntime.BuildNameplateTraceReport()
+    local alerts = Preydator:GetModule("AlertsRuntime")
+    local settings = Preydator:GetModule("Settings")
+
+    local lines = {}
+    local function add(line) lines[#lines + 1] = tostring(line or "") end
+
+    add("Preydator Nameplate Trace | addon=" .. getAddonVersion())
+    add("- debug.pack_ambush_verbose=" .. safeValue(settings and settings.Get("debug.pack_ambush_verbose")))
+
+    local trace = alerts and type(alerts.GetNameplateTrace) == "function" and alerts.GetNameplateTrace() or {}
+    add("- recent nameplates seen during active hunts=" .. tostring(#trace) .. " (oldest first)")
+    for i, entry in ipairs(trace) do
+        add("  - [" .. i .. "] time=" .. string.format("%.3f", entry.time or 0)
+            .. " | name=" .. safeValue(entry.name)
+            .. " | " .. safeValue(entry.note))
     end
 
     return table.concat(lines, "\n")

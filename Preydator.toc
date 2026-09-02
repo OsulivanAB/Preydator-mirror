@@ -41,6 +41,7 @@ Core\Adapters\SoundAdapter.lua
 Core\Adapters\SettingsStore.lua
 Core\Adapters\LocalizationAdapter.lua
 Core\Adapters\DiagnosticsAdapter.lua
+Core\Adapters\AchievementAdapter.lua
 
 Core\Runtime\SettingsRuntime.lua
 Core\Runtime\PreyContextRuntime.lua

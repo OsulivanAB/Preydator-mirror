@@ -19,7 +19,7 @@ local SCHEMA_VERSION = 1
 local LOCALIZED_STRING_DEFAULTS = {
     { path = { "text", "out_of_zone_suffix" }, key = "No Sign in These Fields" },
     { path = { "text", "ambush_prefix" }, key = "AMBUSH: " },
-    { path = { "text", "bloody_command_prefix" }, key = "Bloody Command: " },
+    { path = { "text", "pack_ambush_prefix" }, key = "Pack Ambush: " },
 }
 
 local LOCALIZED_STAGE_SUFFIX_KEYS = {
@@ -71,6 +71,11 @@ local function buildRawDefaults()
             lock_bar = false,
             only_show_in_prey_zone = false,
             disable_default_prey_icon = false,
+            -- UI/Launcher.lua's minimap button. Angle in degrees (0-360,
+            -- clamped by SettingsRuntime), matches the old codebase's
+            -- LibDBIcon-compatible convention.
+            minimap_hidden = false,
+            minimap_angle = 225,
             schema_version = SCHEMA_VERSION,
         },
         bar = {
@@ -97,6 +102,13 @@ local function buildRawDefaults()
             vertical_fill_direction = "up",
             vertical_text_side = "right",
             show_in_edit_mode = true,
+            -- Always a CENTER-to-UIParent-CENTER offset; there is no separate
+            -- anchor/relativePoint field because nothing ever varies it (the
+            -- old schema's point.anchor/relativePoint were hardcoded to
+            -- "CENTER" at both save and load time despite looking general-
+            -- purpose -- see architecture doc Decisions Log).
+            position_x = 0,
+            position_y = 200,
         },
         text = {
             title_font_key = "frizqt",
@@ -108,8 +120,8 @@ local function buildRawDefaults()
             out_of_zone_suffix = "", -- filled in by applyLocalizedDefaults
             ambush_prefix = "", -- filled in by applyLocalizedDefaults
             ambush_suffix_template = "{preyTargetName}",
-            bloody_command_prefix = "", -- filled in by applyLocalizedDefaults
-            bloody_command_suffix_template = "{bloodyCommandSourceName}",
+            pack_ambush_prefix = "", -- filled in by applyLocalizedDefaults
+            pack_ambush_suffix_template = "{packAmbushSourceName}",
             stage_label_mode = "center",
             label_row_position = "above",
         },
@@ -129,21 +141,38 @@ local function buildRawDefaults()
             ambush_enabled = true,
             ambush_path = SOUND_FOLDER_PREFIX .. "well-we-ve-prepared-a-trap-for-this-predator.ogg",
             -- Bloody Command (Astalor Bloodsworn) and Echo of Predation were Season 1
-            -- mechanics; patch 12.1 discontinued them. Left dormant rather than removed
-            -- (2026-08-25 decision, see architecture doc Section 19) -- default off so a
-            -- future settings UI doesn't present a toggle for something that can't fire.
-            bloody_command_enabled = false,
-            bloody_command_path = SOUND_FOLDER_PREFIX .. "predator-kills-its-prey-to-survive.ogg",
-            echo_of_predation_path = SOUND_FOLDER_PREFIX .. "echo-of-predation.ogg",
+            -- mechanics; patch 12.1 discontinued their original trigger conditions. Season 2
+            -- replaced both with live successors -- "Pack Ambush" (mobs: Pack Scout, Pack
+            -- Hunter) and "Exploding Corpse Snakes" (mob: Venom-Bloated Python), confirmed by
+            -- the product owner 2026-08-28 -- detected by AlertsRuntime's nameplate-based Mob
+            -- Scanner, not chat text. These are live, player-relevant mechanics now, not
+            -- dormant Season-1 leftovers, so both default enabled (see architecture doc
+            -- Decisions Log item 34 for the full rename/redesign reasoning).
+            pack_ambush_enabled = true,
+            pack_ambush_path = SOUND_FOLDER_PREFIX .. "predator-kills-its-prey-to-survive.ogg",
+            exploding_corpse_snakes_enabled = true,
+            exploding_corpse_snakes_path = SOUND_FOLDER_PREFIX .. "echo-of-predation.ogg",
             custom_file_names = deepCopy(PROTECTED_SOUND_FILENAMES),
-            alert_cooldown_seconds = 30,
+            -- Was 30; changed to 60 (2026-08-28, product owner's own live
+            -- testing: some hunts die fast enough that a shorter cooldown let
+            -- the ambush sound replay awkwardly close together). Also newly
+            -- exposed as a slider in Settings (Sound & Alerts) the same
+            -- session -- it was already user-configurable in code
+            -- (SettingsRuntime validates 0-300) but had no UI control.
+            alert_cooldown_seconds = 60,
         },
         hunt = {
             enabled = true,
+            preview_enabled = false,
             panel_side = "right",
             group_by = "difficulty",
             sort_by = "zone",
             sort_direction = "asc",
+            -- [groupKey] = true, keyed "<group_by>:<value>" (e.g.
+            -- "difficulty:nightmare") -- persists which group headers are
+            -- collapsed, same convention as the old codebase's
+            -- huntScannerCollapsedGroups.
+            collapsed_groups = {},
             reward_display_style = "icon_inline",
             width = 336,
             height = 460,
@@ -163,7 +192,7 @@ local function buildRawDefaults()
         debug = {
             -- debug.logging_enabled aliases general.debug_logging_enabled
             -- (Section 5.8) and is resolved in Core/Settings.lua.
-            bloody_command_verbose = false,
+            pack_ambush_verbose = false,
         },
     }
 end
