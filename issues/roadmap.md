@@ -5,7 +5,9 @@
 - Epic 1: Approved Currency Ledger (MVP) - Completed
 - Epic 2: Hunt Source Scanner - Planned
 - Epic 3: Weekly Hunt Cap Tracker - In progress
-- Epic 4: Prey Achievement Gap Highlighter - Planned
+- Epic 4: Prey Achievement Gap Highlighter - Completed (built and live-confirmed 2026-09-01
+  through 2026-09-03 on the `rewrite/v2-architecture` branch; see `issues/session_status.md`
+  Sections 5b-5d and `issues/rewrite_architecture.md` Decisions Log items 44-59 for full detail)
 - Epic 5: Reward Intelligence and Cost Context - In progress
 - Epic 6: Localization for other Languages - Completed (infrastructure + 10 stubs; seeking community translators)
 

@@ -19,6 +19,7 @@
 local Preydator = _G.Preydator
 local CreateFrame = _G.CreateFrame
 local Settings = _G.Settings
+local hooksecurefunc = _G.hooksecurefunc
 
 local SettingsPanel = {}
 
@@ -297,13 +298,120 @@ local function registerDropdown(subcategory, key, name, tooltip, options, defaul
     Settings.CreateDropdown(subcategory, setting, getOptions, tooltip)
 end
 
+-- Frame -> {settings, key}, so refreshSliderValueLabels can update every
+-- currently-instantiated slider row's value text in one pass. Blizzard's
+-- virtualized settings list creates/reuses a small pool of row frames as
+-- you scroll, not one per setting, so this only ever holds a handful of
+-- live entries at once, not one per slider ever registered.
+local sliderValueLabelFrames = {}
+
+-- Native Settings sliders (Width, Height, Scale, Font Size, etc.) only show
+-- two fixed endpoint labels (min/max) -- there's no built-in current-value
+-- readout (confirmed 2026-09-03, product owner asked for one). Rather than
+-- hooking Blizzard's internal slider widget directly to catch drag events
+-- (would require guessing its exact child-frame name, unconfirmed against
+-- this client build), this reads through Settings.Subscribe -- the same
+-- pub/sub every other file in this addon already reacts to -- so the label
+-- refreshes on ANY settings change, drag-driven or otherwise (e.g. Reset
+-- All Settings, or a value changed via /pd).
+-- Whole-number steps (Width, Height, Font Size) format as plain integers;
+-- fractional steps (Scale's 0.05) format to exactly 2 decimal places --
+-- otherwise float drift from repeated 0.05 addition (e.g. landing on
+-- 0.9000000000001) could show up raw via tostring (product owner,
+-- 2026-09-03: scale sliders specifically should only ever show 2 decimals).
+local function formatSliderValue(value, decimals)
+    if value == nil then
+        return ""
+    end
+    return string.format("%." .. decimals .. "f", value)
+end
+
+local function refreshSliderValueLabels()
+    for frame, info in pairs(sliderValueLabelFrames) do
+        if frame.PreydatorValueText then
+            local value = info.settings.Get(info.key)
+            frame.PreydatorValueText:SetText(formatSliderValue(value, info.decimals))
+        end
+    end
+end
+
+local sliderLabelsSubscribed = false
+
+-- Finds the actual Slider-type widget nested inside a Settings row frame,
+-- by object type rather than a guessed field name -- frame.Slider (tried
+-- 2026-09-03) turned out wrong: the label still landed at the row's own far
+-- right edge, meaning that field didn't exist on this client build. Every
+-- Blizzard slider control (whatever its wrapper template is named) must
+-- contain a real CreateFrame("Slider", ...) descendant for dragging to work
+-- at all, so searching for GetObjectType() == "Slider" finds it regardless
+-- of template/field-naming differences across client versions.
+local function findSliderDescendant(region, depth)
+    if not (region and region.GetObjectType) then
+        return nil
+    end
+    if region:GetObjectType() == "Slider" then
+        return region
+    end
+    if (depth or 0) >= 4 or type(region.GetChildren) ~= "function" then
+        return nil
+    end
+    for _, child in ipairs({ region:GetChildren() }) do
+        local found = findSliderDescendant(child, (depth or 0) + 1)
+        if found then
+            return found
+        end
+    end
+    return nil
+end
+
 local function registerSlider(subcategory, key, name, tooltip, minValue, maxValue, step, default)
     local settings = getSettings()
     local setting = Settings.RegisterProxySetting(subcategory, key, Settings.VarType.Number, name, default,
         function() return settings.Get(key) end,
         function(value) settings.Set(key, value) end)
     local options = Settings.CreateSliderOptions(minValue, maxValue, step)
-    Settings.CreateSlider(subcategory, setting, options, tooltip)
+    local initializer = Settings.CreateSlider(subcategory, setting, options, tooltip)
+    local decimals = (step % 1 == 0) and 0 or 2
+
+    if initializer and settings and type(hooksecurefunc) == "function" then
+        if not sliderLabelsSubscribed and type(settings.Subscribe) == "function" then
+            sliderLabelsSubscribed = true
+            settings.Subscribe(refreshSliderValueLabels)
+        end
+
+        -- InitFrame is called every time the virtualized list creates OR
+        -- reuses a frame for this row -- pcall-wrapped because the hook
+        -- registration itself (not just the handler) would throw immediately
+        -- if "InitFrame" turns out not to be this client build's real method
+        -- name; failing silently here just means no value label appears,
+        -- never a broken Settings panel. Confirmed live (2026-09-03): the
+        -- text itself was correct, but a guessed frame.Slider field wasn't
+        -- right (label still landed at the row's own far right edge) --
+        -- findSliderDescendant searches by actual widget type instead, so
+        -- this doesn't depend on guessing a field name a second time.
+        pcall(hooksecurefunc, initializer, "InitFrame", function(_, frame)
+            pcall(function()
+                if not frame.PreydatorValueText then
+                    frame.PreydatorValueText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    local sliderWidget = findSliderDescendant(frame)
+                    if sliderWidget then
+                        -- 8px landed the text overlapping the increment
+                        -- stepper arrow (confirmed live, 2026-09-03) -- the
+                        -- found Slider is just the draggable track, not the
+                        -- wrapping control with both arrow buttons, so the
+                        -- gap needs to clear the right-hand arrow's own
+                        -- width too, not just sit flush against the track.
+                        frame.PreydatorValueText:SetPoint("LEFT", sliderWidget, "RIGHT", 28, 0)
+                    else
+                        frame.PreydatorValueText:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
+                    end
+                end
+                sliderValueLabelFrames[frame] = { settings = settings, key = key, decimals = decimals }
+                local value = settings.Get(key)
+                frame.PreydatorValueText:SetText(formatSliderValue(value, decimals))
+            end)
+        end)
+    end
 end
 
 -- Sound-path dropdowns are native too, but need array-index awareness
@@ -467,8 +575,6 @@ local function buildBarDisplayCategory(category)
 
     registerCheckbox(subcategory, "bar.show_ticks", L("Show Tick Marks"),
         L("Show stage boundary tick marks on the bar."), true)
-    registerCheckbox(subcategory, "bar.border_color_linked", L("Link Border Color to Fill Color"),
-        L("Border color automatically mirrors the fill color."), true)
     registerCheckbox(subcategory, "bar.show_in_edit_mode", L("Show During Edit Mode"),
         L("Force the bar visible with placeholder text while Blizzard Edit Mode is open."), true)
 
@@ -487,7 +593,26 @@ local function buildBarColorsCategory(category)
         return function(value) settings.Set(key, value) end
     end
 
-    local previous = createColorSwatchRow(canvas, nil, L("Fill Color"),
+    local function refreshColorSwatches()
+        for _, refresh in ipairs(canvas.colorSwatchRefreshers or {}) do
+            refresh()
+        end
+    end
+
+    -- Moved here from the separate "Bar Display" native category (2026-09-03,
+    -- product owner) -- it only ever affects the Border Color swatch directly
+    -- below, so it belongs with the colors, not off in another category.
+    -- Triggers an immediate refresh on toggle (now that it's co-located,
+    -- not just on the canvas's own OnShow) so the Border Color swatch's
+    -- enabled/disabled look updates the instant you click the checkbox.
+    local previous = createCheckboxRow(canvas, nil, L("Link Border Color to Fill Color"),
+        function() return settings.Get("bar.border_color_linked") == true end,
+        function(value)
+            settings.Set("bar.border_color_linked", value)
+            refreshColorSwatches()
+        end)
+
+    previous = createColorSwatchRow(canvas, previous, L("Fill Color"),
         colorGetter("bar.fill_color"), colorSetter("bar.fill_color"), true)
     previous = createColorSwatchRow(canvas, previous, L("Border Color"),
         colorGetter("bar.border_color"), colorSetter("bar.border_color"), true,
@@ -501,15 +626,10 @@ local function buildBarColorsCategory(category)
     createColorSwatchRow(canvas, previous, L("Background Color"),
         colorGetter("bar.bg_color"), colorSetter("bar.bg_color"), true)
 
-    -- The Border Color swatch's enabled state depends on bar.border_color_linked,
-    -- which lives in the separate "Bar Display" native category -- re-check
-    -- whenever this canvas becomes visible rather than wiring a cross-category
-    -- live subscription for one cosmetic detail.
-    canvas:SetScript("OnShow", function()
-        for _, refresh in ipairs(canvas.colorSwatchRefreshers or {}) do
-            refresh()
-        end
-    end)
+    -- Kept as a safety-net refresh (e.g. if the value ever changes via /pd
+    -- or another path outside this checkbox) on top of the immediate
+    -- refresh above.
+    canvas:SetScript("OnShow", refreshColorSwatches)
 
     return subcategory
 end
@@ -679,8 +799,18 @@ local function buildHuntScannerCategory(category)
         L("Show a badge on each hunt row for still-needed Prey achievements, with a hover "
             .. "tooltip listing which ones."), true)
 
-    registerSlider(subcategory, "hunt.width", L("Panel Width"), L("Hunt Table panel width."), 200, 600, 1, 336)
-    registerSlider(subcategory, "hunt.height", L("Panel Height"), L("Hunt Table panel height."), 200, 800, 1, 460)
+    -- Width floor raised 200->330 (2026-09-03, product owner confirmed live
+    -- overlap, then tuned the floor twice after eyeballing it in-game: an
+    -- initial 420 from theoretical worst-case math, down to 270, settled at
+    -- 330). Default kept at the addon's original 336 (comfortably above this
+    -- floor). See HuntTablePanel.lua's Render() for the matching
+    -- render-time floor that also protects anyone with an already-saved
+    -- smaller value.
+    registerSlider(subcategory, "hunt.width", L("Panel Width"), L("Hunt Table panel width."), 330, 600, 1, 336)
+    -- Height floor raised 200->250 so at least ~3 real hunt rows plus the
+    -- header/group controls stay visible -- not an overlap risk like width,
+    -- just a usability floor against an unreadably short panel.
+    registerSlider(subcategory, "hunt.height", L("Panel Height"), L("Hunt Table panel height."), 250, 800, 1, 460)
     registerSlider(subcategory, "hunt.scale", L("Panel Scale"), L("Hunt Table panel scale."), 0.5, 2, 0.05, 1.0)
     registerSlider(subcategory, "hunt.font_size", L("Font Size"), L("Hunt Table panel font size."), 8, 24, 1, 12)
 

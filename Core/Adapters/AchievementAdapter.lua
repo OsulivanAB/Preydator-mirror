@@ -53,25 +53,6 @@ function AchievementAdapter.IsCriteriaComplete(achievementID, criteriaID)
     return ok == true and completed == true
 end
 
--- This criterion's own label (e.g. the specific target's name), via its
--- stable numeric ID (the ...ByID lookup, not a positional index --
--- PreyQuestData's stored criteriaIDs are meant for this call specifically).
--- Returns nil once the criterion is already complete, so callers fall back
--- to the achievement's own name instead -- matches the old codebase's
--- tooltip behavior (only surface the specific-target label while it's still
--- the reason the achievement isn't done). Return order is (criteriaString,
--- criteriaType, completed, quantity, reqQuantity, ...).
-function AchievementAdapter.GetCriteriaLabelIfIncomplete(achievementID, criteriaID)
-    if type(GetAchievementCriteriaInfoByID) ~= "function" then
-        return nil
-    end
-    local ok, criteriaString, _, completed = pcall(GetAchievementCriteriaInfoByID, achievementID, criteriaID)
-    if not ok or completed == true then
-        return nil
-    end
-    return (type(criteriaString) == "string" and criteriaString ~= "") and criteriaString or nil
-end
-
 -- Every criterion of an achievement as { {criteriaID, label}, ... } -- the
 -- raw material HuntScannerRuntime's name-matching fallback needs to resolve
 -- a criteriaID for a questID that isn't in PreyQuestData's static table

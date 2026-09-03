@@ -54,6 +54,8 @@ shipped yet — this branch has not been merged to `main` or released.
 - Achievement badges now also cover hunts not yet in the addon's internal quest-data table
   (new content): if the specific target isn't already known, its own quest title is matched
   against the achievement's own criteria list instead of showing nothing.
+- Every slider in Settings now shows its current value next to the slider bar, not just the
+  min/max endpoints at either end.
 
 ### Fixed
 - Fixed an `ADDON_ACTION_FORBIDDEN`/`SpellStopCasting` taint error on the very next Escape
@@ -182,6 +184,17 @@ shipped yet — this branch has not been merged to `main` or released.
   instead of getting stuck.
 - Fixed Nightmare hunts (which have 5 distinct rewards) dropping the chest/bag reward,
   since it always sorts last and the reward row was capped at 4 icons. Raised to 6.
+- Fixed the achievement badge tooltip showing the name of the target you need to kill
+  instead of the achievement's own name (e.g. now correctly reads "Prey: Mad Magisters
+  (Hard)" instead of the boss's name).
+- Fixed several new-content Nightmare hunts never showing an achievement badge at all, even
+  when a real trackable achievement existed for them — they belong to two achievements
+  ("Fangs for the Memories," "Scales for Days") outside the addon's normal Mode I/II/III
+  tracking, now recognized correctly.
+- Fixed reward icons and the achievement badge overlapping the Accept button when the Hunt
+  Table panel was set to a narrow width. The panel now enforces a safe minimum width.
+- Fixed the Hunt Table panel's Settings preview not showing group headers the way the real
+  panel does — it now groups and sorts identically to the live panel.
 
 ### Changed
 - Raised the default ambush alert cooldown from 30 to 60 seconds, and exposed it as a
@@ -191,6 +204,8 @@ shipped yet — this branch has not been merged to `main` or released.
   Advanced) — they're active mechanics now, not dead Season 1 content, and each now has its
   own dedicated sound toggle/path instead of the old dormant Bloody Command slot and
   Echo of Predation's unconfigurable one.
+- Moved "Link Border Color to Fill Color" from Bar Display to Bar Colors, directly above
+  the color swatches it affects, instead of a separate category.
 
 
 ## 3.0.5 - 2026-08-20

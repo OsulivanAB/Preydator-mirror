@@ -32,16 +32,40 @@ in `issues/rewrite_architecture.md` have the complete design reasoning for every
 the product owner as not a viable look, same session.
 
 **Still open, Hunt-Panel-specific:**
-1. Achievement-earned live-update path (`ACHIEVEMENT_EARNED` cache wipe) — blocked on the
-   product owner's second test account reaching a completable achievement, not on code.
-2. Possible reward-row/Accept-button visual overlap at default panel width now that up to
-   6 reward icons can render — flagged from pixel math, not yet confirmed live.
-3. `PreyQuestData` still lacks entries for 4 new Nightmare questIDs (95021-95024) — the
-   name-matching fallback covers them functionally, so this is optional data cleanup now,
-   not a gap.
+1. ~~Achievement-earned live-update path~~ -- **RESOLVED 2026-09-03**, see Section 5d.
+2. ~~Reward-row/Accept-button visual overlap~~ -- **RESOLVED 2026-09-03**: confirmed live
+   (both the achievement badge and Accept button), fixed via a width floor (`hunt.width`
+   slider min + a matching render-time clamp in `HuntTablePanel.lua`, tuned live to 330 after
+   two rounds of adjustment). See Decisions Log item 60.
+3. ~~`PreyQuestData` gap for 95021-95024~~ -- **RESOLVED 2026-09-03**, see Section 5d (these
+   turned out to belong to a separate achievement family, not the Mode series -- sourced
+   from the Plumber addon's own shipped data).
 4. `koKR`/`zhCN` difficulty-detection locale fix is partial — those two locales lack a
    plain "Normal"/"Hard"/"Nightmare" translation key (only compound keys like "Normal
-   Difficulty" exist today); needs a native speaker, not a guessed translation.
+   Difficulty" exist today); needs a native speaker, not a guessed translation. **Still open.**
+
+## 5e. Hunt Table Settings polish (2026-09-03) -- three more Full-scope items closed
+
+Full detail in `issues/rewrite_architecture.md` Decisions Log item 60. Short version:
+
+- **Slider value-number display, addon-wide** (long-standing Full-scope backlog item):
+  every slider built via `registerSlider` now shows its live current value beside the bar,
+  not just the fixed min/max endpoints Blizzard's native API provides on its own. Two rounds
+  of live correction: a first guess at the internal widget's field name (`frame.Slider`) was
+  wrong, replaced with `findSliderDescendant` (searches by actual widget type instead of a
+  guessed name); the first placement also overlapped the increment stepper arrow, padding
+  widened 8px -> 28px to clear it. Scale-type sliders (0.05 step) format to exactly 2
+  decimals; whole-step sliders (Width, Height, Font Size) format as plain integers.
+  **Confirmed live and working** by the product owner.
+- **Hunt Panel Settings preview now groups/sorts** like the real panel (previously
+  deliberately flat, Decisions Log item 48) -- `HuntScannerRuntime.GetGroupedDisplayList`
+  gained an optional list-override parameter so the preview's placeholder rows or real
+  cached data can run through the same grouping/sorting logic instead of duplicating it.
+- **"Link Border Color to Fill Color"** moved from the separate "Bar Display" native
+  category into "Bar Colors" itself, positioned above the color swatches it actually
+  affects -- also gained an immediate refresh on toggle instead of only updating next time
+  the tab is shown. **Confirmed live** (product owner: "the fill color does appear
+  correctly").
 
 **luacheck: 0 warnings / 0 errors across the whole active `.toc` load list** as of the end
 of this session (397 pre-existing warnings remain, all confined to old off-`.toc` monolith
@@ -1073,6 +1097,68 @@ today's corrections.** With `text_only` removed and the display-style/ordering b
 the Hunt Panel has no known open items left except the achievement-earned live-update path
 (Section 5b/5c) -- blocked on the product owner's character reaching that stage, not on
 anything code-side -- plus confirming today's two corrections actually look right in-game.
+
+## 5d. Achievement system fully closed out (2026-09-03) -- the account-level blocker
+mentioned throughout Section 5b/5c is gone; every open item is now resolved and live-confirmed
+
+The product owner's account reached a completable achievement, unblocking real end-to-end
+testing. Two real bugs found and fixed, one architectural gap discovered and closed, full
+detail in `issues/rewrite_architecture.md` Decisions Log items 58-59:
+
+- **Tooltip bug fixed:** the achievement badge tooltip was showing the kill-target's name
+  (e.g. "Magister Sunbreaker") instead of the achievement's own name (e.g. "Prey: Mad
+  Magisters (Hard)") -- `HuntScannerRuntime.lua` was preferring the criterion's own label
+  over `AchievementAdapter.GetAchievementName`. Fixed; the now-unused adapter function was
+  removed.
+- **New achievement family discovered and wired in:** live-testing surfaced 4 questIDs
+  (95021-95024, a new side questline behind intro quest 96004) that don't belong to the
+  Mode I/II/III series at all -- they're covered by two separate achievements (63451
+  "Scales for Days", 63452 "Fangs for the Memories") the addon had no way to discover on
+  its own. Resolved by cross-referencing the Plumber addon's own shipped data
+  (`Modules/HuntTable.lua`/`Modules/Shared/SharedData.lua`) rather than guessing or
+  scraping Wowhead -- see memory `preydator-quest-achievement-mapping` for the reusable
+  workflow this established. New `PREY_HUNT_ACHIEVEMENT_OVERRIDES_BY_QUEST` table +
+  `computeAchievementNeeds` branch, mutually exclusive with the Mode series per quest.
+- **CONFIRMED LIVE:** completing quest 95023 (Batani the Scaled) cleared quest 95024
+  (Kadani the Claw)'s badge on the very next `hinspect`, no `/reload` in between -- closes
+  the `ACHIEVEMENT_EARNED` cache-wipe path Section 15 had marked tentative since
+  2026-09-01, and reveals "Scales for Days" only needs one of its two paired targets, not
+  both (a real design detail, not a bug). Per-criteria Mode I/II/III gating also confirmed
+  still tracking correctly as real progress accrues (Normal-tier `achievementNeeds` dropped
+  3->2 after an additional real completion). Full hunt lifecycle (accept, bar stage
+  tracking, ambush sound, turn-in) reconfirmed on this same newer-content hunt too, not
+  just the original 30-target roster.
+
+**No known open items left in the achievement system.** Section 15's achievement row is
+updated from "✅ (tentative)" to a plain "✅".
+
+## 5f. Product owner's prioritized order for what's left before full release (2026-09-03)
+
+Given directly, after a review of every open item across Sections 4/5/15 as of this point.
+Read top to bottom as the actual next-up order, not just a backlog dump:
+
+1. **Commit the branch.** `rewrite/v2-architecture` has no commits at all yet -- everything
+   since the rewrite began is still sitting in the working tree (see Section 6). Biggest
+   risk item remaining, and not a feature, so it goes first.
+2. Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI
+   (`sound.custom_file_names` plumbing exists, no UI to grow the list yet), the Text &
+   Labels category's two-column layout (Decisions Log item 43), and sound
+   amplification/loudness-boost research (mechanism not yet confirmed, modeled on the
+   "Better Fishing" addon's approach).
+3. **Ambush/Pack Ambush bar-text wiring.** `text.ambush_prefix`/`pack_ambush_prefix`
+   settings already exist and are user-facing, but `BarRuntime` never reads them -- the bar
+   text never actually changes on ambush despite the setting implying it should. The one
+   item on this list that's a real functional gap, not polish.
+4. `koKR`/`zhCN` difficulty-detection locale gap -- needs a native speaker, not a guessed
+   translation (Section 5c).
+5. `bar.orientation = vertical` visual QA pass -- built and functional, never had a
+   dedicated polish pass (Section 15).
+6. **Delete the old `Modules/HuntScanner.lua` monolith** (5045 lines, only partially
+   superseded) -- moved to last since it's cleanup best done once everything above is
+   settled and safely committed, not because it's unimportant.
+
+**Dropped from consideration:** `bar.show_spark_line` (Section 15) -- explicitly deprioritized
+out of scope for now, not merely deferred like the items above.
 
 ## 6. Housekeeping
 

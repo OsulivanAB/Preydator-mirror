@@ -66,6 +66,17 @@ local REWARD_ICON_SIZE = 16
 -- the icon entirely for real reward amounts (found live, 2026-08-28).
 local REWARD_SLOT_WIDTH = 48
 local REWARD_SLOT_SPACING = 6
+
+-- Confirmed live (2026-09-03): below this width the reward-icon row (up to
+-- MAX_REWARD_ICONS wide) has nowhere to go but visually under the Accept
+-- button and achievement badge, since neither is aware of the other's
+-- width. Started at 420 (theoretical worst-case math), tuned down twice
+-- after the product owner eyeballed it live -- 270, then settled at 330.
+-- UI/SettingsPanel.lua's hunt.width slider floors at this same value, but
+-- that alone doesn't protect someone with an already-saved smaller value
+-- (the slider's min only stops new drags below it) -- this is the actual
+-- render-time floor that does.
+local MIN_SAFE_PANEL_WIDTH = 330
 -- INV_Misc_QuestionMark -- generic placeholder for a bonus item/container
 -- reward whose specific icon/name isn't resolvable until the hunt is
 -- accepted (confirmed live, 2026-08-28: Blizzard doesn't expose item-reward
@@ -593,14 +604,15 @@ function HuntTablePanel.Render(huntList)
     -- checking layout/scale/font changes without leaving Settings or being
     -- at a real Hunt Table. Uses the real cached list if one exists so it
     -- reflects actual data; falls back to buildPreviewHunts() otherwise.
-    -- The preview path deliberately stays flat/ungrouped -- it's for
-    -- eyeballing size/scale/font, not for previewing group headers.
+    -- Routed through the same grouping/sorting as the real panel (2026-09-03,
+    -- product owner) -- previously stayed deliberately flat, but that meant
+    -- the preview couldn't actually be used to check group-header layout.
     local previewEnabled = settings.Get("hunt.preview_enabled") == true
     local displayList
-    if previewEnabled and #huntList == 0 then
-        displayList = buildPreviewHunts()
-    elseif previewEnabled then
-        displayList = huntList
+    if previewEnabled then
+        local huntScanner = Preydator:GetModule("HuntScannerRuntime")
+        local baseList = (#huntList > 0) and huntList or buildPreviewHunts()
+        displayList = (huntScanner and huntScanner.GetGroupedDisplayList(baseList)) or baseList
     else
         -- Sorted/grouped fresh every render (hunt.group_by/sort_by/
         -- sort_direction/collapsed_groups can all change independently of
@@ -631,7 +643,10 @@ function HuntTablePanel.Render(huntList)
 
     local frame = ensurePanel()
     updateHeaderControls(settings)
-    local width = settings.Get("hunt.width") or 336
+    -- Floored regardless of what's stored -- protects anyone with an
+    -- already-saved value from before the slider's own min was raised (see
+    -- MIN_SAFE_PANEL_WIDTH's comment), without needing a data migration.
+    local width = math.max(MIN_SAFE_PANEL_WIDTH, settings.Get("hunt.width") or MIN_SAFE_PANEL_WIDTH)
     local height = settings.Get("hunt.height") or 460
     local scale = settings.Get("hunt.scale") or 1.0
     frame:SetSize(width, height)

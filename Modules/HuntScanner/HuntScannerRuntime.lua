@@ -261,8 +261,7 @@ local function computeAchievementNeeds(questID, difficultyIndex, title)
             return
         end
 
-        local label = (criteriaIDHint and achievementApi.GetCriteriaLabelIfIncomplete(achievementID, criteriaIDHint))
-            or achievementApi.GetAchievementName(achievementID)
+        local label = achievementApi.GetAchievementName(achievementID)
             or ("Achievement " .. tostring(achievementID))
         needs[#needs + 1] = { achievementID = achievementID, name = label }
     end
@@ -279,23 +278,44 @@ local function computeAchievementNeeds(questID, difficultyIndex, title)
     -- up empty, this achievement is skipped for this hunt entirely --
     -- unverifiable is still not the same as needed (CLAUDE.md Section 4's
     -- "never guess true/false" principle, applied here).
-    local modeIDs = preyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY
-        and preyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY[difficultyIndex]
-    if modeIDs then
-        for _, achievementID in ipairs(modeIDs) do
-            local effectiveCriteriaID = criteriaID
-                or resolveFallbackCriteriaID(questID, title, achievementID, achievementApi)
-            if effectiveCriteriaID then
-                addNeedIfIncomplete(achievementID, effectiveCriteriaID)
+    -- Some questIDs belong to a side-questline achievement entirely separate
+    -- from the Mode I/II/III series (their own criteriaID doesn't resolve
+    -- against 42701/42702/42703 at all) -- when present, this is the ONLY
+    -- achievement checked for the quest, mirroring the mutually-exclusive
+    -- "override or Mode series" design confirmed via the Plumber addon's own
+    -- shipped data for these targets.
+    local overrideAchievementID = preyQuestData.PREY_HUNT_ACHIEVEMENT_OVERRIDES_BY_QUEST
+        and preyQuestData.PREY_HUNT_ACHIEVEMENT_OVERRIDES_BY_QUEST[questID]
+
+    if overrideAchievementID then
+        -- Same title-match fallback the Mode series uses -- an override entry
+        -- only needs to supply the achievementID (the one thing that can't be
+        -- discovered without an external source); the criteriaID resolves the
+        -- same way as any other quest once the achievementID is known.
+        local effectiveCriteriaID = criteriaID
+            or resolveFallbackCriteriaID(questID, title, overrideAchievementID, achievementApi)
+        if effectiveCriteriaID then
+            addNeedIfIncomplete(overrideAchievementID, effectiveCriteriaID)
+        end
+    else
+        local modeIDs = preyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY
+            and preyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY[difficultyIndex]
+        if modeIDs then
+            for _, achievementID in ipairs(modeIDs) do
+                local effectiveCriteriaID = criteriaID
+                    or resolveFallbackCriteriaID(questID, title, achievementID, achievementApi)
+                if effectiveCriteriaID then
+                    addNeedIfIncomplete(achievementID, effectiveCriteriaID)
+                end
             end
         end
-    end
 
-    local mappedAchievements = preyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST
-        and preyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST[questID]
-    if mappedAchievements then
-        for _, achievementID in ipairs(mappedAchievements) do
-            addNeedIfIncomplete(achievementID, criteriaID)
+        local mappedAchievements = preyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST
+            and preyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST[questID]
+        if mappedAchievements then
+            for _, achievementID in ipairs(mappedAchievements) do
+                addNeedIfIncomplete(achievementID, criteriaID)
+            end
         end
     end
 
@@ -609,13 +629,24 @@ end
 -- alphabetical for zone grouping -- independent of hunt.sort_direction,
 -- matching the old codebase's own bucket-order rule, which that sort
 -- setting was never wired to.
-function HuntScannerRuntime.GetGroupedDisplayList()
+-- listOverride (2026-09-03): lets a caller group/sort an arbitrary hunt
+-- list through the same logic as the real Hunt Table -- added so
+-- HuntTablePanel.lua's Settings preview (real cached data or the static
+-- placeholder rows) can be grouped/sorted identically to the live panel
+-- instead of staying flat. Always copied defensively before table.sort
+-- mutates in place, since an override list wasn't necessarily a fresh copy
+-- the way GetHuntList()'s own return value always is.
+function HuntScannerRuntime.GetGroupedDisplayList(listOverride)
     local settings = Preydator:GetModule("Settings")
     local sortBy = (settings and settings.Get("hunt.sort_by")) or "zone"
     local groupBy = (settings and settings.Get("hunt.group_by")) or "difficulty"
     local descending = settings and settings.Get("hunt.sort_direction") == "desc"
 
-    local list = HuntScannerRuntime.GetHuntList()
+    local source = listOverride or HuntScannerRuntime.GetHuntList()
+    local list = {}
+    for i, hunt in ipairs(source) do
+        list[i] = hunt
+    end
     table.sort(list, function(a, b)
         return compareHunts(sortBy, descending, a, b)
     end)

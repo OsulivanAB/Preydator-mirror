@@ -35,6 +35,22 @@ PreyQuestData.PREY_HUNT_MODE_ACHIEVEMENT_IDS_BY_DIFFICULTY = {
     [3] = { 61392, 61391, 42703 }, -- Nightmare I, II, III
 }
 
+-- questIDs whose achievement is NOT one of the Mode I/II/III meta achievements
+-- at all -- confirmed via the Plumber addon's own shipped data
+-- (Modules/HuntTable.lua's PreyQuestXAchievement, Modules/Shared/SharedData.lua's
+-- PreyQuestData), since these 4 new-content Nightmare targets (a two-pair side
+-- questline gated behind intro quest 96004, per Plumber) don't appear in 42703's
+-- criteria list at all -- their own criteriaID (in PreyQuestData below) only
+-- resolves against THIS achievementID, never the Mode series. When a questID
+-- has an entry here, computeAchievementNeeds skips the Mode I/II/III loop for
+-- it entirely rather than checking both.
+PreyQuestData.PREY_HUNT_ACHIEVEMENT_OVERRIDES_BY_QUEST = {
+    [95021] = 63452, -- Janoa the Fang
+    [95022] = 63452, -- Kursak the Coiled
+    [95023] = 63451, -- Batani the Scaled
+    [95024] = 63451, -- Kadani the Claw
+}
+
 -- Additional per-quest achievements explicitly tracked in issues/achievements.md.
 -- Meta/overall achievements are intentionally excluded.
 PreyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST = {
@@ -72,6 +88,15 @@ PreyQuestData.PREY_HUNT_ACHIEVEMENTS_BY_QUEST = {
 
 -- [questID] = { difficultyIndex, criteriaID }
 PreyQuestData.PreyQuestData = {
+    -- New side questline (gated behind intro quest 96004), sourced from the
+    -- Plumber addon's own shipped data -- criteriaID here only resolves
+    -- against PREY_HUNT_ACHIEVEMENT_OVERRIDES_BY_QUEST's achievement above,
+    -- not the Mode I/II/III series.
+    [95021] = { 3, 115704 }, -- Janoa the Fang (Nightmare)
+    [95022] = { 3, 115705 }, -- Kursak the Coiled (Nightmare)
+    [95023] = { 3, 115706 }, -- Batani the Scaled (Nightmare)
+    [95024] = { 3, 115707 }, -- Kadani the Claw (Nightmare)
+
     -- Normal (difficulty 1)
     [91095] = { 1, 105912 }, -- Magister Sunbreaker (Normal)
     [91096] = { 1, 105913 }, -- Magistrix Emberlash (Normal)
