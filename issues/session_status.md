@@ -1,8 +1,15 @@
 # Preydator Rewrite — Session Status / Handoff
 
-Last updated: 2026-09-02. Read this before doing anything else in a fresh session — it's
+Last updated: 2026-09-04. Read this before doing anything else in a fresh session — it's
 the fastest way back to full context after a restart. This supplements, not replaces,
 `CLAUDE.md` Section 0's reading list.
+
+**Start here, not at Section 0 below (that's the 2026-09-02 session's own summary, kept
+for history):** two commits now exist on this branch (`e09e583`, `c74fb36`), covering the
+achievement system (fully closed, Section 5d), Hunt Panel/Settings polish (Section 5g),
+and the vertical bar (signed off, Decisions Log item 66). **Section 5f has the product
+owner's current prioritized punch list** for what's actually left before full release —
+read that first for "what's next." Nothing is currently uncommitted as of this update.
 
 ---
 
@@ -1132,37 +1139,41 @@ detail in `issues/rewrite_architecture.md` Decisions Log items 58-59:
 **No known open items left in the achievement system.** Section 15's achievement row is
 updated from "✅ (tentative)" to a plain "✅".
 
-## 5f. Product owner's prioritized order for what's left before full release (2026-09-03)
+## 5f. Product owner's prioritized order for what's left before full release (2026-09-03,
+updated 2026-09-04 -- see the status note after each item)
 
 Given directly, after a review of every open item across Sections 4/5/15 as of this point.
 Read top to bottom as the actual next-up order, not just a backlog dump:
 
-1. **Commit the branch.** `rewrite/v2-architecture` has no commits at all yet -- everything
-   since the rewrite began is still sitting in the working tree (see Section 6). Biggest
-   risk item remaining, and not a feature, so it goes first.
-2. Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI
-   (`sound.custom_file_names` plumbing exists, no UI to grow the list yet), ~~the Text &
-   Labels category's two-column layout~~, and sound amplification/loudness-boost research
-   (mechanism not yet confirmed, modeled on the "Better Fishing" addon's approach).
-   **Text & Labels two-column layout DONE 2026-09-03** (product owner's own pick of the
-   three to start with) — see Decisions Log item 61. `luacheck` clean; **not yet tested
-   live**, specifically flagging whether the two longest right-column labels fit without
-   clipping. The other two sub-items (custom sound file UI, sound amplification) remain
-   open.
+1. ~~**Commit the branch.**~~ **DONE.** Two commits landed 2026-09-03/09-04
+   (`e09e583`, `c74fb36`), covering everything through this session's vertical bar,
+   text-box, icon-suppression, and custom-sound work. `rewrite/v2-architecture` no
+   longer has zero history.
+2. Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI,
+   the Text & Labels category's two-column layout, and sound amplification/loudness-boost
+   research. **Text & Labels layout and custom sound file UI both DONE** (2026-09-03/04,
+   Decisions Log items 61 and 62) -- both live-confirmed working. **Sound amplification
+   research is the only sub-item still open**, not yet picked up.
 3. **Ambush/Pack Ambush bar-text wiring.** `text.ambush_prefix`/`pack_ambush_prefix`
    settings already exist and are user-facing, but `BarRuntime` never reads them -- the bar
-   text never actually changes on ambush despite the setting implying it should. The one
-   item on this list that's a real functional gap, not polish.
+   text never actually changes on ambush despite the setting implying it should. **Still
+   open -- the next real item to pick up.** The one item on this list that's a genuine
+   functional gap, not polish.
 4. `koKR`/`zhCN` difficulty-detection locale gap -- needs a native speaker, not a guessed
-   translation (Section 5c).
-5. `bar.orientation = vertical` visual QA pass -- built and functional, never had a
-   dedicated polish pass (Section 15).
+   translation (Section 5c). **Still open**, blocked on finding a native speaker, not on
+   engineering effort.
+5. ~~`bar.orientation = vertical` visual QA pass~~ **SIGNED OFF 2026-09-04** (Decisions Log
+   item 66) -- fill gradient, percent text, and stage label text all confirmed correct
+   live. No known open items.
 6. **Delete the old `Modules/HuntScanner.lua` monolith** (5045 lines, only partially
-   superseded) -- moved to last since it's cleanup best done once everything above is
-   settled and safely committed, not because it's unimportant.
+   superseded) -- still open, still last on purpose (cleanup best done once everything
+   above is settled, not because it's unimportant).
 
 **Dropped from consideration:** `bar.show_spark_line` (Section 15) -- explicitly deprioritized
 out of scope for now, not merely deferred like the items above.
+
+**Remaining, in order: #3 (ambush bar-text wiring), #2's sound amplification research, #4
+(locale, blocked on a native speaker), #6 (old monolith cleanup).**
 
 ## 5g. Item 2 fully closed; icon-reappearing report investigated and closed as a known
 limitation, not a bug (2026-09-04)
@@ -1182,7 +1193,9 @@ Full detail in `issues/rewrite_architecture.md` Decisions Log items 62-63. Short
   `GetText()`/`IsShown`/`GetAlpha` were all completely correct the whole time -- this
   was a known WoW `EditBox` rendering quirk (text set before the box's on-screen width
   settles can leave it scrolled out of the visible view) fixed with
-  `SetCursorPosition(0)` after every `SetText` call. **Not yet re-tested live.**
+  `SetCursorPosition(0)` after every `SetText` call. **CONFIRMED LIVE 2026-09-04** --
+  product owner confirmed text is working correctly, including custom text surviving a
+  reload. No known open items on this bug.
 - **Second "Restore Default Names" button added to Text & Labels itself** (top-right),
   alongside the existing one in Advanced.
 - **Custom sound file Add/Remove UI built** -- `SoundsRuntime.AddCustomSoundFile`/
@@ -1206,8 +1219,11 @@ diagnostic tool, not temporary scaffolding.
 
 - `.vscode/settings.json` has an uncommitted local change (Lua language server WoW-API
   annotations) — not made by Claude, left as-is, harmless.
-- Commit `e09e583` covers everything through the achievement system and the first round
-  of Hunt Panel/Settings polish (Decisions Log items 58-61). Everything in Section 5g
-  above (items 62-63) is uncommitted as of this writing. Whenever the next commit is
-  wanted, it should follow `.github/commit-template.md` per `CLAUDE.md` Section 11,
-  signed as RagingAltoholic.
+- Commit `e09e583` covers the achievement system and the first round of Hunt Panel/
+  Settings polish (Decisions Log items 58-61). Commit `c74fb36` covers the vertical bar
+  gradient/percent-text fixes, the Text & Labels persistence/rendering bugs, the icon
+  suppression diagnostic, and the custom sound file UI (Decisions Log items 62-66).
+  Nothing is uncommitted as of this writing (2026-09-04), aside from the pre-existing
+  local `.vscode/settings.json` change noted above. Whenever the next commit is wanted,
+  it should follow `.github/commit-template.md` per `CLAUDE.md` Section 11, signed as
+  RagingAltoholic.
