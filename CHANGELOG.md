@@ -56,6 +56,12 @@ shipped yet — this branch has not been merged to `main` or released.
   against the achievement's own criteria list instead of showing nothing.
 - Every slider in Settings now shows its current value next to the slider bar, not just the
   min/max endpoints at either end.
+- New "Restore Default Names" button directly in Text & Labels (top-right, always visible
+  above the scroll area), alongside the existing one in Advanced.
+- New custom sound file support: an "Add File"/"Remove File" flow in Settings → Advanced
+  lets you register your own `.ogg` filename so it appears in every sound-path dropdown
+  (Sound & Alerts). The file itself still has to be placed in
+  `Interface\AddOns\Preydator\sounds\` yourself — this only tells the addon it exists.
 
 ### Fixed
 - Fixed an `ADDON_ACTION_FORBIDDEN`/`SpellStopCasting` taint error on the very next Escape
@@ -195,6 +201,10 @@ shipped yet — this branch has not been merged to `main` or released.
   Table panel was set to a narrow width. The panel now enforces a safe minimum width.
 - Fixed the Hunt Table panel's Settings preview not showing group headers the way the real
   panel does — it now groups and sorts identically to the live panel.
+- Fixed Text & Labels fields not saving when you clicked away from the box instead of
+  pressing Enter.
+- Fixed text fields that were never customized showing blank instead of their real default
+  text (e.g. "Blood in the Shadows" for Stage 2's default label).
 
 ### Changed
 - Raised the default ambush alert cooldown from 30 to 60 seconds, and exposed it as a
@@ -206,6 +216,16 @@ shipped yet — this branch has not been merged to `main` or released.
   Echo of Predation's unconfigurable one.
 - Moved "Link Border Color to Fill Color" from Bar Display to Bar Colors, directly above
   the color swatches it affects, instead of a separate category.
+- Text & Labels category now pairs each Prefix field with its matching Label field on the
+  same row (e.g. "Stage 3 Prefix" next to "Stage 3 Label") instead of stacking every field
+  as its own full-width row — roughly halves how far the category scrolls.
+
+### Known Limitations
+- The default Blizzard prey icon can occasionally reappear mid-hunt and stay visible for
+  as long as you're in combat when it happens. This is a real WoW restriction (addons
+  can't touch this icon's frame while you're in combat), not a bug — the pre-rewrite
+  version of this addon had the exact same limitation. It always corrects itself the
+  moment combat ends.
 
 
 ## 3.0.5 - 2026-08-20

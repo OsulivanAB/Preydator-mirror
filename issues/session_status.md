@@ -1141,10 +1141,14 @@ Read top to bottom as the actual next-up order, not just a backlog dump:
    since the rewrite began is still sitting in the working tree (see Section 6). Biggest
    risk item remaining, and not a feature, so it goes first.
 2. Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI
-   (`sound.custom_file_names` plumbing exists, no UI to grow the list yet), the Text &
-   Labels category's two-column layout (Decisions Log item 43), and sound
-   amplification/loudness-boost research (mechanism not yet confirmed, modeled on the
-   "Better Fishing" addon's approach).
+   (`sound.custom_file_names` plumbing exists, no UI to grow the list yet), ~~the Text &
+   Labels category's two-column layout~~, and sound amplification/loudness-boost research
+   (mechanism not yet confirmed, modeled on the "Better Fishing" addon's approach).
+   **Text & Labels two-column layout DONE 2026-09-03** (product owner's own pick of the
+   three to start with) — see Decisions Log item 61. `luacheck` clean; **not yet tested
+   live**, specifically flagging whether the two longest right-column labels fit without
+   clipping. The other two sub-items (custom sound file UI, sound amplification) remain
+   open.
 3. **Ambush/Pack Ambush bar-text wiring.** `text.ambush_prefix`/`pack_ambush_prefix`
    settings already exist and are user-facing, but `BarRuntime` never reads them -- the bar
    text never actually changes on ambush despite the setting implying it should. The one
@@ -1160,9 +1164,50 @@ Read top to bottom as the actual next-up order, not just a backlog dump:
 **Dropped from consideration:** `bar.show_spark_line` (Section 15) -- explicitly deprioritized
 out of scope for now, not merely deferred like the items above.
 
+## 5g. Item 2 fully closed; icon-reappearing report investigated and closed as a known
+limitation, not a bug (2026-09-04)
+
+Full detail in `issues/rewrite_architecture.md` Decisions Log items 62-63. Short version:
+
+- **Vertical bar confirmed fully working live** -- both the gradient-rotation and
+  percent-text fixes from the prior session held up under real testing.
+- **Text field persistence confirmed holding** ("the stage text is holding") after
+  porting the old codebase's round-trip-confirm editbox pattern (re-displays via
+  `getter()` after every commit) on top of the earlier `OnEditFocusLost` fix.
+- **Blank text box bug: actual root cause found and fixed, not a data/timing bug at all**
+  (Decisions Log items 64-65). A `Settings.Subscribe` refresh alone (item 62) wasn't
+  enough; an `OnShow`-based follow-up attempt was tried and confirmed to make things
+  *worse* (no box showed text at all afterward, reverted immediately). Live diagnostic
+  prints then proved every box's `getter()`, `PreydatorDB`, and even the box's own live
+  `GetText()`/`IsShown`/`GetAlpha` were all completely correct the whole time -- this
+  was a known WoW `EditBox` rendering quirk (text set before the box's on-screen width
+  settles can leave it scrolled out of the visible view) fixed with
+  `SetCursorPosition(0)` after every `SetText` call. **Not yet re-tested live.**
+- **Second "Restore Default Names" button added to Text & Labels itself** (top-right),
+  alongside the existing one in Advanced.
+- **Custom sound file Add/Remove UI built** -- `SoundsRuntime.AddCustomSoundFile`/
+  `RemoveCustomSoundFile`, ported normalize/validate rules from the old codebase, UI in
+  Advanced matching where the old app had it. **Not yet tested live.**
+- **Item 2 on the priority list (Section 5f) is partially closed**: Text & Labels layout
+  and the custom sound UI are both done; sound amplification research (the third
+  sub-item) was never picked up this session, still open.
+
+**Default prey icon reappearing mid-hunt -- root-caused and closed as a known, accepted
+limitation, not a bug.** New always-on trace (`WidgetAdapter.GetSuppressionTrace`, `/pd
+iinspect`) caught it on the first real occurrence: Blizzard shows the icon while the
+player is in combat, and nothing can re-suppress it (WoW's own protected-frame
+restriction, not overcautious code -- the old codebase has the identical hard block with
+its own "taint safety" comment) until combat ends. Product owner chose to leave this
+as-is rather than risk an unverified in-combat loosening that could trade a cosmetic icon
+flash for a real taint cascade. `/pd iinspect` stays in the addon permanently as a
+diagnostic tool, not temporary scaffolding.
+
 ## 6. Housekeeping
 
 - `.vscode/settings.json` has an uncommitted local change (Lua language server WoW-API
   annotations) — not made by Claude, left as-is, harmless.
-- Nothing has been committed this session. Whenever a commit is wanted, it should follow
-  `.github/commit-template.md` per `CLAUDE.md` Section 11, signed as RagingAltoholic.
+- Commit `e09e583` covers everything through the achievement system and the first round
+  of Hunt Panel/Settings polish (Decisions Log items 58-61). Everything in Section 5g
+  above (items 62-63) is uncommitted as of this writing. Whenever the next commit is
+  wanted, it should follow `.github/commit-template.md` per `CLAUDE.md` Section 11,
+  signed as RagingAltoholic.

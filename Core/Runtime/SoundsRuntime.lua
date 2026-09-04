@@ -235,6 +235,127 @@ function SoundsRuntime.PlayExplodingCorpseSnakesSound()
     return playPath("exploding_corpse_snakes", path, cooldown)
 end
 
+-- Same value SettingsStore.lua builds default sound paths from -- kept as
+-- its own local copy here rather than a new cross-module export, matching
+-- this codebase's existing precedent (UI/SettingsPanel.lua's
+-- SOUND_FOLDER_FALLBACK is the same string, independently defined there too).
+local SOUND_FOLDER_PREFIX = "Interface\\AddOns\\Preydator\\sounds\\"
+
+-- Ported from the old codebase's Core/SoundsRuntime.lua NormalizeSoundFileName
+-- (2026-09-03, for the custom sound file Add/Remove UI): trims whitespace,
+-- lowercases (filenames are matched case-insensitively so a re-add/remove
+-- can't create a near-duplicate differing only by case), strips the addon's
+-- own sound folder prefix if the user pasted a full path instead of a bare
+-- filename, rejects any remaining path separator (no subdirectories), and
+-- appends .ogg if missing.
+local function normalizeSoundFileName(fileName)
+    if type(fileName) ~= "string" then
+        return nil
+    end
+
+    local normalized = (fileName:match("^%s*(.-)%s*$") or ""):lower()
+    if normalized == "" then
+        return nil
+    end
+
+    local prefixLower = SOUND_FOLDER_PREFIX:lower()
+    if normalized:sub(1, #prefixLower) == prefixLower then
+        normalized = normalized:sub(#prefixLower + 1)
+    end
+    if normalized == "" then
+        return nil
+    end
+
+    if normalized:find("[/\\]") then
+        return nil
+    end
+
+    if not normalized:match("%.ogg$") then
+        normalized = normalized .. ".ogg"
+    end
+
+    return normalized
+end
+
+-- Registers a filename in sound.custom_file_names so it appears in every
+-- sound-path dropdown's option list (UI/SettingsPanel.lua's
+-- registerSoundPathDropdown already reads that setting) -- the actual .ogg
+-- file must already exist in Interface/AddOns/Preydator/sounds/; this only
+-- adds/removes the addon's own record of the filename, same as the old
+-- codebase's equivalent (addons can't write arbitrary files to disk).
+function SoundsRuntime.AddCustomSoundFile(fileName)
+    local normalized = normalizeSoundFileName(fileName)
+    if not normalized then
+        return false, "Use a valid sound filename (optionally with .ogg)"
+    end
+
+    local settings = getSettings()
+    if not settings then
+        return false, "Settings unavailable"
+    end
+
+    local existing = settings.Get("sound.custom_file_names")
+    local list = {}
+    if type(existing) == "table" then
+        for _, name in ipairs(existing) do
+            list[#list + 1] = name
+            if type(name) == "string" and name:lower() == normalized then
+                return false, "File is already in the list"
+            end
+        end
+    end
+
+    list[#list + 1] = normalized
+    settings.Set("sound.custom_file_names", list)
+    return true, normalized
+end
+
+-- Default/protected filenames are never hand-listed here a second time --
+-- derived from Settings.GetDefaults(), since sound.custom_file_names'
+-- default value IS the protected list (SettingsStore.lua's
+-- PROTECTED_SOUND_FILENAMES seeds it directly), keeping one source of truth.
+function SoundsRuntime.RemoveCustomSoundFile(fileName)
+    local normalized = normalizeSoundFileName(fileName)
+    if not normalized then
+        return false, "Use a valid sound filename (optionally with .ogg)"
+    end
+
+    local settings = getSettings()
+    if not settings then
+        return false, "Settings unavailable"
+    end
+
+    local defaults = settings.GetDefaults()
+    local protectedList = defaults and defaults.sound and defaults.sound.custom_file_names
+    if type(protectedList) == "table" then
+        for _, protectedName in ipairs(protectedList) do
+            if type(protectedName) == "string" and protectedName:lower() == normalized then
+                return false, "Default sound files cannot be removed"
+            end
+        end
+    end
+
+    local existing = settings.Get("sound.custom_file_names")
+    local list = {}
+    local removed = false
+    if type(existing) == "table" then
+        for _, name in ipairs(existing) do
+            if not removed and type(name) == "string" and name:lower() == normalized then
+                removed = true
+            else
+                list[#list + 1] = name
+            end
+        end
+    end
+
+    if not removed then
+        return false, "File not found in the list"
+    end
+
+    settings.Set("sound.custom_file_names", list)
+    return true, normalized
+end
+
 -- Returns a shallow copy of the recent play-attempt history (see
 -- recentPlays' comment), oldest first.
 function SoundsRuntime.GetRecentPlays()

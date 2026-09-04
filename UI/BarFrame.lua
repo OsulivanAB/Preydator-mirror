@@ -204,7 +204,7 @@ local function applyLabelText(frame, viewModel, settings, orientation)
     end
 end
 
-local function applyPercentText(frame, viewModel, settings, orientation)
+local function applyPercentText(frame, viewModel, settings)
     local percentDisplay = settings.Get("bar.percent_display") or "inside"
     if percentDisplay == "off" or TICK_LABEL_PERCENT_DISPLAY[percentDisplay] then
         frame.percentText:Hide()
@@ -215,11 +215,11 @@ local function applyPercentText(frame, viewModel, settings, orientation)
     frame.percentText:SetText(string.format("%d%%", math.floor((viewModel.fillPercent or 0) + 0.5)))
     frame.percentText:ClearAllPoints()
 
-    -- above_bar/below_bar sit in open space regardless of orientation and
-    -- never rotate (a horizontal label above a narrow vertical bar is fine
-    -- unrotated). Only "inside" rotates in vertical mode, and it's the one
-    -- case safe to anchor by CENTER-to-CENTER either way, so it never hit the
-    -- edge-anchor-plus-rotation offset bug applyLabelRegionAnchor had.
+    -- Never rotates in any placement, including "inside" in vertical mode --
+    -- tried rotating "inside" to match the stage label text (2026-09-03),
+    -- live-tested, and the product owner decided against it: the percent
+    -- text stays horizontal even in a narrow vertical bar, unlike the stage
+    -- label text beside it (which does still rotate, unchanged).
     if percentDisplay == "above_bar" then
         frame.percentText:SetPoint("BOTTOM", frame, "TOP", 0, LABEL_ROW_OFFSET)
         frame.percentText:SetRotation(0)
@@ -228,12 +228,8 @@ local function applyPercentText(frame, viewModel, settings, orientation)
         frame.percentText:SetRotation(0)
     else
         frame.percentText:SetPoint("CENTER", frame, "CENTER", 0, 0)
-        if orientation == "vertical" then
-            local side = settings.Get("bar.vertical_text_side") or "right"
-            frame.percentText:SetRotation(side == "left" and (math.pi / 2) or (-math.pi / 2))
-        else
-            frame.percentText:SetRotation(0)
-        end
+        frame.percentText:SetJustifyH("CENTER")
+        frame.percentText:SetRotation(0)
     end
 end
 
@@ -320,11 +316,39 @@ local function applyBackgroundAndBorder(frame, settings)
     frame.border:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
 end
 
-local function applyFillTexture(frame, settings)
+-- The bundled fill textures have their gradient baked in along the
+-- texture's U axis, which by default maps onto the region's own width --
+-- correct for the horizontal bar, but in vertical mode that left the
+-- gradient still running left-to-right across the bar's narrow width
+-- instead of along its length (confirmed live, 2026-09-03: the bar's own
+-- size/position already correctly went vertical via applyFill, but nothing
+-- ever rotated the texture coordinates to match). Rotates U onto the
+-- region's height instead, oriented so U=0 (the gradient's start) lands at
+-- whichever edge bar.vertical_fill_direction fills FROM -- same principle
+-- the horizontal case already follows unrotated (fill anchors at the start
+-- edge, gradient starts there too). Explicitly sets identity coordinates in
+-- the horizontal branch too, not just leaving them alone, since this same
+-- frame/texture object persists across an orientation change at runtime --
+-- a stale rotated mapping from a previous vertical render must not survive
+-- a switch back to horizontal.
+local function applyFillTexture(frame, settings, orientation)
     local textureKey = settings.Get("bar.texture_key") or "default"
     frame.fill:SetTexture(TEXTURE_PRESETS[textureKey] or TEXTURE_PRESETS.default)
     local fillColor = settings.Get("bar.fill_color") or { 0.85, 0.2, 0.2, 0.95 }
     frame.fill:SetVertexColor(fillColor[1], fillColor[2], fillColor[3], fillColor[4])
+
+    if orientation == "vertical" then
+        local fillDirection = settings.Get("bar.vertical_fill_direction") or "up"
+        if fillDirection == "up" then
+            -- Screen bottom = U0 (fill's anchor/start edge), screen top = U1.
+            frame.fill:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
+        else
+            -- Screen top = U0 (fill's anchor/start edge), screen bottom = U1.
+            frame.fill:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
+        end
+    else
+        frame.fill:SetTexCoord(0, 0, 0, 1, 1, 0, 1, 1)
+    end
 end
 
 local function applyFonts(frame, settings, scale)
@@ -536,12 +560,12 @@ function BarFrame.Render(viewModel)
     end
 
     applyBackgroundAndBorder(frame, settings)
-    applyFillTexture(frame, settings)
+    applyFillTexture(frame, settings, orientation)
     applyFill(frame, viewModel, settings, orientation)
     applyTicks(frame, viewModel, settings, orientation)
     applyFonts(frame, settings, scale)
     applyLabelText(frame, viewModel, settings, orientation)
-    applyPercentText(frame, viewModel, settings, orientation)
+    applyPercentText(frame, viewModel, settings)
     applyVisibilityAndMouse(frame, viewModel, settings)
 end
 

@@ -295,5 +295,34 @@ function DiagnosticsRuntime.BuildNameplateTraceReport()
     return table.concat(lines, "\n")
 end
 
+-- Built 2026-09-04 after the product owner reported the default prey icon
+-- reappearing "randomly" and too briefly to react to live with /pd
+-- pinspect. WidgetAdapter.GetSuppressionTrace() records passively (not
+-- opt-in), so this always has the answer by the time anyone thinks to
+-- check it, same reasoning as sinspect/ninspect above.
+function DiagnosticsRuntime.BuildIconSuppressionInspectReport()
+    local widgetAdapter = Preydator:GetModule("WidgetAdapter")
+    local settings = Preydator:GetModule("Settings")
+
+    local lines = {}
+    local function add(line) lines[#lines + 1] = tostring(line or "") end
+
+    add("Preydator Icon Suppression Inspect | addon=" .. getAddonVersion())
+    local iconSetting = settings and settings.Get("general.disable_default_prey_icon")
+    add("- settings disable_default_prey_icon=" .. safeValue(iconSetting))
+
+    local trace = widgetAdapter and type(widgetAdapter.GetSuppressionTrace) == "function"
+        and widgetAdapter.GetSuppressionTrace() or {}
+    add("- recent suppression events=" .. tostring(#trace) .. " (oldest first)")
+    for i, entry in ipairs(trace) do
+        add("  - [" .. i .. "] time=" .. string.format("%.3f", entry.time or 0)
+            .. " | action=" .. safeValue(entry.action)
+            .. " | inCombat=" .. safeValue(entry.inCombat)
+            .. " | " .. safeValue(entry.detail))
+    end
+
+    return table.concat(lines, "\n")
+end
+
 Preydator:RegisterModule("DiagnosticsRuntime", DiagnosticsRuntime)
 return DiagnosticsRuntime

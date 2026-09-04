@@ -26,6 +26,34 @@ local widgetSnapshot = nil
 local desiredSuppression = false
 local pendingAfterCombat = false
 
+-- Passive trace of every icon-suppression-relevant event, always recording
+-- (not opt-in like AlertsRuntime's nameplate trace -- these are rare
+-- state-transition events, not a per-frame flood, so there's no volume
+-- concern to gate behind a setting). Built 2026-09-04 after the product
+-- owner reported the default prey icon reappearing "randomly" and too
+-- briefly to react to live with /pd pinspect -- same reasoning as
+-- SoundsRuntime's recordPlay/RecordBlockedAttempt: catch it passively so
+-- the trace already has the answer by the time anyone notices. Exposed via
+-- GetSuppressionTrace() / DiagnosticsRuntime.BuildIconSuppressionInspectReport
+-- / `/pd iinspect`.
+local SUPPRESSION_TRACE_LIMIT = 20
+local suppressionTrace = {}
+
+local function recordSuppressionEvent(action, detail)
+    local GetTime = _G.GetTime
+    local okTime, now = pcall(GetTime)
+    local inCombat = type(InCombatLockdown) == "function" and InCombatLockdown() == true
+    table.insert(suppressionTrace, {
+        time = (okTime and type(now) == "number") and now or 0,
+        action = action,
+        detail = detail,
+        inCombat = inCombat,
+    })
+    while #suppressionTrace > SUPPRESSION_TRACE_LIMIT do
+        table.remove(suppressionTrace, 1)
+    end
+end
+
 -- Fields safe to snapshot from widgetInfo. Deliberately excludes widgetID,
 -- widgetType, and shownState -- those are secret numbers/protected enums whose
 -- mere comparison taints subsequent Blizzard layout code, even inside pcall.
@@ -124,6 +152,7 @@ local function ensureOnShowHooked(frameRef)
         return
     end
     local ok = pcall(frameRef.HookScript, frameRef, "OnShow", function()
+        recordSuppressionEvent("onshow_fired", "Blizzard showed the icon frame")
         scheduleDeferredPreyContextRefresh()
     end)
     if ok then
@@ -240,6 +269,16 @@ local function applyFrameSuppression(frameRef, suppress)
     if suppress then
         stopFrameAnimations(frameRef)
 
+        -- Only recorded when the frame was actually caught visible right
+        -- before hiding it -- called every ~2s poll tick regardless of
+        -- whether anything changed, and Hide() on an already-hidden frame
+        -- is a no-op, so recording every call would drown the trace in
+        -- redundant entries instead of surfacing the moments that matter.
+        local wasShown = frameRef.IsShown and frameRef:IsShown() == true
+        if wasShown then
+            recordSuppressionEvent("hidden", "was visible, re-hidden")
+        end
+
         if suppressedShown[frameRef] == nil and frameRef.IsShown then
             suppressedShown[frameRef] = frameRef:IsShown() and true or false
         end
@@ -259,7 +298,12 @@ local function applyFrameSuppression(frameRef, suppress)
         end
         suppressedAlpha[frameRef] = nil
 
+        -- Decision 37 established this branch should essentially never run
+        -- while a hunt is active (nothing legitimately un-suppresses mid-
+        -- hunt) -- unconditional, unlike the "hidden" case above, since any
+        -- occurrence here is inherently worth seeing, not routine noise.
         if suppressedShown[frameRef] == true and frameRef.Show then
+            recordSuppressionEvent("shown_by_addon", "un-suppress branch ran")
             pcall(frameRef.Show, frameRef)
         end
         suppressedShown[frameRef] = nil
@@ -274,6 +318,24 @@ end
 local function applyDesiredSuppression()
     if type(InCombatLockdown) == "function" and InCombatLockdown() == true then
         if desiredSuppression then
+            -- CONFIRMED root cause (2026-09-04, via /pd iinspect's trace) of
+            -- the default prey icon occasionally reappearing mid-hunt: if
+            -- Blizzard shows the icon while the player is in combat (routine
+            -- during an actual hunt fight), suppression cannot be re-applied
+            -- at all until PLAYER_REGEN_ENABLED -- the icon stays visible for
+            -- as long as combat continues, not just a brief flicker.
+            --
+            -- This is a known, accepted limitation, not a bug to keep
+            -- chasing -- InCombatLockdown() is a real WoW restriction here,
+            -- not overcautious guessing: the old (pre-rewrite) codebase's
+            -- ApplyDefaultPreyIconVisibility had the identical hard block,
+            -- with its own explicit comment: "Taint safety: do not mutate
+            -- Blizzard prey widget frames during combat." Removing or
+            -- loosening this trades a cosmetic icon flash for real
+            -- ADDON_ACTION_BLOCKED taint risk, which is worse. Decision:
+            -- leave as-is (product owner, 2026-09-04) rather than attempt an
+            -- unverified in-combat loosening.
+            recordSuppressionEvent("suppress_blocked_combat", "wanted to suppress, blocked by InCombatLockdown")
             pendingAfterCombat = true
         end
         return
@@ -339,6 +401,7 @@ local function ensureMixinHooked()
         -- situation), so it's safe even though RefreshPreyContext
         -- transitively reaches applyFrameSuppression -- calling it directly
         -- from here, un-deferred, would not be.
+        recordSuppressionEvent("setup_fired", "widget mixin Setup() called")
         scheduleDeferredPreyContextRefresh()
     end)
 
@@ -360,6 +423,7 @@ bootFrame:SetScript("OnEvent", function(_, event, loadedAddonName)
     end
 
     if event == "PLAYER_REGEN_ENABLED" and pendingAfterCombat then
+        recordSuppressionEvent("combat_catchup", "PLAYER_REGEN_ENABLED, re-applying deferred suppression")
         applyDesiredSuppression()
     end
 end)
@@ -407,6 +471,22 @@ end
 function WidgetAdapter.SuppressDefaultPreyIcon(suppress)
     desiredSuppression = suppress == true
     applyDesiredSuppression()
+end
+
+-- Returns a shallow copy of the recent suppression-event trace (see
+-- suppressionTrace's comment), oldest first. Exposed for
+-- DiagnosticsRuntime.BuildIconSuppressionInspectReport / `/pd iinspect`.
+function WidgetAdapter.GetSuppressionTrace()
+    local copy = {}
+    for i, entry in ipairs(suppressionTrace) do
+        copy[i] = {
+            time = entry.time,
+            action = entry.action,
+            detail = entry.detail,
+            inCombat = entry.inCombat,
+        }
+    end
+    return copy
 end
 
 -- TEMP DIAGNOSTIC (2026-08-28) -- widgetSnapshot has stayed nil through

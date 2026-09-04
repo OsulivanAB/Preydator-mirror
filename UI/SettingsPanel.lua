@@ -162,29 +162,124 @@ local function createColorSwatchRow(canvas, previous, label, getter, setter, all
     return title
 end
 
-local function createEditBoxRow(canvas, previous, label, getter, setter, maxLetters)
-    local title = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    title:SetText(label)
-    anchorRowTop(title, previous, canvas)
+-- EditBox -> getter, so refreshEditBoxValues can resync every currently-
+-- built text field's displayed text against Settings in one pass -- same
+-- pattern as sliderValueLabelFrames/refreshSliderValueLabels above.
+-- Confirmed live (2026-09-03): boxes that were never manually edited (still
+-- holding their real default text, e.g. "Blood in the Shadows") showed up
+-- blank instead -- SetText(getter()) at creation is a one-shot read with no
+-- live resync, so any moment where Settings wasn't fully ready yet left the
+-- box stuck empty for the rest of the session with no way to self-correct.
+-- Routing through Settings.Subscribe (fires on any settings change, same
+-- pub/sub every other file in this addon already reacts to) closes that
+-- gap regardless of what the original timing issue actually was.
+local editBoxRefreshFrames = {}
+local editBoxRefreshSubscribed = false
 
+local function refreshEditBoxValues()
+    for editBox, getter in pairs(editBoxRefreshFrames) do
+        -- Never yank text out of a box the player is actively typing in --
+        -- Settings.Subscribe fires for ANY settings change, not just this
+        -- box's own key, so an unrelated edit elsewhere must not fight
+        -- whatever's currently being typed here.
+        if not editBox:HasFocus() then
+            editBox:SetText(getter() or "")
+            editBox:SetCursorPosition(0)
+        end
+    end
+end
+
+-- Shared by createEditBoxRow and createEditBoxPairRow -- builds one
+-- title-less editbox control; the caller positions and labels it. Kept as
+-- its own function so the pair row below doesn't duplicate the
+-- OnEnterPressed/OnEscapePressed commit/revert logic a second time.
+local function buildEditBoxControl(canvas, width, maxLetters, getter, setter)
     local editBox = CreateFrame("EditBox", nil, canvas, "InputBoxTemplate")
-    editBox:SetSize(220, 20)
+    editBox:SetSize(width, 20)
     editBox:SetAutoFocus(false)
     if maxLetters then
         editBox:SetMaxLetters(maxLetters)
     end
-    editBox:SetPoint("TOPLEFT", title, "BOTTOMLEFT", CONTROL_INDENT + 6, CONTROL_OFFSET)
+    -- Root-caused live (2026-09-04) via a temporary diagnostic: GetText(),
+    -- IsShown, and GetAlpha all confirmed correct on every box while the
+    -- text was still visually blank on screen -- not a data or timing bug
+    -- at all. This is a known WoW EditBox quirk: text set via SetText()
+    -- before the box's true on-screen width is settled can leave its
+    -- internal scroll/cursor position stuck past the visible area, even
+    -- though the stored text and every other property are entirely
+    -- correct. SetCursorPosition(0) forces the visible view back to the
+    -- start, which is the standard fix for this class of bug.
     editBox:SetText(getter() or "")
+    editBox:SetCursorPosition(0)
+    -- Re-reads via getter() and re-displays that after every commit, rather
+    -- than trusting the just-typed text is what's now actually stored --
+    -- ported from the old codebase's own CreateTextInput helper
+    -- (Modules/Settings.lua:866-875), which did the same round-trip after
+    -- every write. Makes any silent normalization/rejection visible
+    -- immediately in the box itself instead of only surfacing later.
     editBox:SetScript("OnEnterPressed", function(self)
         setter(self:GetText())
+        self:SetText(getter() or "")
+        self:SetCursorPosition(0)
         self:ClearFocus()
     end)
     editBox:SetScript("OnEscapePressed", function(self)
         self:SetText(getter() or "")
+        self:SetCursorPosition(0)
         self:ClearFocus()
     end)
+    -- Typing a value and clicking away without pressing Enter silently
+    -- discarded it (confirmed live, 2026-09-03: the product owner edited a
+    -- Stage Label field and the bar kept showing the untouched default,
+    -- "Blood in the Shadows") -- only OnEnterPressed committed. This also
+    -- commits on focus loss, matching how most players actually expect a
+    -- text field to behave (also matches the old codebase's own
+    -- OnEditFocusLost handler on the same helper). Harmless if it fires
+    -- right after OnEnterPressed/OnEscapePressed's own ClearFocus() (both
+    -- already left the box holding the value this would write anyway) -- a
+    -- redundant identical write, not a second real change.
+    editBox:SetScript("OnEditFocusLost", function(self)
+        setter(self:GetText())
+        self:SetText(getter() or "")
+        self:SetCursorPosition(0)
+    end)
 
-    return title
+    editBoxRefreshFrames[editBox] = getter
+    local settings = getSettings()
+    if settings and not editBoxRefreshSubscribed and type(settings.Subscribe) == "function" then
+        editBoxRefreshSubscribed = true
+        settings.Subscribe(refreshEditBoxValues)
+    end
+
+    return editBox
+end
+
+-- Two Prefix/Label fields side by side on one row instead of stacked as two
+-- separate full-width rows -- halves the Text & Labels category's vertical
+-- scroll length (product owner's own mockup, Decisions Log item 43). Only
+-- advances the row position once (anchorRowTop on the left column only);
+-- the right column offsets horizontally from the left column's own title
+-- instead of counting as a second independent row.
+local PAIR_COLUMN_WIDTH = 260
+local PAIR_EDITBOX_WIDTH = 200
+
+local function createEditBoxPairRow(canvas, previous, leftLabel, leftGetter, leftSetter,
+        rightLabel, rightGetter, rightSetter, maxLetters)
+    local leftTitle = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    leftTitle:SetText(leftLabel)
+    anchorRowTop(leftTitle, previous, canvas)
+
+    local leftEditBox = buildEditBoxControl(canvas, PAIR_EDITBOX_WIDTH, maxLetters, leftGetter, leftSetter)
+    leftEditBox:SetPoint("TOPLEFT", leftTitle, "BOTTOMLEFT", CONTROL_INDENT + 6, CONTROL_OFFSET)
+
+    local rightTitle = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    rightTitle:SetText(rightLabel)
+    rightTitle:SetPoint("TOPLEFT", leftTitle, "TOPLEFT", PAIR_COLUMN_WIDTH, 0)
+
+    local rightEditBox = buildEditBoxControl(canvas, PAIR_EDITBOX_WIDTH, maxLetters, rightGetter, rightSetter)
+    rightEditBox:SetPoint("TOPLEFT", rightTitle, "BOTTOMLEFT", CONTROL_INDENT + 6, CONTROL_OFFSET)
+
+    return leftTitle
 end
 
 -- Cycle-button "dropdown" for the custom-canvas categories -- avoids the
@@ -639,8 +734,22 @@ local function buildTextLabelsCategory(category)
     local subcategory = Settings.RegisterCanvasLayoutSubcategory(category, canvas, L("Text & Labels"))
     local settings = getSettings()
 
+    -- Product owner's request (2026-09-03): a reset button directly in this
+    -- category, not just the one already in Advanced (Section "Restore
+    -- Default Names", still there, unchanged) -- reuses the same
+    -- NAME_FIELD_KEYS/restoreDefaults this category's fields already share
+    -- with that one. Placed above the scroll area, not stacked as a normal
+    -- row, so it's always visible without scrolling.
+    local resetButton = CreateFrame("Button", nil, canvas, "UIPanelButtonTemplate")
+    resetButton:SetSize(180, 22)
+    resetButton:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", -8, -4)
+    resetButton:SetText(L("Restore Default Names"))
+    resetButton:SetScript("OnClick", function()
+        restoreDefaults(NAME_FIELD_KEYS)
+    end)
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -4)
+    scrollFrame:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -32)
     scrollFrame:SetPoint("BOTTOMRIGHT", canvas, "BOTTOMRIGHT", -24, 4)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -682,36 +791,46 @@ local function buildTextLabelsCategory(category)
         function(value) settings.Set("text.font_size", value) end)
 
     for stage = 1, 4 do
-        previous = createEditBoxRow(scrollChild, previous, L("Stage " .. stage .. " Prefix"),
+        previous = createEditBoxPairRow(scrollChild, previous,
+            L("Stage " .. stage .. " Prefix"),
             function() return getArrayValue("text.stage_prefix", stage) end,
-            function(value) setArrayValue("text.stage_prefix", stage, value) end)
-    end
-    for stage = 1, 4 do
-        previous = createEditBoxRow(scrollChild, previous, L("Stage " .. stage .. " Label"),
+            function(value) setArrayValue("text.stage_prefix", stage, value) end,
+            L("Stage " .. stage .. " Label"),
             function() return getArrayValue("text.stage_suffix", stage) end,
             function(value) setArrayValue("text.stage_suffix", stage, value) end)
     end
 
-    previous = createEditBoxRow(scrollChild, previous, L("Out of Zone Prefix"),
+    previous = createEditBoxPairRow(scrollChild, previous,
+        L("Out of Zone Prefix"),
         function() return settings.Get("text.out_of_zone_prefix") end,
-        function(value) settings.Set("text.out_of_zone_prefix", value) end)
-    previous = createEditBoxRow(scrollChild, previous, L("Out of Zone Label"),
+        function(value) settings.Set("text.out_of_zone_prefix", value) end,
+        L("Out of Zone Label"),
         function() return settings.Get("text.out_of_zone_suffix") end,
         function(value) settings.Set("text.out_of_zone_suffix", value) end)
-    previous = createEditBoxRow(scrollChild, previous, L("Ambush Prefix"),
+    previous = createEditBoxPairRow(scrollChild, previous,
+        L("Ambush Prefix"),
         function() return settings.Get("text.ambush_prefix") end,
-        function(value) settings.Set("text.ambush_prefix", value) end)
-    previous = createEditBoxRow(scrollChild, previous, L("Ambush Label (use {preyTargetName})"),
+        function(value) settings.Set("text.ambush_prefix", value) end,
+        L("Ambush Label (use {preyTargetName})"),
         function() return settings.Get("text.ambush_suffix_template") end,
         function(value) settings.Set("text.ambush_suffix_template", value) end)
-    previous = createEditBoxRow(scrollChild, previous, L("Pack Ambush Prefix"),
+    createEditBoxPairRow(scrollChild, previous,
+        L("Pack Ambush Prefix"),
         function() return settings.Get("text.pack_ambush_prefix") end,
-        function(value) settings.Set("text.pack_ambush_prefix", value) end)
-    createEditBoxRow(scrollChild, previous, L("Pack Ambush Label (use {packAmbushSourceName})"),
+        function(value) settings.Set("text.pack_ambush_prefix", value) end,
+        L("Pack Ambush Label (use {packAmbushSourceName})"),
         function() return settings.Get("text.pack_ambush_suffix_template") end,
         function(value) settings.Set("text.pack_ambush_suffix_template", value) end)
 
     scrollChild:SetHeight(((scrollChild.rowCount or 1) * ROW_SPACING) + ROW_LEFT_MARGIN)
+
+    -- REVERTED 2026-09-04: canvas:SetScript("OnShow", refreshEditBoxValues)
+    -- was tried here (matching Bar Colors' identical OnShow pattern for its
+    -- color swatches) but made things worse, not better -- confirmed live
+    -- that afterward NO box showed any text at all, not even after clicking
+    -- Restore Default Names (which previously did work). Root cause not yet
+    -- understood -- reverted rather than guess again on top of a regression.
+    -- See Decisions Log item 65 for the real fix.
 
     return subcategory
 end
@@ -916,8 +1035,82 @@ local function buildAdvancedCategory(category)
         restoreDefaults(SOUND_FIELD_KEYS)
     end)
 
-    createButtonRow(canvas, previous, L("Reset All Settings"), function()
+    previous = createButtonRow(canvas, previous, L("Reset All Settings"), function()
         ensureResetConfirmFrame():Show()
+    end)
+
+    -- Custom sound files: registers a filename in sound.custom_file_names so
+    -- it appears in every sound-path dropdown (Sound & Alerts category) --
+    -- the .ogg file itself must already exist in
+    -- Interface/AddOns/Preydator/sounds/, this only adds/removes the addon's
+    -- own record of it. Ported UI for the old codebase's Add File/Remove
+    -- File flow (Modules/Settings.lua:2435-2468, product owner's own
+    -- reference pointer, 2026-09-03) -- the normalize/validate/protected-
+    -- filename logic lives in SoundsRuntime.AddCustomSoundFile/
+    -- RemoveCustomSoundFile so this stays a thin UI caller, per this file's
+    -- own "Settings.Set only, never business logic" header rule.
+    local soundFileTitle = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    soundFileTitle:SetText(L("Custom Sound File"))
+    anchorRowTop(soundFileTitle, previous, canvas)
+
+    local soundFileEditBox = CreateFrame("EditBox", nil, canvas, "InputBoxTemplate")
+    soundFileEditBox:SetSize(220, 20)
+    soundFileEditBox:SetAutoFocus(false)
+    soundFileEditBox:SetPoint("TOPLEFT", soundFileTitle, "BOTTOMLEFT", CONTROL_INDENT + 6, CONTROL_OFFSET)
+    soundFileEditBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+
+    -- Status line instead of a popup/dialog -- same low-friction feedback
+    -- style as this category's other action buttons, no extra click to
+    -- dismiss anything.
+    local soundFileStatus = canvas:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    soundFileStatus:SetPoint("TOPLEFT", soundFileEditBox, "BOTTOMLEFT", 0, -4)
+    soundFileStatus:SetJustifyH("LEFT")
+
+    local addFileButton = CreateFrame("Button", nil, canvas, "UIPanelButtonTemplate")
+    addFileButton:SetSize(105, 22)
+    addFileButton:SetPoint("TOPLEFT", soundFileStatus, "BOTTOMLEFT", 0, -4)
+    addFileButton:SetText(L("Add File"))
+
+    local removeFileButton = CreateFrame("Button", nil, canvas, "UIPanelButtonTemplate")
+    removeFileButton:SetSize(105, 22)
+    removeFileButton:SetPoint("LEFT", addFileButton, "RIGHT", 4, 0)
+    removeFileButton:SetText(L("Remove File"))
+
+    local function setSoundFileStatus(ok, message)
+        soundFileStatus:SetText(message or "")
+        if ok then
+            soundFileStatus:SetTextColor(0.4, 1, 0.4)
+        else
+            soundFileStatus:SetTextColor(1, 0.4, 0.4)
+        end
+    end
+
+    addFileButton:SetScript("OnClick", function()
+        local soundsRuntime = Preydator:GetModule("SoundsRuntime")
+        if not soundsRuntime or type(soundsRuntime.AddCustomSoundFile) ~= "function" then
+            setSoundFileStatus(false, L("Sound system unavailable"))
+            return
+        end
+        local ok, message = soundsRuntime.AddCustomSoundFile(soundFileEditBox:GetText())
+        setSoundFileStatus(ok, message)
+        if ok then
+            soundFileEditBox:SetText("")
+        end
+    end)
+
+    removeFileButton:SetScript("OnClick", function()
+        local soundsRuntime = Preydator:GetModule("SoundsRuntime")
+        if not soundsRuntime or type(soundsRuntime.RemoveCustomSoundFile) ~= "function" then
+            setSoundFileStatus(false, L("Sound system unavailable"))
+            return
+        end
+        local ok, message = soundsRuntime.RemoveCustomSoundFile(soundFileEditBox:GetText())
+        setSoundFileStatus(ok, message)
+        if ok then
+            soundFileEditBox:SetText("")
+        end
     end)
 
     return subcategory
