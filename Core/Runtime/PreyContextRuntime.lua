@@ -10,7 +10,8 @@
 -- SoundsRuntime.PlayStageSound and WidgetAdapter.SuppressDefaultPreyIcon on
 -- every refresh (both self-guarded/idempotent, safe to call every tick) --
 -- not State writes, but the two side effects this file causes outside its
--- own State ownership.
+-- own State ownership. Also maintains its own private zone-resolution trace
+-- (see zoneResolutionTrace) for /pd zinspect -- not shared/domain state.
 
 local Preydator = _G.Preydator
 
@@ -30,6 +31,115 @@ local WIDGET_PERCENT_FIELDS = {
 -- The final stage ("prey found") -- matches STAGE_PERCENT_BY_SEGMENT_MODE's
 -- last entry (both tables map stage 4 to 100%).
 local FOUND_STAGE = 4
+
+-- Passive trace of every ResolveQuestOnMap call where the raw Blizzard
+-- isOnMap answer was false -- always recording, no setting to remember to
+-- flip on, same reasoning as WidgetAdapter's own suppression trace (built
+-- 2026-09-04 after a real "isOnMap=false, resolvedIsOnMap=false" report
+-- resolved itself before it could be caught mid-failure for a second look,
+-- leaving no way to tell whether the widget-visible fallback or its
+-- container-scan widening actually worked). Only the false case is recorded
+-- -- isOnMap=true is the routine, uninteresting outcome, and a hunt's
+-- refresh tick fires every ~2s for the whole hunt, so logging every call
+-- unconditionally would flood a small ring buffer with nothing but "true"
+-- entries. Exposed via GetZoneResolutionTrace / DiagnosticsRuntime.
+-- BuildZoneInspectReport / `/pd zinspect`.
+local ZONE_TRACE_LIMIT = 20
+local zoneResolutionTrace = {}
+
+local function recordZoneResolution(questID, isOnMap, resolvedIsOnMap, widgetInfo, resolvedVia, latchAgeSeconds)
+    local okTime, now = pcall(_G.GetTime)
+    table.insert(zoneResolutionTrace, {
+        time = (okTime and type(now) == "number") and now or 0,
+        questID = questID,
+        isOnMap = isOnMap,
+        resolvedIsOnMap = resolvedIsOnMap,
+        resolvedVia = resolvedVia,
+        latchAgeSeconds = latchAgeSeconds,
+        widgetIconFrameFound = widgetInfo and widgetInfo.iconFrameFound,
+        widgetDesiredSuppression = widgetInfo and widgetInfo.desiredSuppression,
+        widgetInCombat = widgetInfo and widgetInfo.inCombat,
+        widgetDirectShown = widgetInfo and widgetInfo.directShown,
+        widgetLastShownAtAge = widgetInfo and widgetInfo.lastShownAtAge,
+    })
+    while #zoneResolutionTrace > ZONE_TRACE_LIMIT do
+        table.remove(zoneResolutionTrace, 1)
+    end
+end
+
+-- Returns a shallow copy of the recent zone-resolution trace (oldest first).
+function PreyContextRuntime.GetZoneResolutionTrace()
+    local copy = {}
+    for i, entry in ipairs(zoneResolutionTrace) do
+        copy[i] = {
+            time = entry.time,
+            questID = entry.questID,
+            isOnMap = entry.isOnMap,
+            resolvedIsOnMap = entry.resolvedIsOnMap,
+            resolvedVia = entry.resolvedVia,
+            latchAgeSeconds = entry.latchAgeSeconds,
+            widgetIconFrameFound = entry.widgetIconFrameFound,
+            widgetDesiredSuppression = entry.widgetDesiredSuppression,
+            widgetInCombat = entry.widgetInCombat,
+            widgetDirectShown = entry.widgetDirectShown,
+            widgetLastShownAtAge = entry.widgetLastShownAtAge,
+        }
+    end
+    return copy
+end
+
+-- "Confirmed active" latch (Decisions Log item 74): a genuine hunt-progress
+-- signal (isOnMap itself, or the widget-visible fallback) confirming this
+-- quest as in-zone is remembered for CONFIRMED_ACTIVE_WINDOW_SECONDS, so a
+-- brief confirming moment (an ambush/Mob Scanner nameplate match, which
+-- typically starts combat and is exactly when the widget-visible fallback is
+-- most reliable -- see WidgetAdapter.IsPreyWidgetVisible's combat-lockdown
+-- handling) keeps the bar/sounds active through the gaps until the next one,
+-- instead of re-deriving zone status from scratch on every ~2s tick and
+-- flickering off between confirming events. Product owner's own diagnosis
+-- (2026-09-04, Voidstorm): the bar only ever appeared during brief windows
+-- right after a container/ambush/Pack Ambush/Exploding Corpse Snakes event,
+-- then vanished again immediately after -- "if we can show it during those
+-- brief windows why can we not show it the entire time."
+--
+-- Deliberately bounded, not sticky for the whole hunt -- a genuinely
+-- unbounded latch would reintroduce the exact false-positive shape that
+-- caused the old pre-rewrite codebase's Eversong Woods bug (Decisions Log
+-- items 29/32/35/36's own history) if the player travels far away from the
+-- prey zone while still holding the same quest. 120s is a starting value,
+-- not a confirmed-safe one -- chosen to comfortably bridge normal gaps
+-- between combat encounters within one continuous hunt (the default ambush
+-- alert cooldown is 60s, so confirming events can naturally be tens of
+-- seconds apart) without staying latched for many minutes after genuinely
+-- leaving. If live testing shows false positives (bar staying lit well after
+-- clearly leaving the area) OR gaps still slipping through (bar still
+-- vanishing between genuinely-close-together events), this single constant
+-- is the place to retune -- not a redesign either direction.
+local CONFIRMED_ACTIVE_WINDOW_SECONDS = 120
+local lastConfirmedTrue = { questID = nil, time = nil }
+
+local function markConfirmedTrue(questID)
+    local okTime, now = pcall(_G.GetTime)
+    if okTime and type(now) == "number" then
+        lastConfirmedTrue.questID = questID
+        lastConfirmedTrue.time = now
+    end
+end
+
+-- Returns the age in seconds of the last confirmation for questID (nil if
+-- none/expired/for a different quest -- never carries over between hunts,
+-- since a fresh activeQuestID means lastConfirmedTrue.questID no longer
+-- matches).
+local function confirmedTrueAgeSeconds(questID)
+    if lastConfirmedTrue.questID ~= questID or lastConfirmedTrue.time == nil then
+        return nil
+    end
+    local okTime, now = pcall(_G.GetTime)
+    if not okTime or type(now) ~= "number" then
+        return nil
+    end
+    return now - lastConfirmedTrue.time
+end
 
 local function getModules()
     return
@@ -119,6 +229,75 @@ local function applyIconSuppression(widgetAdapter, settings)
     widgetAdapter.SuppressDefaultPreyIcon(desiredSuppress == true)
 end
 
+-- Single source of truth for "should this quest be considered in the prey
+-- zone" -- everything that used to call QuestApiAdapter.GetQuestIsOnMap()
+-- directly (this file's own zone-gating step below, plus AlertsRuntime's
+-- true-ambush/Mob-Scanner checks) now goes through this instead, so the one
+-- fallback below applies everywhere at once rather than needing a matching
+-- fix in every caller.
+--
+-- Found live 2026-09-04 (a Voidstorm PvP-optional sub-zone): a genuinely
+-- active hunt reported isOnMap=false for the WHOLE time the player was
+-- there, while Blizzard's own default prey icon stayed visible the entire
+-- time -- proof C_QuestLog's isOnMap isn't authoritative for every zone
+-- shape, contrary to this file's own previous assumption (Decisions Log item
+-- 36). Rather than reintroducing the map-hierarchy pre-filter that item 36
+-- deliberately removed after three separate false negatives of its own
+-- (Decisions 29/32/35) -- a different, already-rejected class of heuristic
+-- -- this instead trusts a second, independent Blizzard signal:
+-- WidgetAdapter.IsPreyWidgetVisible(), which reflects whether Blizzard's own
+-- widget system currently considers a prey-hunt relevant to the player,
+-- exactly the same signal the product owner used to notice the bug in the
+-- first place ("the Blizzard icon stays on the screen for it"). Only
+-- overrides a CONFIRMED false -- an unresolved/nil isOnMap is left alone,
+-- same "never guess" rule as before.
+function PreyContextRuntime.ResolveQuestOnMap(questID)
+    local questApi = Preydator:GetModule("QuestApiAdapter")
+    if not questApi then
+        return nil
+    end
+
+    local isOnMap = questApi.GetQuestIsOnMap(questID)
+    if isOnMap == true then
+        markConfirmedTrue(questID)
+        return true
+    end
+    if isOnMap == nil then
+        -- Never guess on unresolved -- leave inPreyZone/callers untouched,
+        -- same rule as before. Does not touch or consume the latch either.
+        return nil
+    end
+
+    -- isOnMap == false from here down.
+    local widgetAdapter = Preydator:GetModule("WidgetAdapter")
+    local widgetVisible = false
+    local widgetInfo = nil
+    if widgetAdapter then
+        if type(widgetAdapter.IsPreyWidgetVisible) == "function" then
+            widgetVisible = widgetAdapter.IsPreyWidgetVisible() == true
+        end
+        if type(widgetAdapter.GetVisibilityDebugInfo) == "function" then
+            widgetInfo = widgetAdapter.GetVisibilityDebugInfo()
+        end
+    end
+
+    if widgetVisible then
+        markConfirmedTrue(questID)
+        recordZoneResolution(questID, isOnMap, true, widgetInfo, "widget", nil)
+        return true
+    end
+
+    -- Neither isOnMap nor the widget-visible check currently confirms zone
+    -- membership -- bridge the gap using the last time THIS quest was
+    -- confirmed true (see CONFIRMED_ACTIVE_WINDOW_SECONDS' own comment)
+    -- rather than immediately flipping off.
+    local latchAge = confirmedTrueAgeSeconds(questID)
+    local latchedTrue = latchAge ~= nil and latchAge <= CONFIRMED_ACTIVE_WINDOW_SECONDS
+    recordZoneResolution(questID, isOnMap, latchedTrue, widgetInfo,
+        latchedTrue and "latch" or "none", latchAge)
+    return latchedTrue
+end
+
 function PreyContextRuntime.RefreshPreyContext()
     local questApi, mapContext, widgetAdapter, state, settings, huntScanner = getModules()
     if not (questApi and mapContext and state) then
@@ -171,8 +350,11 @@ function PreyContextRuntime.RefreshPreyContext()
     -- same switch (Decisions 34/35); this brings the bar in line with them
     -- instead of leaving it on the older, repeatedly-patched heuristic.
     -- expectedZoneMapID is still captured above (for Hunt Table zone display
-    -- and diagnostics) -- just no longer used to gate inPreyZone.
-    local isOnMap = questApi.GetQuestIsOnMap(activeQuestID)
+    -- and diagnostics) -- just no longer used to gate inPreyZone. Goes
+    -- through ResolveQuestOnMap (above), not GetQuestIsOnMap directly, so the
+    -- widget-visible fallback for isOnMap's own false negatives (Decisions
+    -- Log item 69) applies here too.
+    local isOnMap = PreyContextRuntime.ResolveQuestOnMap(activeQuestID)
     if isOnMap ~= nil then
         state.SetInPreyZone(isOnMap)
     end

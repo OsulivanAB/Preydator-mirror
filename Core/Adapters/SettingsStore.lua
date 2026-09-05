@@ -160,6 +160,21 @@ local function buildRawDefaults()
             -- session -- it was already user-configurable in code
             -- (SettingsRuntime validates 0-300) but had no UI control.
             alert_cooldown_seconds = 60,
+            -- Modeled on the Better Fishing addon's "Enhance Sounds" feature
+            -- (product owner's own reference, 2026-09-04): while a Preydator
+            -- alert plays, briefly mute ambience/music/pet sounds and push
+            -- SFX+Master volume UP BY amplify_scale (additive, on top of the
+            -- player's own current volume, clamped to WoW's 1.0 ceiling --
+            -- NOT set to amplify_scale directly; an absolute-target first
+            -- version could make alerts quieter for a player whose normal
+            -- volume was already above the chosen scale, confirmed live) so
+            -- the alert cuts through other game audio, then restores the
+            -- player's normal mix. Off by default -- this touches the
+            -- player's actual sound CVars, not just Preydator's own
+            -- playback, so it should be an explicit opt-in. Scale defaults
+            -- to 1, which always forces both to full.
+            amplify_enabled = false,
+            amplify_scale = 1,
         },
         hunt = {
             enabled = true,

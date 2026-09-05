@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 120105
 ## Title: Preydator
 ## Notes: Tracks Prey Hunt progress with customizable visuals and sounds.
 ## Author: RagingAltoholic
@@ -62,28 +62,20 @@ UI\BarFrame.lua
 UI\SettingsPanel.lua
 UI\Launcher.lua
 
-# Everything below is pending the UI rewrite slice (issues/rewrite_architecture.md
-# Sections 3-4). Left in the working tree but out of the load list until each file's replacement
-# lands, since they depend on the old Preydator.lua monolith that bootstrap now replaces.
-# UI\EditMode.lua                       (was Modules\EditMode.lua) -- permanently not needed,
-#   confirmed by the product owner (Decisions Log items 38/39): the entire desired behavior
-#   (drag the bar during Blizzard Edit Mode, return to whatever the lock checkbox says on
-#   exit) is already built into UI\BarFrame.lua (frame:EnableMouse((not lockBar) or
-#   editModeActive)); no floating quick-settings window wanted at all.
-# UI\ReportWindow.lua                   (was Modules\ReportWindow.lua) -- superseded by the
-#   working /pd chat+BugSack diagnostic flow (Core\SlashCommands.lua); not being built
-#   (Decisions Log item 38).
-# Modules\Settings.lua (old, ~3600-line monolith) is not superseded by UI\SettingsPanel.lua's
-#   General/Bar Display/Bar Colors/Text & Labels/Sound & Alerts/Hunt Scanner/Advanced
-#   categories -- it's still cited as a live design/port reference in
-#   issues/bar_rendering_research.md, so it's not orphaned/forgotten, just not on the load
-#   list. Don't git rm it while that reference doc still points at it.
-# Modules\HuntScanner.lua (old, 5045-line monolith) is only PARTIALLY superseded -- the
-#   MVP scan/list/select/zone-derivation core AND the new HuntTablePanel.lua (icon/name/
-#   zone/Accept rows only) now live above, but grouping/sorting and achievement-signal
-#   matching (full-scope per Section 15) are still only in the old file -- reward display
-#   is now fully covered by the new files above (Decisions Log item 19). Don't git rm it yet.
-# Core\SlashCommands.lua (/pd inspect|qinspect|hinspect|pinspect [bs]) replaces the old
-#   Modules\DebugInspect.lua/Modules\SlashCommands.lua slash-command glue -- report content
-#   lives in Core\Runtime\DiagnosticsRuntime.lua, scoped to State/Settings/Adapters/
-#   HuntScanner data only, no bar-frame/label-frame geometry (Decisions Log item 20).
+# UI\EditMode.lua and UI\ReportWindow.lua were never built -- confirmed permanently not
+# needed (Decisions Log items 38/39): Edit Mode dragging is already covered by
+# UI\BarFrame.lua, and /pd's chat+BugSack flow (Core\SlashCommands.lua) fully replaces the
+# old report-window concept.
+#
+# The six old off-.toc monolith files (Modules\DebugInspect.lua, EditMode.lua,
+# HuntScanner.lua, ReportWindow.lua, Settings.lua, SlashCommands.lua) were git rm'd
+# 2026-09-04 once every feature they held was confirmed fully ported and live-tested:
+# HuntScanner.lua's grouping/sorting/achievement-signal matching/reward display all landed
+# in Modules\HuntScanner\HuntScannerRuntime.lua + HuntTablePanel.lua (session_status.md
+# Sections 5b-5d); Settings.lua's remaining port-reference role in
+# issues/bar_rendering_research.md pointed at a separate worktree's copy
+# (D:\Dev\PreydatorLive\Modules\Settings.lua), not this branch's own file, so removing this
+# branch's copy doesn't affect that research doc's validity; DebugInspect.lua/
+# SlashCommands.lua were already fully replaced by Core\SlashCommands.lua +
+# Core\Runtime\DiagnosticsRuntime.lua (Decisions Log item 20). Confirmed via grep before
+# deletion that no active .toc-listed file referenced any of the six.

@@ -60,6 +60,7 @@ local NUMERIC_RANGES = {
     { path = { "bar", "height_vertical" }, min = 100, max = 350 },
     { path = { "text", "font_size" }, min = 8, max = 24 },
     { path = { "sound", "alert_cooldown_seconds" }, min = 0, max = 300 },
+    { path = { "sound", "amplify_scale" }, min = 0, max = 1 },
     { path = { "general", "minimap_angle" }, min = 0, max = 360 },
 }
 

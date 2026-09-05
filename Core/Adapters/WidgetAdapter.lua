@@ -26,6 +26,26 @@ local widgetSnapshot = nil
 local desiredSuppression = false
 local pendingAfterCombat = false
 
+-- Timestamp of the last time Blizzard's own code showed the tracked prey-hunt
+-- widget frame (see ensureOnShowHooked below) -- kept independent of whether
+-- Preydator itself is currently suppressing it. See IsPreyWidgetVisible's
+-- comment for why this exists.
+local lastShownAt = nil
+
+-- How long a "Blizzard showed the icon" event stays trusted as still-current
+-- for IsPreyWidgetVisible's suppressed-icon fallback path. A first guess (6s,
+-- assumed to match PreyContextRuntime's ~2s refresh-tick cadence) was wrong
+-- -- /pd zinspect's live trace (2026-09-04) showed Blizzard actually
+-- re-triggers OnShow on its own much slower cadence, ~14.6s apart in that
+-- sample, not every couple of seconds -- so the 6s window was expiring
+-- between real re-shows and flickering resolvedIsOnMap false for roughly
+-- half of every cycle even though the player never left the zone. Widened to
+-- comfortably clear the observed gap with margin; if Blizzard's real cadence
+-- turns out to vary wider than this, the fix is a one-line number change,
+-- and /pd zinspect will show the gap directly next time rather than needing
+-- to be re-derived from scratch.
+local WIDGET_RECENTLY_SHOWN_WINDOW = 20
+
 -- Passive trace of every icon-suppression-relevant event, always recording
 -- (not opt-in like AlertsRuntime's nameplate trace -- these are rare
 -- state-transition events, not a per-frame flood, so there's no volume
@@ -153,6 +173,10 @@ local function ensureOnShowHooked(frameRef)
     end
     local ok = pcall(frameRef.HookScript, frameRef, "OnShow", function()
         recordSuppressionEvent("onshow_fired", "Blizzard showed the icon frame")
+        local okTime, now = pcall(_G.GetTime)
+        if okTime and type(now) == "number" then
+            lastShownAt = now
+        end
         scheduleDeferredPreyContextRefresh()
     end)
     if ok then
@@ -160,22 +184,38 @@ local function ensureOnShowHooked(frameRef)
     end
 end
 
+-- Every widget container name DebugWidgetState's own diagnostic already
+-- checked (built 2026-08-28 specifically because current-patch container
+-- names had already proven stale for other assumptions this session) --
+-- single source of truth for the list, shared with captureLiveFrames below,
+-- which used to check only the first entry. Widened 2026-09-04 after a
+-- Voidstorm PvP-optional sub-zone report where IsPreyWidgetVisible() found
+-- no frame at all despite Blizzard's own icon reportedly being visible --
+-- unconfirmed whether this specific container-name gap was the actual cause
+-- (the report resolved on its own before it could be caught mid-failure),
+-- but it's the concrete, already-validated lead available, and scanning
+-- more containers is a free, read-only widening with no behavior-change risk
+-- if it turns out not to be the cause.
+local WIDGET_CONTAINER_NAMES = {
+    "UIWidgetPowerBarContainerFrame",
+    "UIWidgetTopCenterContainerFrame",
+    "UIWidgetBelowMinimapContainerFrame",
+}
+
 local function captureLiveFrames()
-    local container = _G.UIWidgetPowerBarContainerFrame
-    if not container or not container.GetChildren then
-        return
-    end
-
-    local ok, children = pcall(function() return { container:GetChildren() } end)
-    if not ok or type(children) ~= "table" then
-        return
-    end
-
-    for _, child in ipairs(children) do
-        if isPreyHuntProgressFrame(child) then
-            trackedFrames[child] = true
-            iconFrame = child
-            ensureOnShowHooked(child)
+    for _, containerName in ipairs(WIDGET_CONTAINER_NAMES) do
+        local container = _G[containerName]
+        if container and container.GetChildren then
+            local ok, children = pcall(function() return { container:GetChildren() } end)
+            if ok and type(children) == "table" then
+                for _, child in ipairs(children) do
+                    if isPreyHuntProgressFrame(child) then
+                        trackedFrames[child] = true
+                        iconFrame = child
+                        ensureOnShowHooked(child)
+                    end
+                end
+            end
         end
     end
 end
@@ -473,6 +513,106 @@ function WidgetAdapter.SuppressDefaultPreyIcon(suppress)
     applyDesiredSuppression()
 end
 
+-- Whether Blizzard's own prey-hunt widget currently wants to be visible for
+-- the player right now -- used by PreyContextRuntime.ResolveQuestOnMap as a
+-- fallback when C_QuestLog's own isOnMap says false (found live 2026-09-04:
+-- a Voidstorm PvP-optional sub-zone where a genuinely active hunt reported
+-- isOnMap=false the whole time, while Blizzard's own default prey icon
+-- stayed visible there -- proof isOnMap itself isn't authoritative for every
+-- zone shape). Not a guess: the widget only exists/shows when Blizzard's own
+-- widget system currently considers a prey-hunt relevant to the player.
+--
+-- A straight IsShown() read isn't trustworthy whenever Preydator's own
+-- suppression is actually the thing controlling the frame's Shown state --
+-- it would always read false (self-defeating), not because Blizzard doesn't
+-- want to show it. It IS trustworthy in two cases: general.
+-- disable_default_prey_icon is OFF entirely (this addon never touches the
+-- frame), or it's ON but currently blocked by combat lockdown -- Hide()
+-- cannot run at all while InCombatLockdown() is true (Decisions Log item 63,
+-- the same restriction already documented for the icon-reappearing-mid-hunt
+-- bug), so during combat the frame is left exactly as Blizzard set it,
+-- completely untouched by Preydator. Confirmed live 2026-09-04 via
+-- /pd iinspect that this combat/suppression-blocked state is real and common
+-- (repeated suppress_blocked_combat entries during an actual Voidstorm
+-- fight) -- this function didn't originally account for it at all.
+--
+-- Outside both of those cases (actively suppressed, not in combat), there is
+-- NO reliable direct signal -- falls back to "has Blizzard tried to
+-- (re-)show it recently" (lastShownAt/WIDGET_RECENTLY_SHOWN_WINDOW). This
+-- fallback is known-weak, not a real fix: two separate live /pd zinspect
+-- traces (2026-09-04) proved Blizzard does NOT re-trigger OnShow on any
+-- predictable cadence while actively suppressed -- one sample showed a
+-- 70+ second gap with zero re-triggers -- so widening the window further
+-- would just be another guess with no evidence of an actual upper bound.
+-- Kept anyway because it's harmless (can only make this function MORE
+-- permissive, never less) and still catches the brief window right after a
+-- genuine OnShow. The "suppressed AND out of combat AND no recent OnShow"
+-- case has no known reliable fix at all right now -- see Decisions Log item
+-- 73 for the honest status of this gap.
+function WidgetAdapter.IsPreyWidgetVisible()
+    ensureMixinHooked()
+    captureLiveFrames()
+
+    if not iconFrame then
+        return false
+    end
+
+    local blockedByCombat = type(InCombatLockdown) == "function" and InCombatLockdown() == true
+    if (not desiredSuppression or blockedByCombat) and type(iconFrame.IsShown) == "function" then
+        local ok, shown = pcall(iconFrame.IsShown, iconFrame)
+        if ok and shown == true then
+            return true
+        end
+    end
+
+    if lastShownAt ~= nil then
+        local okTime, now = pcall(_G.GetTime)
+        if okTime and type(now) == "number" and (now - lastShownAt) <= WIDGET_RECENTLY_SHOWN_WINDOW then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Raw inputs behind IsPreyWidgetVisible's decision, for
+-- PreyContextRuntime's passive zone-resolution trace (Decisions Log item
+-- 71) -- exists so a future "the fallback still said false" report is
+-- diagnosable from recorded data (was a frame ever found at all? which
+-- container? was suppression active?) instead of needing to catch the
+-- product owner live in the failing state a second time, same reasoning as
+-- every other passive trace in this codebase. inCombat added (Decisions Log
+-- item 73) after /pd iinspect showed real, repeated suppress_blocked_combat
+-- entries during the exact scenario being investigated -- needed to
+-- correlate combat state with resolvedIsOnMap outcomes next time, since
+-- IsPreyWidgetVisible's own behavior now depends on it too.
+function WidgetAdapter.GetVisibilityDebugInfo()
+    ensureMixinHooked()
+    captureLiveFrames()
+
+    local lastShownAtAge = nil
+    if lastShownAt ~= nil then
+        local okTime, now = pcall(_G.GetTime)
+        if okTime and type(now) == "number" then
+            lastShownAtAge = now - lastShownAt
+        end
+    end
+
+    local directShown = nil
+    if iconFrame and type(iconFrame.IsShown) == "function" then
+        local ok, shown = pcall(iconFrame.IsShown, iconFrame)
+        directShown = ok and (shown == true)
+    end
+
+    return {
+        iconFrameFound = iconFrame ~= nil,
+        desiredSuppression = desiredSuppression == true,
+        inCombat = type(InCombatLockdown) == "function" and InCombatLockdown() == true,
+        directShown = directShown,
+        lastShownAtAge = lastShownAtAge,
+    }
+end
+
 -- Returns a shallow copy of the recent suppression-event trace (see
 -- suppressionTrace's comment), oldest first. Exposed for
 -- DiagnosticsRuntime.BuildIconSuppressionInspectReport / `/pd iinspect`.
@@ -509,12 +649,7 @@ function WidgetAdapter.DebugWidgetState()
     add("mixinHooked=" .. tostring(mixinHooked))
     add("widgetSnapshot=" .. (widgetSnapshot and "present" or "nil"))
 
-    local containerNames = {
-        "UIWidgetPowerBarContainerFrame",
-        "UIWidgetTopCenterContainerFrame",
-        "UIWidgetBelowMinimapContainerFrame",
-    }
-    for _, containerName in ipairs(containerNames) do
+    for _, containerName in ipairs(WIDGET_CONTAINER_NAMES) do
         local container = _G[containerName]
         if not container or type(container.GetChildren) ~= "function" then
             add(containerName .. "=missing")
@@ -548,7 +683,7 @@ function WidgetAdapter.DebugWidgetState()
     -- widgets earlier this session; deliberately still never reads
     -- widgetID/widgetType/shownState.
     local matchedFrame = nil
-    for _, containerName in ipairs(containerNames) do
+    for _, containerName in ipairs(WIDGET_CONTAINER_NAMES) do
         local container = _G[containerName]
         if container and type(container.GetChildren) == "function" then
             local ok, children = pcall(function() return { container:GetChildren() } end)

@@ -63,6 +63,10 @@ local COMMANDS = {
         local d = getDiagnostics()
         return d and d.BuildIconSuppressionInspectReport()
     end,
+    zinspect = function()
+        local d = getDiagnostics()
+        return d and d.BuildZoneInspectReport()
+    end,
     -- TEMP DIAGNOSTIC (2026-08-28) -- widgetSnapshot investigation, see
     -- WidgetAdapter.DebugWidgetState's comment. Remove once the real cause
     -- is found and fixed.
@@ -76,8 +80,9 @@ local COMMANDS = {
 local USAGE = "Preydator commands: /pd inspect [bs] | qinspect [questID] [bs] | hinspect [bs] "
     .. "| pinspect [bs] | sinspect [bs] | ninspect [bs] (nameplate trace, needs Settings > "
     .. "Advanced > Verbose Pack Ambush Debug Logging on) | iinspect [bs] (default prey icon "
-    .. "suppression trace, always recording) | segments (toggle bar.progress_segments "
-    .. "quarters/thirds, macro-friendly)"
+    .. "suppression trace, always recording) | zinspect [bs] (isOnMap=false zone-resolution "
+    .. "trace, always recording) | segments (toggle bar.progress_segments quarters/thirds, "
+    .. "macro-friendly)"
 
 local function handleCommand(msg)
     msg = (msg or ""):match("^%s*(.-)%s*$")

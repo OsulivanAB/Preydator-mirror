@@ -1149,11 +1149,11 @@ Read top to bottom as the actual next-up order, not just a backlog dump:
    (`e09e583`, `c74fb36`), covering everything through this session's vertical bar,
    text-box, icon-suppression, and custom-sound work. `rewrite/v2-architecture` no
    longer has zero history.
-2. Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI,
+2. ~~Lower-priority/cosmetic backlog, batched together: custom sound file add/remove UI,
    the Text & Labels category's two-column layout, and sound amplification/loudness-boost
-   research. **Text & Labels layout and custom sound file UI both DONE** (2026-09-03/04,
-   Decisions Log items 61 and 62) -- both live-confirmed working. **Sound amplification
-   research is the only sub-item still open**, not yet picked up.
+   research.~~ **DONE, fully signed off.** Text & Labels layout, custom sound file UI, and
+   sound amplification (Decisions Log items 61-62, 67-68) are all **CONFIRMED LIVE**
+   (2026-09-04) -- no known open items on any of the three.
 3. **Ambush/Pack Ambush bar-text wiring.** `text.ambush_prefix`/`pack_ambush_prefix`
    settings already exist and are user-facing, but `BarRuntime` never reads them -- the bar
    text never actually changes on ambush despite the setting implying it should. **Still
@@ -1165,15 +1165,148 @@ Read top to bottom as the actual next-up order, not just a backlog dump:
 5. ~~`bar.orientation = vertical` visual QA pass~~ **SIGNED OFF 2026-09-04** (Decisions Log
    item 66) -- fill gradient, percent text, and stage label text all confirmed correct
    live. No known open items.
-6. **Delete the old `Modules/HuntScanner.lua` monolith** (5045 lines, only partially
-   superseded) -- still open, still last on purpose (cleanup best done once everything
-   above is settled, not because it's unimportant).
+6. ~~**Delete the old `Modules/HuntScanner.lua` monolith** (5045 lines, only partially
+   superseded) -- still open, still last on purpose.~~ **DONE (2026-09-04).** Confirmed
+   fully superseded (grouping/sorting/achievements/rewards all live-tested in the rewrite),
+   then `git rm`'d along with five other old off-.toc files (`DebugInspect.lua`,
+   `EditMode.lua`, `ReportWindow.lua`, `Settings.lua`, `SlashCommands.lua`) once grep
+   confirmed zero active-file references to any of them. Full reasoning in Decisions Log
+   item 75.
+
+**New, product-owner-initiated cleanup pass (2026-09-04), beyond the original punch list:
+old code + locale file audit, fully closed out.** Alongside the six old module files above,
+audited every `Locales/*.lua` file against the real set of 200 keys the rewrite currently
+calls `L(...)` with. `deDE`/`esMX`/`frFR`/`itIT`/`ptBR`/`zhTW` were already clean. Fixed a
+real bug in `esES` (translated "AMBUSH" entry had silently stopped matching the code's
+actual key, `"AMBUSH: "`) and removed one genuinely dead entry from `ruRU` (an old Warband
+feature, permanently out of scope). Regenerated `enUS.lua` (previously 100% inert but
+listing ~500 stale example keys from the pre-rewrite Currency/Warband/Options UI) to
+reflect the real current key set. For `koKR`/`zhCN` -- large, real, credited translations
+built almost entirely for old-codebase features -- flagged the scale directly to the
+product owner rather than deciding alone; **chose to strip both to their still-used
+subset**, same as the others. Also found and fixed a genuine pre-existing bug along the
+way: `zhCN.lua` had assigned two different translations to the same key (`"Vertical"`),
+with only the later one ever actually taking effect (Lua overwrites, doesn't merge) --
+kept the effective one, dropped the dead duplicate. Full reasoning in Decisions Log item
+75. `luacheck`: 0 warnings/0 errors introduced across every touched file.
 
 **Dropped from consideration:** `bar.show_spark_line` (Section 15) -- explicitly deprioritized
 out of scope for now, not merely deferred like the items above.
 
-**Remaining, in order: #3 (ambush bar-text wiring), #2's sound amplification research, #4
-(locale, blocked on a native speaker), #6 (old monolith cleanup).**
+**Remaining, in order: #3 (ambush bar-text wiring, the one genuine functional gap left), #4
+(locale, blocked on a native speaker), #6 (old monolith cleanup). Item 2 is fully closed.**
+
+**New item found live (2026-09-04), not on the original list: a fourth zone false negative,
+this time isOnMap itself was wrong, not a pre-filter heuristic bug.** Product owner found a
+PvP-optional sub-zone in Voidstorm where a genuinely active hunt (`0/1 Hunt your Prey`,
+`isOnQuest=true`) reported `isOnMap=false` for the whole encounter via `/pd qinspect`, while
+Blizzard's own default prey icon stayed visible there the entire time -- direct evidence
+`isOnMap` isn't authoritative for every zone shape, contradicting item 36's working
+assumption. Fixed by adding a second, independent Blizzard signal
+(`WidgetAdapter.IsPreyWidgetVisible()`, reading whether Blizzard's own prey-hunt widget
+frame currently wants to be shown) as a fallback ONLY when isOnMap is a confirmed `false` --
+new `PreyContextRuntime.ResolveQuestOnMap()` is the single source of truth both the bar's
+zone-gating step and `AlertsRuntime`'s ambush/Mob-Scanner checks now go through, so one fix
+covers all three. `/pd qinspect` now shows both `isOnMap` (raw) and `resolvedIsOnMap`
+(post-fallback) so a future divergence is visible directly. Full reasoning in
+`issues/rewrite_architecture.md` Decisions Log item 69. `luacheck`: 0 warnings/0 errors
+across all 4 touched files. **Not yet re-tested live** -- next step is the product owner
+re-checking `/pd qinspect` in that same Voidstorm sub-zone to confirm `resolvedIsOnMap=true`
+and that the bar/sounds actually work there now.
+
+**Retested live, came back `resolvedIsOnMap=false` again -- the fallback itself didn't find
+anything.** Widened `WidgetAdapter.captureLiveFrames()` (which `IsPreyWidgetVisible()` relies
+on) to scan all three widget container names `DebugWidgetState`'s own diagnostic already
+checks, not just one -- a free, read-only, purely additive change, unconfirmed as the actual
+fix since the product owner progressed past the failing state (reached the hunt's final
+stage, `isOnMap` came back `true` on its own) before it could be retested in the act. Full
+reasoning in Decisions Log item 70. **Genuinely open** -- next occurrence, check
+`/pd qinspect`'s `resolvedIsOnMap` line: `true` confirms this fix, `false` again means it's
+a real Blizzard-side limitation for this zone shape, not something to keep patching.
+
+**New always-on `/pd zinspect [bs]` trace added (2026-09-04), same session, at the product
+owner's suggestion.** Manual `/pd qinspect` checks depend on running the command at the
+right moment, which is exactly why item 70's retest was inconclusive -- the failure resolved
+on its own before it could be checked again. `PreyContextRuntime` now passively records
+(bounded, 20 entries, no setting to remember to enable) every time the raw `isOnMap` answer
+is `false`, alongside a `WidgetAdapter.GetVisibilityDebugInfo()` snapshot (was a widget frame
+found at all, was suppression active, was it directly shown, how recently was it last
+shown) -- so the NEXT time this zone issue happens, the data needed to actually diagnose it
+is already captured, no need to catch it live. Full reasoning in Decisions Log item 71.
+`luacheck`: 0 warnings/0 errors. **Not yet tested live** -- next Voidstorm-style occurrence,
+run `/pd zinspect` and see what it recorded.
+
+**`/pd zinspect` proved its worth immediately -- the trace showed the real bug wasn't the
+widget-container scan at all.** Product owner ran it live (questID 91251): all 20 entries
+showed `iconFrameFound=true`, meaning the widget was found consistently the whole time --
+item 70's container widening wasn't the fix that was needed. The real defect: Blizzard only
+re-triggers `OnShow` on the icon roughly every ~14.6s (observed directly in the trace), not
+every ~2s as first assumed, but `WIDGET_RECENTLY_SHOWN_WINDOW` was only 6s -- so
+`resolvedIsOnMap` correctly followed that too-short window and flickered `false` for about
+half of every cycle even though the player never left the zone. Fixed by raising the window
+to 20s, comfortably clearing the observed gap -- a data-derived fix, not another guess,
+made possible specifically because the new trace captured the real cadence. Full reasoning
+in Decisions Log item 72. `luacheck`: 0 warnings/0 errors. **Not yet re-tested live** --
+next occurrence, `resolvedIsOnMap` should stay `true` continuously instead of flickering.
+
+**Item 72's window fix retested, disproven outright by two more live traces -- Blizzard's
+`OnShow` has no predictable cadence at all (one sample: 70+s with zero re-triggers), and a
+real combat-lockdown gap was found and fixed instead (2026-09-04).** No fixed window number
+was ever going to work reliably. Cross-referencing `/pd iinspect` (to check whether
+`desiredSuppression=true` in the traces was a settings-sync bug -- it wasn't; the setting
+really is on) surfaced the actual missing piece: the product owner was repeatedly blocked by
+`suppress_blocked_combat` -- Preydator's suppression `Hide()` cannot run at all during combat
+(an existing, accepted restriction, Decisions Log item 63), so `IsPreyWidgetVisible()` should
+have trusted a direct `IsShown()` read in that state (untouched by Preydator) but never
+checked combat status at all. **Fixed:** now checks `InCombatLockdown()` and trusts a direct
+read whenever suppression isn't actually able to touch the frame (setting off, or blocked by
+combat) -- the unreliable recency fallback is kept only as a harmless secondary catch, not
+the primary signal anymore. The product owner also pointed out combat is one of the core ways
+a hunt progresses in the first place (not incidental) -- meaning this fix likely covers the
+bulk of real playtime in this zone shape, not a narrow slice; the genuinely unsolved
+remainder narrows to "suppressed AND out of combat AND no recent OnShow." New `inCombat`
+field threaded through `/pd zinspect`'s trace so this can be verified directly next time.
+Full reasoning in Decisions Log item 73. `luacheck`: 0 warnings/0 errors across all 3 touched
+files. **Not yet tested live.**
+
+**New "confirmed active" latch, built from the product owner's own diagnosis of the actual
+symptom (2026-09-04).** They pinned it down precisely: the bar only ever appeared in brief
+windows right after a container/ambush/Pack Ambush/Exploding Corpse Snakes event (all of
+which tend to coincide with combat starting -- exactly item 73's now-reliable window), then
+vanished again the moment that window closed -- "if we can show it during those brief
+windows why can we not show it the entire time." Added a bounded 120s latch:
+`PreyContextRuntime.ResolveQuestOnMap` now remembers the last time a quest was confirmed
+in-zone (via isOnMap or the widget fallback) and, if both signals go false again shortly
+after, trusts that recent confirmation instead of flipping off immediately. Deliberately
+bounded, not sticky for the whole hunt -- an unbounded version would reintroduce the exact
+false-positive shape (bar staying on well after actually leaving) that caused the old
+pre-rewrite codebase's Eversong Woods bug. `/pd zinspect` now shows `resolvedVia`
+(`widget`/`latch`/`none`) and `latchAgeSeconds` so it's directly visible which mechanism
+resolved each moment. Full reasoning in Decisions Log item 74. `luacheck`: 0 warnings/0
+errors. **Not yet tested live** -- next occurrence, the bar/sounds should stay continuously
+on through normal combat gaps instead of flickering; also watch for the opposite failure
+(staying lit noticeably after genuinely leaving), which would mean shortening the window.
+
+**CONFIRMED LIVE (2026-09-04): the 120s latch works well.** Product owner tested in the same
+Voidstorm zone -- no more flickering, no reported false-positive (bar staying lit after
+leaving). `CONFIRMED_ACTIVE_WINDOW_SECONDS = 120` is signed off, not just a starting guess
+anymore. Documented as a known limitation (not a bug) in `CHANGELOG.md`'s Known Limitations
+section: Blizzard's own map-tracking API can misreport location in a small number of zone
+shapes, mitigated by the widget-visible fallback + latch, with a brief flicker still
+possible right at a hunt's very start before those signals catch up.
+
+**Also CONFIRMED LIVE the same session: sound amplification (item 2) and the custom sound
+file Add/Remove UI both work correctly.** Both are now fully signed off, not just built --
+no known open items on either. Item 2 on the Section 5f punch list is fully closed.
+
+**Clarified, not a new confirmation: "Pack Ambush text works" refers to the Settings ->
+Text & Labels editbox saving/persisting correctly** (the blank-textbox bug fixed and
+confirmed earlier this session, Decisions Log items 64-65) -- NOT the separate, still-open
+punch-list item 3 (the bar itself changing its displayed text during a live Pack Ambush).
+Verified directly against current code (`Core/Runtime/BarRuntime.lua` still has zero
+references to `text.ambush_prefix`/`text.pack_ambush_prefix`) before accepting this as
+confirmation, rather than assuming the report meant the bigger feature. **Item 3 remains
+the one genuine open functional gap** -- unchanged from before this session.
 
 ## 5g. Item 2 fully closed; icon-reappearing report investigated and closed as a known
 limitation, not a bug (2026-09-04)
@@ -1205,6 +1338,42 @@ Full detail in `issues/rewrite_architecture.md` Decisions Log items 62-63. Short
   and the custom sound UI are both done; sound amplification research (the third
   sub-item) was never picked up this session, still open.
 
+**Item 2 fully closed (2026-09-04): sound amplification built.** Modeled on the Better
+Fishing addon (product owner's own reference) — new `Core/Adapters/SoundAdapter.lua`
+`BoostVolume`/`RestoreVolume` functions temporarily mute ambience/music/pet-sound CVars and
+push SFX+Master volume to a user-chosen scale while a Preydator alert plays, ref-counted so
+overlapping alerts don't restore early; `SoundsRuntime.playPath()` triggers it, gated on new
+`sound.amplify_enabled` (default off)/`sound.amplify_scale` settings, with a new checkbox +
+slider in Settings → Sound & Alerts. Deliberately diverges from Better Fishing's own
+"boost for the whole indeterminate wait" model — Preydator instead boosts for a fixed ~4s
+window per alert via `C_Timer.After`, since muting music/ambience for a hunt's entire
+multi-minute duration would be too intrusive. Full reasoning in `issues/rewrite_architecture.md`
+Decisions Log item 67. `luacheck`: 0 warnings/0 errors across all 6 touched files, no
+warning-561 concern. **Not yet tested live** — next step is confirming in-game that the
+toggle audibly changes alert volume and that the normal mix returns correctly afterward.
+
+**Bug found and fixed same day: amplification wasn't audible at `amplify_scale=0.5`.**
+Product owner tested immediately and reported no change. Root cause: `BoostVolume` set
+`Sound_SFXVolume`/`Sound_MasterVolume` directly to `scale` — for anyone whose normal volume
+was already at/above 0.5 (the common case, WoW's own default is 1.0), that made Preydator's
+alert the same or *quieter*, not louder. Fixed: `scale` is now an additive boost on top of
+the player's actual current volume (read live via `GetCVar`), clamped to WoW's 1.0 ceiling —
+can no longer end up quieter than normal. Also added `/pd sinspect`'s new `last volume
+boost:` line (requested scale + real before/after SFX/Master numbers via new
+`SoundAdapter.GetLastBoostSnapshot()`) so this class of "setting says X but nothing audibly
+changed" bug is diagnosable from numbers next time, not guesswork. Full reasoning in
+Decisions Log item 68. `luacheck`: 0 warnings/0 errors. **Not yet re-tested live** — next
+step is confirming the product owner now hears a real increase and that `/pd sinspect`'s
+new line shows sane before/after values.
+
+Also verified while picking this up: the **custom sound file Add/Remove UI (built
+2026-09-03/04) is fully wired end-to-end**, not a loose end as it may have read from the
+"not yet tested live" note above — `UI/SettingsPanel.lua`'s Advanced-category Add/Remove
+buttons correctly call `SoundsRuntime.AddCustomSoundFile`/`RemoveCustomSoundFile`, and
+`registerSoundPathDropdown`'s `getOptions` reads `sound.custom_file_names` fresh every time
+a dropdown opens, so a newly added file appears in every sound-path dropdown without a
+reload. Still only unconfirmed live, not unfinished.
+
 **Default prey icon reappearing mid-hunt -- root-caused and closed as a known, accepted
 limitation, not a bug.** New always-on trace (`WidgetAdapter.GetSuppressionTrace`, `/pd
 iinspect`) caught it on the first real occurrence: Blizzard shows the icon while the
@@ -1215,6 +1384,39 @@ as-is rather than risk an unverified in-combat loosening that could trade a cosm
 flash for a real taint cascade. `/pd iinspect` stays in the addon permanently as a
 diagnostic tool, not temporary scaffolding.
 
+## 7. PTR Test Pass (2026-09-04, patch 12.1.5)
+
+Deployed the exact `build-release.ps1` file set to a clean PTR AddOns install (fresh
+`PreydatorDB`, deliberately not carrying over retail SavedVariables, per the product
+owner's own request -- testing real default behavior). Two real findings:
+
+1. **Bug found and fixed: the built-in minimap button (no LibDBIcon present) could only be
+   dragged to the right side of the minimap, never anywhere else.** Root cause:
+   `UI/Launcher.lua`'s drag handler called `math.atan(my - cy, mx - cx)` -- WoW's Lua has
+   no two-argument `math.atan`; the real function is the distinctly-named `math.atan2`. The
+   extra argument was silently ignored, so the angle only ever depended on vertical mouse
+   offset, which after normalizing always lands in the right half of the circle. Confirmed
+   against every other addon in the folder using the same pattern (`LibDBIcon-1.0`,
+   `AllTheThings`, `BtWQuests`, the `HandyNotes_*` family) -- all use `math.atan2`, none use
+   a two-arg `math.atan`. Fixed, `luacheck` clean, redeployed to the PTR copy. Full
+   reasoning in `issues/rewrite_architecture.md` Decisions Log item 76. **Not yet
+   re-tested live** -- next step is confirming the drag now tracks the mouse correctly.
+2. **Investigated, resolved as a documented limitation, not a bug: occasional sound
+   cutoff with `sound.channel = "Dialog"`.** `/pd sinspect` showed every trigger correctly
+   passing its gates; cross-checked against retail (same channel) and confirmed the same
+   behavior there too, ruling out anything PTR- or amplification-specific. Root cause is
+   WoW's own `Dialog` channel only ever playing one sound at a time -- a new Dialog sound
+   cuts off whatever Dialog sound was still in flight, an engine property no addon can
+   override. Product owner chose to keep `Dialog` (their normal retail setting) and have
+   this documented rather than switch channels. Added to `CHANGELOG.md`'s Known
+   Limitations; full reasoning in Decisions Log item 77.
+
+Also: the product owner edited `Preydator.toc`'s `## Interface:` line directly to
+`120100, 120105` (comma-separated multi-version declaration) after Claude's own earlier
+single-value bump to `120105` -- this is the more correct fix (declares support for both
+retail's 12.1.0 and PTR's 12.1.5 from one file, rather than only the newer one), kept as
+the product owner set it.
+
 ## 6. Housekeeping
 
 - `.vscode/settings.json` has an uncommitted local change (Lua language server WoW-API
@@ -1223,7 +1425,11 @@ diagnostic tool, not temporary scaffolding.
   Settings polish (Decisions Log items 58-61). Commit `c74fb36` covers the vertical bar
   gradient/percent-text fixes, the Text & Labels persistence/rendering bugs, the icon
   suppression diagnostic, and the custom sound file UI (Decisions Log items 62-66).
-  Nothing is uncommitted as of this writing (2026-09-04), aside from the pre-existing
-  local `.vscode/settings.json` change noted above. Whenever the next commit is wanted,
-  it should follow `.github/commit-template.md` per `CLAUDE.md` Section 11, signed as
-  RagingAltoholic.
+  **Significant uncommitted work has accumulated since those two commits** (as of
+  2026-09-04): sound amplification + its volume-math bug fix (items 67-68), the Voidstorm
+  zone-detection chain (items 69-74, including the confirmed-active latch), the old-code +
+  locale cleanup pass (item 75, six file deletions plus locale fixes), and this session's
+  PTR-test fixes (items 76-77). Whenever the next commit is wanted, it should follow
+  `.github/commit-template.md` per `CLAUDE.md` Section 11, signed as RagingAltoholic --
+  given the range of unrelated changes involved, consider whether the product owner wants
+  this split into multiple commits rather than one large one.

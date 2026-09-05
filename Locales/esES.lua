@@ -5,7 +5,7 @@ if GetLocale() ~= "esES" then return end
 local L = _G.PreydatorL
 
 L["No Sign in These Fields"]   = "Sin rastro en esta zona"
-L["AMBUSH"]                    = "EMBOSCADA"
+L["AMBUSH: "]                  = "EMBOSCADA: "
 L["Scent in the Wind"]         = "Rastro en el Viento"
 L["Blood in the Shadows"]      = "Sangre en las Sombras"
 L["Echoes of the Kill"]        = "Ecos de la Muerte"

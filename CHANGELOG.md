@@ -62,6 +62,15 @@ shipped yet — this branch has not been merged to `main` or released.
   lets you register your own `.ogg` filename so it appears in every sound-path dropdown
   (Sound & Alerts). The file itself still has to be placed in
   `Interface\AddOns\Preydator\sounds\` yourself — this only tells the addon it exists.
+- New "Amplify Alert Sounds" option (Settings → Sound & Alerts), modeled on the Better
+  Fishing addon's "Enhance Sounds" feature: while a Preydator alert plays, briefly mutes
+  ambience/music and boosts SFX/Master volume to a user-chosen level (new "Amplify Volume"
+  slider) so the alert cuts through other game audio, then restores your normal volume mix
+  right after. Off by default.
+- New `/pd zinspect [bs]` command: always-on trace of every time Blizzard reports the
+  player as not in the prey zone, including whether Blizzard's own prey icon widget was
+  found/visible at that moment — for diagnosing zone-detection edge cases without needing
+  to catch one happening live.
 
 ### Fixed
 - Fixed an `ADDON_ACTION_FORBIDDEN`/`SpellStopCasting` taint error on the very next Escape
@@ -205,6 +214,27 @@ shipped yet — this branch has not been merged to `main` or released.
   pressing Enter.
 - Fixed text fields that were never customized showing blank instead of their real default
   text (e.g. "Blood in the Shadows" for Stage 2's default label).
+- Fixed the bar/ambush sound/Mob Scanner not working in a PvP-optional sub-zone in
+  Voidstorm (and any other zone shaped like it) even during a genuinely active hunt there.
+  Blizzard's own quest-tracking API reported the player as not in the zone the entire time,
+  even though Blizzard's own default prey icon stayed visible the whole encounter. The addon
+  now also checks whether Blizzard's own prey-hunt widget currently wants to be shown, and
+  trusts that if the quest-tracking check alone says no.
+- Fixed "Amplify Alert Sounds" not actually making alerts louder at settings below full
+  volume — it was setting the volume to an absolute value instead of boosting it above
+  whatever it already was, so a player whose normal volume was already higher than the
+  chosen amount heard no change (or a quieter alert).
+- Fixed the Spanish (esES) ambush label translation never actually applying — the addon's
+  lookup key had drifted slightly out of sync with the translated entry, so it silently
+  fell back to English. The translation itself is unchanged.
+- Fixed the Simplified Chinese (zhCN) "Vertical" translation showing the wrong text in some
+  places — the same English word had two different Chinese translations on file, and only
+  one of them could ever actually be used; kept the one already taking effect and removed
+  the unused duplicate.
+- Fixed dragging the built-in minimap button (when no other addon is providing a shared
+  minimap-button library) always snapping to the right side of the minimap no matter where
+  the mouse was. The angle math was using the wrong function and only ever looking at
+  vertical mouse movement, ignoring horizontal entirely.
 
 ### Changed
 - Raised the default ambush alert cooldown from 30 to 60 seconds, and exposed it as a
@@ -226,6 +256,18 @@ shipped yet — this branch has not been merged to `main` or released.
   can't touch this icon's frame while you're in combat), not a bug — the pre-rewrite
   version of this addon had the exact same limitation. It always corrects itself the
   moment combat ends.
+- In a small number of zone shapes (found in a PvP-optional sub-zone in Voidstorm),
+  Blizzard's own map-tracking API can briefly misreport your location during a hunt. The
+  bar/sounds now cover this using other signals (Blizzard's own prey icon, and a short
+  memory of your last confirmed location) and it's confirmed working well in testing, but
+  in this specific zone shape a very brief flicker right at the start of a hunt is still
+  possible before those signals catch up.
+- If you set Sound Channel (Settings → Sound & Alerts) to "Dialog", alerts firing close
+  together can occasionally cut each other off instead of both playing fully. This is how
+  WoW's Dialog channel behaves for every addon, not something specific to Preydator — only
+  one Dialog-channel sound plays at a time, and starting a new one stops whatever Dialog
+  sound was still playing. "Master" or "SFX" don't have this limitation and layer
+  overlapping sounds normally instead.
 
 
 ## 3.0.5 - 2026-08-20

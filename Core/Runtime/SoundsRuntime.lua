@@ -10,8 +10,17 @@
 
 local Preydator = _G.Preydator
 local GetTime = _G.GetTime
+local C_Timer = _G.C_Timer
 
 local SoundsRuntime = {}
+
+-- Fixed window a volume boost (sound.amplify_enabled) stays active after a
+-- play attempt, long enough to cover Preydator's own short alert clips
+-- (roughly 2-3s each) without a real playback-finished callback --
+-- PlaySoundFile doesn't hand back one. SoundAdapter's ref-counting is what
+-- actually keeps this safe if two alerts overlap within the window (see its
+-- own comment), not this specific number.
+local AMPLIFY_RESTORE_DELAY_SECONDS = 4
 
 -- Per-trigger-type timestamps, so an ambush trigger and a stage sound never
 -- block each other (Section 10: cooldown applies per-trigger-type, not
@@ -128,6 +137,16 @@ local function playPath(key, path, cooldownSeconds)
     local settings = getSettings()
     local channel = settings and settings.Get("sound.channel") or nil
 
+    -- Amplification is opt-in (sound.amplify_enabled) since it touches the
+    -- player's own volume CVars, not just Preydator's own playback -- see
+    -- SoundAdapter.BoostVolume's comment for the mechanism. Boosted BEFORE
+    -- Play so the raised volume is already in effect the instant the sound
+    -- actually starts.
+    local boosted = false
+    if settings and settings.Get("sound.amplify_enabled") == true and type(adapter.BoostVolume) == "function" then
+        boosted = adapter.BoostVolume(settings.Get("sound.amplify_scale"))
+    end
+
     local willPlay, actualChannel = adapter.Play(path, channel)
     if willPlay then
         markPlayed(key)
@@ -135,6 +154,17 @@ local function playPath(key, path, cooldownSeconds)
     else
         recordPlay(key, path, "blocked", "PlaySoundFile returned false")
     end
+
+    if boosted then
+        if willPlay and C_Timer and type(C_Timer.After) == "function" then
+            C_Timer.After(AMPLIFY_RESTORE_DELAY_SECONDS, adapter.RestoreVolume)
+        else
+            -- Play itself failed, or no timer available -- nothing to wait
+            -- on, restore immediately rather than leave the boost stuck.
+            adapter.RestoreVolume()
+        end
+    end
+
     return willPlay
 end
 

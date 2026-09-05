@@ -157,7 +157,15 @@ function DiagnosticsRuntime.BuildQuestInspectReport(requestedQuestID)
 
     local title = questApi.GetQuestTitle(questID)
     local link = questApi.GetQuestLink(questID)
+    -- Raw isOnMap AND the resolved (post widget-visible-fallback) value are
+    -- both shown -- added 2026-09-04 after a real report where they diverge
+    -- (a Voidstorm PvP-optional sub-zone: raw isOnMap=false, Blizzard's own
+    -- prey icon still visible there). Showing only one of the two would hide
+    -- exactly the divergence that matters for diagnosing this class of bug;
+    -- see PreyContextRuntime.ResolveQuestOnMap's own comment for the reasoning.
     local isOnMap = questApi.GetQuestIsOnMap(questID)
+    local preyContext = Preydator:GetModule("PreyContextRuntime")
+    local resolvedIsOnMap = preyContext and preyContext.ResolveQuestOnMap(questID)
     local zoneID = questApi.GetQuestZoneID(questID)
     local zoneInfo = zoneID and mapContext and mapContext.GetMapInfo(zoneID)
     local isOnQuest = questApi.IsOnQuest(questID)
@@ -165,7 +173,7 @@ function DiagnosticsRuntime.BuildQuestInspectReport(requestedQuestID)
 
     add("- basic | title=" .. safeValue(title) .. " | link=" .. safeValue(link))
     add("- zone | zoneID=" .. safeValue(zoneID) .. " | zoneName=" .. safeValue(zoneInfo and zoneInfo.name)
-        .. " | isOnMap=" .. safeValue(isOnMap))
+        .. " | isOnMap=" .. safeValue(isOnMap) .. " | resolvedIsOnMap=" .. safeValue(resolvedIsOnMap))
     add("- flags | isOnQuest=" .. safeValue(isOnQuest) .. " | isFlaggedCompleted=" .. safeValue(isCompleted))
 
     local objectives = questApi.GetQuestObjectives(questID)
@@ -255,6 +263,28 @@ function DiagnosticsRuntime.BuildSoundInspectReport()
     add("- settings sounds_enabled=" .. safeValue(settings and settings.Get("general.sounds_enabled"))
         .. " | channel=" .. safeValue(settings and settings.Get("sound.channel"))
         .. " | alert_cooldown_seconds=" .. safeValue(settings and settings.Get("sound.alert_cooldown_seconds")))
+    add("- amplify_enabled=" .. safeValue(settings and settings.Get("sound.amplify_enabled"))
+        .. " | amplify_scale=" .. safeValue(settings and settings.Get("sound.amplify_scale")))
+
+    -- Shows the actual before/after CVar values the last boost computed, not
+    -- just the setting that requested it -- added 2026-09-04 after a
+    -- reported "amplification isn't doing anything" turned out to be the
+    -- boost math itself (an absolute-target bug, fixed the same session),
+    -- invisible from the settings line alone.
+    local soundAdapter = Preydator:GetModule("SoundAdapter")
+    local snapshot = soundAdapter and type(soundAdapter.GetLastBoostSnapshot) == "function"
+        and soundAdapter.GetLastBoostSnapshot() or nil
+    if snapshot then
+        add(string.format(
+            "- last volume boost: scale=%s | SFX %s -> %s | Master %s -> %s",
+            safeValue(snapshot.scale),
+            safeValue(snapshot.before and snapshot.before.Sound_SFXVolume),
+            safeValue(snapshot.after and snapshot.after.Sound_SFXVolume),
+            safeValue(snapshot.before and snapshot.before.Sound_MasterVolume),
+            safeValue(snapshot.after and snapshot.after.Sound_MasterVolume)))
+    else
+        add("- last volume boost: none recorded this session")
+    end
 
     local recentPlays = sounds and type(sounds.GetRecentPlays) == "function" and sounds.GetRecentPlays() or {}
     add("- recent play attempts=" .. tostring(#recentPlays) .. " (oldest first)")
@@ -319,6 +349,42 @@ function DiagnosticsRuntime.BuildIconSuppressionInspectReport()
             .. " | action=" .. safeValue(entry.action)
             .. " | inCombat=" .. safeValue(entry.inCombat)
             .. " | " .. safeValue(entry.detail))
+    end
+
+    return table.concat(lines, "\n")
+end
+
+-- New (2026-09-04), built after a real "isOnMap=false, resolvedIsOnMap=false"
+-- zone report resolved on its own before it could be caught mid-failure for
+-- a second look -- shows PreyContextRuntime's always-on trace of every
+-- zone-resolution call where the raw isOnMap answer was false, so a future
+-- occurrence is diagnosable from recorded data instead of needing to be
+-- caught live a second time. See PreyContextRuntime.ResolveQuestOnMap and
+-- WidgetAdapter.GetVisibilityDebugInfo's own comments for what each field
+-- means; Decisions Log item 71.
+function DiagnosticsRuntime.BuildZoneInspectReport()
+    local preyContext = Preydator:GetModule("PreyContextRuntime")
+
+    local lines = {}
+    local function add(line) lines[#lines + 1] = tostring(line or "") end
+
+    add("Preydator Zone Inspect | addon=" .. getAddonVersion())
+
+    local trace = preyContext and type(preyContext.GetZoneResolutionTrace) == "function"
+        and preyContext.GetZoneResolutionTrace() or {}
+    add("- recent isOnMap=false resolutions=" .. tostring(#trace) .. " (oldest first)")
+    for i, entry in ipairs(trace) do
+        add("  - [" .. i .. "] time=" .. string.format("%.3f", entry.time or 0)
+            .. " | questID=" .. safeValue(entry.questID)
+            .. " | isOnMap=" .. safeValue(entry.isOnMap)
+            .. " | resolvedIsOnMap=" .. safeValue(entry.resolvedIsOnMap)
+            .. " | resolvedVia=" .. safeValue(entry.resolvedVia)
+            .. " | latchAgeSeconds=" .. safeValue(entry.latchAgeSeconds))
+        add("        widget | iconFrameFound=" .. safeValue(entry.widgetIconFrameFound)
+            .. " | desiredSuppression=" .. safeValue(entry.widgetDesiredSuppression)
+            .. " | inCombat=" .. safeValue(entry.widgetInCombat)
+            .. " | directShown=" .. safeValue(entry.widgetDirectShown)
+            .. " | lastShownAtAge=" .. safeValue(entry.widgetLastShownAtAge))
     end
 
     return table.concat(lines, "\n")

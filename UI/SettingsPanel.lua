@@ -870,6 +870,16 @@ local function buildSoundCategory(category)
     registerSoundPathDropdown(subcategory, "sound.exploding_corpse_snakes_path", nil,
         L("Exploding Corpse Snakes Sound"), L("Sound played when a Venom-Bloated Python appears."))
 
+    registerCheckbox(subcategory, "sound.amplify_enabled", L("Amplify Alert Sounds"),
+        L("Briefly mute ambience/music and boost SFX+Master volume while a Preydator alert plays, "
+            .. "so it cuts through other game audio (modeled on the Better Fishing addon's "
+            .. "\"Enhance Sounds\" feature). Your normal volume mix is restored right after."), false)
+    registerSlider(subcategory, "sound.amplify_scale", L("Amplify Volume"),
+        L("How much to boost your current SFX/Master volume while an alert plays, on top of "
+            .. "wherever it's already set (WoW's volume can't exceed 1, so once you're already "
+            .. "at max there's nothing left to add -- the ambience/music muting is what still "
+            .. "helps at that point). 1 always plays alerts at full volume."), 0, 1, 0.05, 1)
+
     return subcategory
 end
 

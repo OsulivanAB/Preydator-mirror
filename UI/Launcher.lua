@@ -156,7 +156,7 @@ local function createFallbackButton()
             if not cx or not cy then
                 return
             end
-            local angle = normalizeAngle(math.deg(math.atan(my - cy, mx - cx)))
+            local angle = normalizeAngle(math.deg(math.atan2(my - cy, mx - cx)))
             local settings = getSettings()
             if settings then
                 settings.Set("general.minimap_angle", angle)

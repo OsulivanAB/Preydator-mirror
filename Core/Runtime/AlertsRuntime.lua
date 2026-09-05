@@ -4,7 +4,8 @@
 -- and the Mob Scanner (Pack Ambush / Exploding Corpse Snakes), gated by
 -- settings + restricted-instance + active-prey-context. Calls into
 -- SoundsRuntime and State -- never touches chat frames or UI.
--- Reads: Core/State.lua, Settings, MapContextAdapter, QuestApiAdapter.
+-- Reads: Core/State.lua, Settings, MapContextAdapter, PreyContextRuntime
+-- (ResolveQuestOnMap, the single source of truth for zone status).
 -- Writes: nothing (delegates playback to SoundsRuntime).
 --
 -- Entirely nameplate-based (NAME_PLATE_UNIT_ADDED, dispatched by
@@ -218,8 +219,16 @@ local function processResolvedName(name)
         return
     end
 
-    local questApi = Preydator:GetModule("QuestApiAdapter")
-    local isOnMap = questApi and questApi.GetQuestIsOnMap(activeQuestID)
+    -- Goes through PreyContextRuntime.ResolveQuestOnMap, not
+    -- QuestApiAdapter.GetQuestIsOnMap directly, so the widget-visible
+    -- fallback for isOnMap's own false negatives (Decisions Log item 69)
+    -- applies to the ambush/Mob Scanner triggers too, not just the bar --
+    -- single source of truth for "is this quest in zone" per this file's own
+    -- prior comment about sidestepping the bar's old pre-filter (Decisions
+    -- Log items 34/35), now updated to point at the one shared resolver
+    -- instead of calling the adapter a second, independent time.
+    local preyContext = Preydator:GetModule("PreyContextRuntime")
+    local isOnMap = preyContext and preyContext.ResolveQuestOnMap(activeQuestID)
 
     -- True ambush: only while the player isn't confirmed outside the prey
     -- zone. Queries QuestApiAdapter.GetQuestIsOnMap() directly instead of
