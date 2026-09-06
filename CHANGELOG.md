@@ -1,274 +1,91 @@
 # Changelog
 
-## Unreleased — rewrite/v2-architecture
+## 4.0.0 - 2026-09-06
 
-Tracks user-visible-once-shipped progress on the `rewrite/v2-architecture` branch (see
-`issues/rewrite_architecture.md` for the full design/decisions log and
-`issues/session_status.md` for day-to-day handoff status). Nothing in this section has
-shipped yet — this branch has not been merged to `main` or released.
+Preydator has been rebuilt from the ground up. This is the biggest update yet — same Hunt
+tracking you're used to, on a completely new, more reliable foundation. See the Known
+Limitations section below for a couple of things still worth knowing about.
 
-### Added
-- New modular bar display (`UI/BarFrame.lua`): draggable, scalable, Edit Mode preview,
-  position persists across reload. In-game confirmed working (2026-08-27).
-- New in-game options UI (`UI/SettingsPanel.lua`) via Blizzard's native Settings API,
-  reachable through Escape → Options → AddOns → Preydator or `/preydator`. In-game
-  confirmed working (2026-08-27).
-- New Hunt Table hunt-list panel (`Modules/HuntScanner/HuntTablePanel.lua`): icon, name,
-  zone, reward icons (with quantity, hover for full name), and Accept button per hunt.
-  In-game confirmed rendering and populating correctly (2026-08-28).
-- Reward icons show real currency, money/XP, and item/container (chest, bag, etc.) data
-  per hunt — including the actual chest/bag icon, not a generic placeholder. Rewards are
-  shared across every hunt of the same difficulty, so only one hunt per difficulty needs
-  to be scanned to cover the whole list.
-- New "Preview Hunt Panel" checkbox (Settings → Preydator → Hunt Scanner): force-shows the
-  hunt panel docked beside the Settings window while adjusting its width/height/scale/font
-  size, so layout changes are visible without leaving Settings. Auto-unchecks itself when
-  Settings closes.
-- New `/pd` diagnostic slash command (`inspect`/`qinspect [questID]`/`hinspect`/`pinspect`/
-  `sinspect`, each with an optional trailing `bs` to also send the report to BugSack) —
-  matches the old addon's diagnostic command convention. `sinspect` shows the last 12
-  sound play attempts (trigger, played/blocked, and why if blocked).
-- New Mob Scanner: detects Pack Ambush (mobs: Pack Scout, Pack Hunter) and Exploding Corpse
-  Snakes (mob: Venom-Bloated Python) the moment either appears nearby, and plays each its
-  own distinct sound — previously, one of these (Pack Hunter) was mistakenly triggering the
-  generic ambush sound instead. Like the true ambush trigger, this doesn't wait on a chat
-  message (neither mechanic reliably announces itself), and it stays active for a hunt's
-  entire duration rather than being limited to specific stages.
-- New minimap button / Blizzard Addon Compartment entry point: left-click opens Settings,
-  right-click prints a quick diagnostic report. Uses LibDataBroker/LibDBIcon if another
-  addon already has them loaded, otherwise a built-in draggable minimap button. New
-  "Hide Minimap Button" toggle in Settings → General.
-- New `/pd ninspect` command: records every nearby mob nameplate seen while a hunt is
-  active (name + whether it matched anything Preydator tracks), so a missed trigger can be
-  diagnosed even when no sound was ever attempted. Opt-in via Settings → Advanced →
-  "Record Nameplates Seen During Hunts."
-- New Hunt Table achievement badges: each hunt row shows an icon when it still counts
-  toward a Prey achievement (hover for the count and specific achievement names), matching
-  the old addon's feature. New "Show Achievement Badges" toggle in Settings → Hunt Scanner.
-  In-game confirmed working correctly (2026-09-01).
-- New Hunt Table grouping and sorting, with full collapsible group headers matching the old
-  addon: hunts can be grouped by difficulty or zone (click a group's header to collapse/
-  expand it, persists across reload), sorted by difficulty/zone/title in either direction.
-  Group/Sort/Direction buttons on the panel itself change these without opening Settings.
-  In-game confirmed working, including persistence across reload and relog (2026-09-01).
-- Achievement badges now also cover hunts not yet in the addon's internal quest-data table
-  (new content): if the specific target isn't already known, its own quest title is matched
-  against the achievement's own criteria list instead of showing nothing.
-- Every slider in Settings now shows its current value next to the slider bar, not just the
-  min/max endpoints at either end.
-- New "Restore Default Names" button directly in Text & Labels (top-right, always visible
-  above the scroll area), alongside the existing one in Advanced.
-- New custom sound file support: an "Add File"/"Remove File" flow in Settings → Advanced
-  lets you register your own `.ogg` filename so it appears in every sound-path dropdown
-  (Sound & Alerts). The file itself still has to be placed in
-  `Interface\AddOns\Preydator\sounds\` yourself — this only tells the addon it exists.
-- New "Amplify Alert Sounds" option (Settings → Sound & Alerts), modeled on the Better
-  Fishing addon's "Enhance Sounds" feature: while a Preydator alert plays, briefly mutes
-  ambience/music and boosts SFX/Master volume to a user-chosen level (new "Amplify Volume"
-  slider) so the alert cuts through other game audio, then restores your normal volume mix
-  right after. Off by default.
-- New `/pd zinspect [bs]` command: always-on trace of every time Blizzard reports the
-  player as not in the prey zone, including whether Blizzard's own prey icon widget was
-  found/visible at that moment — for diagnosing zone-detection edge cases without needing
-  to catch one happening live.
+### New
+- Redesigned progress bar: drag it anywhere, resize it, and it now fully supports a
+  vertical layout too. Works with Blizzard's Edit Mode and remembers its position across
+  reloads.
+- Settings are now built into Blizzard's own Options window (Escape → Options → AddOns →
+  Preydator, or type `/preydator`) instead of a separate custom window.
+- Redesigned Hunt Table panel: shows each available hunt's icon, name, zone, and reward
+  icons, with a one-click Accept button. Group hunts by difficulty or zone and sort them
+  however you like, right from the panel.
+- Reward icons now show the real item/currency artwork and quantity for every hunt reward,
+  including the chest or bag itself — hover any icon to see its full name.
+- Achievement badges on the Hunt Table: hunts that still count toward a Prey achievement
+  show a badge (hover for details), so you can prioritize which hunts to do.
+- New Mob Scanner: Pack Ambush and Exploding Corpse Snakes (this season's versions of the
+  old Bloody Command / Echo of Predation mechanics) each play their own distinct alert
+  sound now, detected reliably instead of guessing from chat text.
+- The bar's text now actually changes for a few seconds during a real ambush or Pack
+  Ambush, instead of only playing a sound.
+- New "Amplify Alert Sounds" option (Settings → Sound & Alerts): briefly boosts alert
+  volume over your music/ambience so a cue doesn't get lost in a noisy fight. Off by
+  default.
+- Custom sound file support (Settings → Advanced): register your own `.ogg` file so it
+  shows up in every sound picker.
+- New minimap button / Addon Compartment entry: left-click opens Settings, right-click
+  prints a quick status report.
+- New `/pd` diagnostic commands for troubleshooting — handy if you ever need to report a
+  bug and want to include real data instead of a guess.
+- New one-time "What's New" popup on your first login after this update, covering the
+  highlights above, what the Hunt Table's icons mean, and the known limitations below.
+  Reopen it anytime from Settings → Advanced → "Show What's New."
+
+### Improved
+- Prey Hunt stage progress now updates live and continuously through a hunt, instead of
+  only catching up after certain events.
+- Zone detection (whether you're actually "in" your prey's zone) is far more reliable
+  across unusual zone shapes, and recovers on its own from brief hiccups instead of
+  flickering the bar on and off.
+- The Hunt Table panel now reliably shows hunts every time you open it, and correctly
+  refreshes when you accept or abandon a hunt.
+- Reward rows, achievement badges, and difficulty icons are all sharper and more
+  consistent than before.
 
 ### Fixed
-- Fixed an `ADDON_ACTION_FORBIDDEN`/`SpellStopCasting` taint error on the very next Escape
-  key press after a plain relog or any Hunt Table interaction. Root cause: `UI/SettingsPanel.lua`'s
-  "Reset All Settings" button registered its confirmation dialog into Blizzard's shared
-  `_G.StaticPopupDialogs` table; that registration itself (not its timing, not any specific
-  field) was the trigger. Replaced with a small Preydator-owned confirm frame that never
-  touches a Blizzard global table.
-- Fixed the Hunt Table panel never rendering. Root cause: `GOSSIP_CLOSED`/
-  `PLAYER_INTERACTION_MANAGER_FRAME_HIDE` fire as part of this NPC's normal gossip-to-map
-  UI transition, not just when the player genuinely leaves — treating them as an immediate
-  "hide" signal cancelled the detection watch before it ever saw the map become visible.
-  All Hunt Table lifecycle events now feed the same re-checking watch instead.
-- Fixed the Hunt Table scanner re-scanning continuously for as long as the map stayed
-  open, even with no further NPC interaction. The noisy `UPDATE_UI_WIDGET`/
-  `UPDATE_ALL_UI_WIDGETS` listener is now time-bounded instead of staying registered
-  indefinitely.
-- Fixed some hunts showing an overly broad zone name (e.g. "Quel'Thalas" instead of "The
-  Coiled Isle"). `C_TaskQuest.GetQuestZoneID` returns the broad continent/region map for
-  these hunts, not the specific zone the pin is in — zone resolution now prefers the
-  pin's own map position instead, which is more precise.
-- Fixed stage-transition sounds never playing. `SoundsRuntime.PlayStageSound` existed but
-  was never actually called from anywhere; `PreyContextRuntime` now triggers it on every
-  refresh (it already self-guards to only play on a genuine stage advance).
-- Fixed "Hide Blizzard's Prey Icon" doing nothing. Same gap as the stage-sound fix above:
-  `WidgetAdapter.SuppressDefaultPreyIcon` existed but was never called; now wired to the
-  setting via `PreyContextRuntime`, only while a hunt is actively being tracked.
-- Fixed a lingering glow/shine effect ("aura") staying visible on the default prey icon
-  even after hiding it. Blizzard drives that visual through a separate effect system that
-  doesn't respond to the normal hide/fade calls; it's now explicitly cleared too.
-- Fixed stage-transition sounds replaying on every `/reload` for a hunt already past
-  stage 1, regardless of where you currently are.
-- Fixed Prey Hunt stage/progress tracking not updating at all in some sessions (the widget
-  hook could fail to install if Blizzard's widget system wasn't ready yet, with no retry),
-  and a lag between a real stage change and the bar/sound reflecting it. Progress is now
-  read directly and continuously from the live widget instead of waiting on an unreliable
-  Blizzard notification, refreshed every 2 seconds for as long as a hunt is tracked. The
-  final stage is now also confirmed via the quest's own "found" objective flag as a safety
-  net, independent of the widget system.
-- Redesigned ambush sound detection based on a real live chat log: it now keys off
-  Blizzard's own "Ambushed!" system message instead of guessing at prey dialogue phrasing,
-  which was both missing real ambushes and could false-trigger on unrelated NPCs' dialogue.
-  Also removed an upper stage limit on when it can trigger — an ambush leading directly
-  into the final stage could otherwise be missed if progress tracking updated first.
-- Fixed a real ambush producing no sound. The event-type restriction added in the redesign
-  above (`CHAT_MSG_SYSTEM` only) turned out to miss how "Ambushed!" actually arrives; now
-  matched by an empty sender (no NPC attribution) instead, which correctly excludes NPC
-  dialogue containing the word "ambush" without needing to guess the exact event type.
-  (Still under live investigation — this alone did not resolve it; a temporary broader
-  diagnostic is in place to find the actual event source.)
-- Fixed the default prey icon flashing briefly every time a hunt-progress-contributing
-  action happened, even with "Hide Blizzard's Prey Icon" on. The suppression now reacts to
-  Blizzard's own progress-gain animation directly instead of only catching up on the next
-  periodic refresh.
-- Fixed cached Hunt Table reward data never refreshing after completing a hunt, even though
-  a difficulty's rewards can rotate on completion. The reward cache now clears when a Prey
-  Hunt quest turns in, so the next visit to the Hunt Table re-checks current rewards.
-- Fixed the bar not showing for a hunt the player was genuinely standing in (e.g. an active
-  Nightmare hunt on The Coiled Isle). The zone pre-filter compared the hunt's expected zone
-  against the player's current zone with a raw equality check; when the expected zone had
-  resolved to a broad continent map (e.g. Quel'Thalas) rather than the specific zone inside
-  it, a player standing in that specific zone always failed the check and never reached the
-  real zone confirmation. The pre-filter now also treats "player's zone is nested inside the
-  expected zone" as a match.
-- Redesigned ambush detection entirely: it no longer waits on any chat message. Three
-  chat-text-matching attempts in a row (including a deliberately wide net covering a dozen
-  extra chat event types plus banner-style notifications) confirmed "Ambushed!" isn't
-  reliably observable through any chat API at all in current content. It now detects the
-  prey mob directly becoming targetable nearby instead — the same approach rare-spawn addons
-  use — so it no longer depends on a message arriving at all.
-- Fixed the default prey icon still flashing/pulsing on progress gain even after the
-  previous fix for this (hooking Blizzard's pulse animation directly). The real cause was
-  broader: Blizzard's own widget container can show the icon through other code paths too,
-  not just that one animation call. Now observes the icon frame becoming shown directly,
-  covering every cause at once instead of chasing individual triggers.
-- Fixed a second zone-detection false negative (bar not showing, ambush not firing) — the
-  opposite case from the previous zone fix: the hunt's expected zone can also resolve to a
-  specific named sub-area narrower than the player's own current zone, not just a broader
-  region. The zone check now covers both directions.
-- Fixed the ambush sound still not playing for a real, confirmed ambush (in Zul'Aman) even
-  though the game's own map-membership check was correct the whole time. It now checks that
-  directly instead of going through the same zone-matching logic the bar uses, which has
-  needed two prior fixes already for different zone shapes.
-- Removed the bar's own zone-matching heuristic entirely — after three separate real bugs
-  from it, each in a different zone, the bar now trusts the game's own map-membership check
-  directly too, the same fix already applied to the ambush sound above.
-- Fixed the default prey icon reappearing, showing stale partial progress, right when
-  turning in a hunt — even with "Hide Blizzard's Prey Icon" on. The addon's own code was
-  explicitly un-hiding it at that exact moment, intending to "restore" it, when Blizzard
-  itself never shows this icon at all once a hunt isn't active.
-- Found and fixed the real cause of intermittent missed ambushes/Mob Scanner triggers: the
-  game can briefly report a newly-appeared mob's name as "Unknown" before it's fully synced
-  — exactly when an ambush mob first appears — so the one-time name check could silently
-  miss it. It's no longer a one-time check; a missed name is now rechecked once the game
-  reports the real one.
-- A real ambush miss left no trace at all in `/pd sinspect`, making it impossible to tell
-  why. Every gate that can block a real prey/Mob Scanner nameplate match is now visible
-  there, whichever one stopped it.
-- Fixed the achievement badge showing on every hunt of a difficulty, including targets
-  already killed. It now also checks the specific hunt's own achievement-criteria progress,
-  not just whether the overall (multi-target) achievement is complete.
-- Fixed the achievement badge still showing as needed for a few Nightmare hunts not yet in
-  the addon's internal quest-data table (new content), even when already completed — with
-  no per-target data to check, it now shows nothing for those hunts instead of guessing.
-- Fixed the small remaining set of hunts where Blizzard has no zone more specific than the
-  broad "Quel'Thalas" continent map (see the earlier zone-resolution fix above) still
-  displaying that name to the player — these now show as "The Coiled Isle" instead. Zone
-  sorting/grouping also ignores a leading "The" when deciding order (the display text
-  itself is unaffected).
-- Fixed difficulty detection for a hunt not yet in the addon's internal quest-data table on
-  non-English clients: it previously only recognized the English words "Normal"/"Hard"/
-  "Nightmare" in the quest text, always falling back to Normal otherwise. Korean and
-  Chinese clients aren't fully covered yet (missing translation data), everything else is.
-- Fixed a hunt's reward row not always showing its rewards in the same order (could vary
-  between scans of the same difficulty).
-- Fixed the Reward Display Style setting (Settings → Hunt Scanner) not actually doing
-  anything: "Icons Inline" now shows icons only (quantity on hover), "Icon + Count" now
-  shows icon plus the quantity number inline (also still on hover).
-- Fixed a hunt's reward icons not appearing in the same order across difficulties
-  (previously only guaranteed the same order within one difficulty): Coffer Key, then
-  Preyseeker's Journey, then any Mistcrest currency, then everything else, with the
-  chest/bag reward always last.
-- Fixed the chest/bag reward not appearing at all for any hunt, even though it's part of
-  the actual quest reward. A one-time internal check was caching an incomplete read of the
-  reward data before the chest had finished loading; it now double-checks and retries
-  instead of getting stuck.
-- Fixed Nightmare hunts (which have 5 distinct rewards) dropping the chest/bag reward,
-  since it always sorts last and the reward row was capped at 4 icons. Raised to 6.
-- Fixed the achievement badge tooltip showing the name of the target you need to kill
-  instead of the achievement's own name (e.g. now correctly reads "Prey: Mad Magisters
-  (Hard)" instead of the boss's name).
-- Fixed several new-content Nightmare hunts never showing an achievement badge at all, even
-  when a real trackable achievement existed for them — they belong to two achievements
-  ("Fangs for the Memories," "Scales for Days") outside the addon's normal Mode I/II/III
-  tracking, now recognized correctly.
-- Fixed reward icons and the achievement badge overlapping the Accept button when the Hunt
-  Table panel was set to a narrow width. The panel now enforces a safe minimum width.
-- Fixed the Hunt Table panel's Settings preview not showing group headers the way the real
-  panel does — it now groups and sorts identically to the live panel.
-- Fixed Text & Labels fields not saving when you clicked away from the box instead of
-  pressing Enter.
-- Fixed text fields that were never customized showing blank instead of their real default
-  text (e.g. "Blood in the Shadows" for Stage 2's default label).
-- Fixed the bar/ambush sound/Mob Scanner not working in a PvP-optional sub-zone in
-  Voidstorm (and any other zone shaped like it) even during a genuinely active hunt there.
-  Blizzard's own quest-tracking API reported the player as not in the zone the entire time,
-  even though Blizzard's own default prey icon stayed visible the whole encounter. The addon
-  now also checks whether Blizzard's own prey-hunt widget currently wants to be shown, and
-  trusts that if the quest-tracking check alone says no.
-- Fixed "Amplify Alert Sounds" not actually making alerts louder at settings below full
-  volume — it was setting the volume to an absolute value instead of boosting it above
-  whatever it already was, so a player whose normal volume was already higher than the
-  chosen amount heard no change (or a quieter alert).
-- Fixed the Spanish (esES) ambush label translation never actually applying — the addon's
-  lookup key had drifted slightly out of sync with the translated entry, so it silently
-  fell back to English. The translation itself is unchanged.
-- Fixed the Simplified Chinese (zhCN) "Vertical" translation showing the wrong text in some
-  places — the same English word had two different Chinese translations on file, and only
-  one of them could ever actually be used; kept the one already taking effect and removed
-  the unused duplicate.
-- Fixed dragging the built-in minimap button (when no other addon is providing a shared
-  minimap-button library) always snapping to the right side of the minimap no matter where
-  the mouse was. The angle math was using the wrong function and only ever looking at
-  vertical mouse movement, ignoring horizontal entirely.
+- Fixed an occasional error after pressing Escape, caused by the Settings "Reset All"
+  confirmation dialog.
+- Fixed the default Blizzard prey icon flashing/pulsing on every bit of progress, and
+  lingering with stale progress after a hunt ended, even with "Hide Blizzard's Prey Icon"
+  turned on.
+- Fixed "Amplify Alert Sounds" not actually making alerts louder for players whose volume
+  was already above the halfway point.
+- Fixed the Spanish (esES) ambush label translation silently not applying.
+- Fixed the Simplified Chinese (zhCN) "Vertical" translation showing inconsistent text in
+  some places.
+- Fixed the built-in minimap button always snapping to the right side when dragged.
+- Fixed several smaller Hunt Table issues: reward order occasionally changing between
+  scans, Nightmare hunts sometimes dropping their 5th reward, achievement tooltips showing
+  the wrong name, and a couple of new-content hunts never showing an achievement badge.
+- Fixed the bar getting stuck showing stale hunt progress indefinitely after entering a
+  Delve (or any other restricted instance) with an active hunt, instead of correctly going
+  quiet. It now updates immediately on entry, same as every other restricted-instance case.
 
-### Changed
-- Raised the default ambush alert cooldown from 30 to 60 seconds, and exposed it as a
-  slider in Settings → Sound & Alerts for the first time.
-- Bloody Command and Echo of Predation are renamed to their live Season 2 successors, Pack
-  Ambush and Exploding Corpse Snakes, throughout Settings (Sound & Alerts, Text & Labels,
-  Advanced) — they're active mechanics now, not dead Season 1 content, and each now has its
-  own dedicated sound toggle/path instead of the old dormant Bloody Command slot and
-  Echo of Predation's unconfigurable one.
-- Moved "Link Border Color to Fill Color" from Bar Display to Bar Colors, directly above
-  the color swatches it affects, instead of a separate category.
-- Text & Labels category now pairs each Prefix field with its matching Label field on the
-  same row (e.g. "Stage 3 Prefix" next to "Stage 3 Label") instead of stacking every field
-  as its own full-width row — roughly halves how far the category scrolls.
+### Removed
+- Retired the old single, ~6,000-line core file and several other legacy files in favor of
+  the new modular structure. No settings were lost in the process — everything carries
+  over.
 
 ### Known Limitations
-- The default Blizzard prey icon can occasionally reappear mid-hunt and stay visible for
-  as long as you're in combat when it happens. This is a real WoW restriction (addons
-  can't touch this icon's frame while you're in combat), not a bug — the pre-rewrite
-  version of this addon had the exact same limitation. It always corrects itself the
-  moment combat ends.
-- In a small number of zone shapes (found in a PvP-optional sub-zone in Voidstorm),
-  Blizzard's own map-tracking API can briefly misreport your location during a hunt. The
-  bar/sounds now cover this using other signals (Blizzard's own prey icon, and a short
-  memory of your last confirmed location) and it's confirmed working well in testing, but
-  in this specific zone shape a very brief flicker right at the start of a hunt is still
-  possible before those signals catch up.
-- If you set Sound Channel (Settings → Sound & Alerts) to "Dialog", alerts firing close
-  together can occasionally cut each other off instead of both playing fully. This is how
-  WoW's Dialog channel behaves for every addon, not something specific to Preydator — only
-  one Dialog-channel sound plays at a time, and starting a new one stops whatever Dialog
-  sound was still playing. "Master" or "SFX" don't have this limitation and layer
-  overlapping sounds normally instead.
-
+- Blizzard's own default prey icon can occasionally reappear mid-hunt if that happens while
+  you're in combat — Blizzard doesn't allow addons to hide UI elements during combat. It
+  corrects itself the moment combat ends.
+- In a small number of unusual zone shapes, the bar may briefly flicker right at the very
+  start of a hunt before settling.
+- If Sound Channel (Settings → Sound & Alerts) is set to "Dialog," alerts that fire close
+  together can occasionally cut each other off — this is how WoW's Dialog channel works for
+  every addon, not something specific to Preydator. Switch to "Master" or "SFX" if you want
+  overlapping alerts to always play in full.
+- Difficulty-text detection (Normal/Hard/Nightmare) is incomplete for Korean and Simplified
+  Chinese clients on hunts not yet in the addon's internal data; everything else works
+  normally. Fluent in Korean or Chinese? We'd love your help — see the README for how to
+  contribute a translation.
 
 ## 3.0.5 - 2026-08-20
 

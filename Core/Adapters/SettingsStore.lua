@@ -76,6 +76,11 @@ local function buildRawDefaults()
             -- LibDBIcon-compatible convention.
             minimap_hidden = false,
             minimap_angle = 225,
+            -- UI/Splash.lua's one-time "what's new" popup gate. Empty string
+            -- (not nil) so Settings.Set's same-type guard accepts a later
+            -- string write -- matches every other string default in this
+            -- table, none of which default to nil either.
+            splash_seen_version = "",
             schema_version = SCHEMA_VERSION,
         },
         bar = {

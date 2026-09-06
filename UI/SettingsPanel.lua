@@ -1049,6 +1049,13 @@ local function buildAdvancedCategory(category)
         ensureResetConfirmFrame():Show()
     end)
 
+    previous = createButtonRow(canvas, previous, L("Show What's New"), function()
+        local splash = Preydator:GetModule("Splash")
+        if splash then
+            splash.Show(true)
+        end
+    end)
+
     -- Custom sound files: registers a filename in sound.custom_file_names so
     -- it appears in every sound-path dropdown (Sound & Alerts category) --
     -- the .ogg file itself must already exist in

@@ -6,10 +6,15 @@
 -- stage, prefixText, suffixText, tickPositions) -- pure presentation settings
 -- (orientation, colors, fonts, texture, percent_display, etc.) have no
 -- game-state dependency and are read directly by UI/BarFrame.lua instead.
+-- While State's ambushTextKind hasn't expired (set by AlertsRuntime when an
+-- ambush/Pack Ambush trigger actually fires), prefixText/suffixText
+-- temporarily show text.ambush_prefix/pack_ambush_prefix + the rendered
+-- suffix template instead of the normal per-stage text.
 -- Reads: Core/State.lua, Settings.
 -- Writes: nothing (pure function of its inputs).
 
 local Preydator = _G.Preydator
+local GetTime = _G.GetTime
 
 local BarRuntime = {}
 
@@ -24,6 +29,54 @@ local function L(key)
         return localization.L(key)
     end
     return key
+end
+
+-- Substitutes {tokenName} placeholders in text.ambush_suffix_template /
+-- text.pack_ambush_suffix_template (e.g. {preyTargetName}, {packAmbushSourceName})
+-- with the live value AlertsRuntime recorded when the trigger fired. `{` and
+-- `}` aren't Lua pattern magic characters, so the search side needs no
+-- escaping; the replacement side does, since gsub treats "%" specially there.
+local function renderTemplate(template, tokens)
+    if type(template) ~= "string" or template == "" then
+        return ""
+    end
+    local rendered = template
+    for token, value in pairs(tokens) do
+        local escapedValue = (type(value) == "string" and value or ""):gsub("%%", "%%%%")
+        rendered = rendered:gsub("{" .. token .. "}", escapedValue)
+    end
+    return rendered
+end
+
+-- Ambush/Pack Ambush text is transient: AlertsRuntime stamps an expiry
+-- (GetTime() + a fixed display window) into State when a trigger actually
+-- fires, and this just checks whether that window has passed -- no timer of
+-- its own, consistent with BarRuntime being a pure function of its inputs.
+local function computeAmbushTextOverride(snapshot, Settings)
+    local kind = snapshot.ambushTextKind
+    local expiresAt = snapshot.ambushTextExpiresAt
+    if not kind or type(expiresAt) ~= "number" then
+        return nil
+    end
+
+    local okTime, now = pcall(GetTime)
+    if not okTime or type(now) ~= "number" or now >= expiresAt then
+        return nil
+    end
+
+    if kind == "ambush" then
+        return Settings.Get("text.ambush_prefix") or "",
+            renderTemplate(Settings.Get("text.ambush_suffix_template"), {
+                preyTargetName = snapshot.ambushTextSourceName,
+            })
+    elseif kind == "pack_ambush" then
+        return Settings.Get("text.pack_ambush_prefix") or "",
+            renderTemplate(Settings.Get("text.pack_ambush_suffix_template"), {
+                packAmbushSourceName = snapshot.ambushTextSourceName,
+            })
+    end
+
+    return nil
 end
 
 function BarRuntime.ComputeBarViewModel()
@@ -61,6 +114,12 @@ function BarRuntime.ComputeBarViewModel()
     local stageSuffixes = Settings.Get("text.stage_suffix")
     local prefix = (type(stagePrefixes) == "table" and stagePrefixes[stage]) or ""
     local suffix = (type(stageSuffixes) == "table" and stageSuffixes[stage]) or ""
+
+    local ambushPrefix, ambushSuffix = computeAmbushTextOverride(snapshot, Settings)
+    if ambushPrefix then
+        prefix = ambushPrefix
+        suffix = ambushSuffix
+    end
 
     return {
         visible = true,

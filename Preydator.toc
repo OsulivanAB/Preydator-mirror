@@ -60,6 +60,7 @@ Core\SlashCommands.lua
 
 UI\BarFrame.lua
 UI\SettingsPanel.lua
+UI\Splash.lua
 UI\Launcher.lua
 
 # UI\EditMode.lua and UI\ReportWindow.lua were never built -- confirmed permanently not

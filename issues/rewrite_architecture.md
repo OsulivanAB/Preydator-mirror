@@ -1168,9 +1168,169 @@ Resolved in review:
 
     `luacheck`: 0 warnings/0 errors introduced across all touched locale files (the `GetLocale` global warning on every locale file, including untouched ones like `deDE.lua`, is pre-existing -- no WoW-API luacheck stub for that global, unrelated to these changes).
 
-76. **PTR test (12.1.5) surfaced a real bug on first login: the built-in minimap button (no LibDBIcon present) could only be dragged to the right side of the minimap, regardless of actual mouse position (2026-09-04).** Root cause found in `UI/Launcher.lua:159`: the drag-angle computation called `math.atan(my - cy, mx - cx)` -- but WoW's Lua runtime has no two-argument `math.atan`; the correct, always-available function for `atan2`-style (y, x) angle computation is the distinctly-named `math.atan2`. Passing a second argument to single-arg `math.atan` doesn't error, it's silently ignored -- so the call was actually only ever computing `math.atan(my - cy)`, the arctangent of the vertical offset alone, completely blind to horizontal mouse position. Single-argument `atan` is mathematically restricted to the range -90..90 degrees, which after `normalizeAngle`'s wrap-to-0-360 lands entirely within the right half of the circle -- exactly the reported "always snaps right" symptom, not a coincidence. Confirmed the fix, not guessed: grepped every other addon installed alongside Preydator for the same pattern (`LibDBIcon-1.0`, used by a dozen+ addons; `AllTheThings`; `BtWQuests`; the `HandyNotes_*` family) -- every single one uses `math.atan2(y, x)`, never a two-arg `math.atan`, confirming this is the real, standard WoW API function and not a naming choice. Fixed by changing the one call site to `math.atan2`. `luacheck`: 0 warnings/0 errors. **Confirmed the file was the actual cause of the drag, not a coincidence**: Preydator's LDB/LibDBIcon integration is `OptionalDeps` (not bundled), and the test PTR install had no other addon providing them, so the built-in fallback button (the only code path with this bug) was the one actually exercised -- on a normal install with a button-bag addon providing LibDBIcon, this bug would never have surfaced at all, which is presumably why it went unnoticed until now. **Not yet re-tested live** -- next step is the product owner confirming the drag now tracks the mouse correctly around the full minimap circle on PTR.
+76. **PTR test (12.1.5) surfaced a real bug on first login: the built-in minimap button (no LibDBIcon present) could only be dragged to the right side of the minimap, regardless of actual mouse position (2026-09-04).** Root cause found in `UI/Launcher.lua:159`: the drag-angle computation called `math.atan(my - cy, mx - cx)` -- but WoW's Lua runtime has no two-argument `math.atan`; the correct, always-available function for `atan2`-style (y, x) angle computation is the distinctly-named `math.atan2`. Passing a second argument to single-arg `math.atan` doesn't error, it's silently ignored -- so the call was actually only ever computing `math.atan(my - cy)`, the arctangent of the vertical offset alone, completely blind to horizontal mouse position. Single-argument `atan` is mathematically restricted to the range -90..90 degrees, which after `normalizeAngle`'s wrap-to-0-360 lands entirely within the right half of the circle -- exactly the reported "always snaps right" symptom, not a coincidence. Confirmed the fix, not guessed: grepped every other addon installed alongside Preydator for the same pattern (`LibDBIcon-1.0`, used by a dozen+ addons; `AllTheThings`; `BtWQuests`; the `HandyNotes_*` family) -- every single one uses `math.atan2(y, x)`, never a two-arg `math.atan`, confirming this is the real, standard WoW API function and not a naming choice. Fixed by changing the one call site to `math.atan2`. `luacheck`: 0 warnings/0 errors. **Confirmed the file was the actual cause of the drag, not a coincidence**: Preydator's LDB/LibDBIcon integration is `OptionalDeps` (not bundled), and the test PTR install had no other addon providing them, so the built-in fallback button (the only code path with this bug) was the one actually exercised -- on a normal install with a button-bag addon providing LibDBIcon, this bug would never have surfaced at all, which is presumably why it went unnoticed until now. **CONFIRMED (2026-09-06)** -- product owner confirmed the drag now tracks the mouse correctly around the full minimap circle.
 
 77. **PTR test: "sounds get cut off" traced to the Dialog sound channel's own single-concurrent-sound behavior, not a trigger/cooldown bug -- confirmed via a cross-check against retail, resolved as a documented limitation, not a fix (2026-09-04).** Product owner reported alerts on Voidstorm's `95022` hunt "not firing correctly" while `sound.channel = "Dialog"` (their own deliberate choice, matching their normal retail configuration -- not a fresh-install default, since the true default is `"Master"`). `/pd sinspect` showed every ambush/Pack Ambush/stage trigger correctly passing its gates and reporting `outcome=played`, with per-trigger-type cooldowns working exactly as designed (e.g. two near-simultaneous Pack Ambush nameplate matches correctly played one and cooldown-blocked the other) -- nothing wrong in `SoundsRuntime`/`AlertsRuntime`'s own logic. Asked the product owner to cross-check on retail with the same channel selected before assuming anything code-side; they confirmed the same occasional cutoff happens there too, ruling out a PTR-specific or amplification-specific cause. Root cause: WoW's `Dialog` channel only ever plays one sound at a time -- starting a new Dialog-channel `PlaySoundFile` call stops whatever Dialog sound was already in flight, regardless of which addon or trigger started either one. Since Preydator's independent triggers (true ambush, Pack Ambush, Exploding Corpse Snakes, stage sounds) each have their own cooldown and can legitimately land within a few seconds of each other, two firing close together on `Dialog` will cut one another off -- an engine-level property of that channel, not something addon code can prevent short of switching channels. Offered the product owner the choice (switch to `Master`/`SFX`, which layer instead of replacing, vs. keep `Dialog` and accept it) -- **chose to keep `Dialog`** (their established retail preference) and have it documented instead. Added to `CHANGELOG.md`'s Known Limitations. No code changes -- this entry exists so a future report of the same symptom isn't re-investigated as a fresh bug.
+
+78. **Ambush/Pack Ambush bar-text wiring, punch-list item #3, built (2026-09-06).** `text.ambush_prefix`/`text.ambush_suffix_template` and `text.pack_ambush_prefix`/`text.pack_ambush_suffix_template` had existed as user-facing settings since early in the settings catalog, but `BarRuntime` never read any of them -- the bar's displayed text never actually changed during a live ambush or Pack Ambush, despite the settings implying it should (flagged as the one genuine functional gap left on the Section 5f punch list). Built per the design `session_status.md` Section 4 already sketched: a new `State.SetAmbushText(kind, sourceName, expiresAt)` ("ambush"/"pack_ambush"/nil + the token value for the suffix template + a `GetTime()` expiry), called from `AlertsRuntime.processResolvedName` only when the corresponding sound actually plays (`SoundsRuntime.PlayAmbushSound()`/`PlayPackAmbushSound()` returns `true`) -- ties the transient bar text to the exact same cooldown-gated event as the sound, so the two can't drift out of sync with each other. `BarRuntime.ComputeBarViewModel` checks the expiry itself (no timer of its own, staying a pure function of `State`/`Settings`) and, while active, substitutes `text.ambush_prefix`/`pack_ambush_prefix` plus a rendered suffix template (new local `renderTemplate`, a plain `{token}` substitution) in place of the normal per-stage prefix/suffix. Deliberately no text for Exploding Corpse Snakes -- no prefix/suffix settings exist for it, matching the existing note that Echo of Predation never had any either and nothing should be invented here without being asked. The display duration (`AMBUSH_TEXT_DISPLAY_SECONDS = 6`, in `AlertsRuntime.lua`) is a fresh judgment call, not a setting or a ported value -- `session_status.md` had explicitly left "the duration/timeout behavior isn't decided" as an open question with nothing to port from the old codebase. `luacheck`: 0 warnings/0 errors across all 3 touched files (`Core/State.lua`, `Core/Runtime/BarRuntime.lua`, `Core/Runtime/AlertsRuntime.lua`), confirmed no new warnings introduced across the full 38-file active `.toc` load list either (11 pre-existing locale-file warnings, unrelated, unchanged). No warning-561 concern (`Preydator.lua` untouched). **CONFIRMED LIVE (2026-09-06)** -- product owner triggered both a real ambush and a real Pack Ambush; the bar text swapped to the expected prefix/suffix both times and reverted correctly afterward. No known open items.
+
+79. **Pre-release documentation pass and old-file cleanup (2026-09-06).** Product owner
+    requested, ahead of today's 4.0.0 release: a player-facing (non-technical) `CHANGELOG.md`,
+    a `README.md` Known Limitations section, a new-user splash screen, and a sweep for
+    dev-only files no longer needed. `CHANGELOG.md`'s entire `## Unreleased` section (270+
+    lines of implementation detail -- function names, root-cause narration, internal API
+    names) was replaced with a single `## 4.0.0` entry in plain language, organized as New /
+    Improved / Fixed / Removed / Known Limitations -- the old detailed narrative stays fully
+    preserved in this Decisions Log and `session_status.md` for internal history, since
+    `CHANGELOG.md` itself ships inside the release zip (`build-release.ps1`'s include list)
+    and is genuinely player-facing. `README.md` was fully rewritten, not just given a new
+    section -- the existing file described `v3.0.5`, the pre-rewrite Currency Tracker/Warband
+    features (permanently out of scope, CLAUDE.md Section 2), old settings tabs
+    (General/Display/Text/Audio/Advanced) that no longer exist, and old slash commands
+    (`/pd options`, `/pd hinspectcopy`, etc.) that were removed during the rewrite -- shipping
+    it as-is would have actively misled users about the current addon. New README leads with
+    Known Limitations, then documents the real current feature set, Settings categories,
+    Hunt Table panel, sounds, and the actual `/pd` command set from `Core/SlashCommands.lua`.
+    `CURSEFORGE_DESCRIPTION.md` is equally stale (`v2.1.0`, leads with the removed Currency
+    Tracker) but was flagged to the product owner rather than rewritten unprompted, since it
+    wasn't part of the explicit request.
+
+    **New `UI/Splash.lua`**, a one-time "what's new" popup gated on a new
+    `general.splash_seen_version` setting (empty string default, `SettingsStore.lua`), ported
+    faithfully from the old codebase's own splash pattern
+    (`D:\Dev\PreydatorLive\Preydator.lua:634-712`, `EnsurePreydatorThreeSplashFrame`/
+    `ShowPreydatorThreeSplashIfNeeded`) rather than inventing a new mechanism: a
+    `BackdropTemplate` frame, a version-gated show-once check, and a manual reopen action
+    (Settings → Advanced → "Show What's New," mirroring the old Advanced-tab button of the
+    same name). Content is three scrollable sections (What's New, Hunt Table Icons, Known
+    Limitations) built via a small local `addSection` helper reusing `UI/SettingsPanel.lua`'s
+    scroll-frame pattern (`UIPanelScrollFrameTemplate` + a sized scroll child). The "Hunt
+    Table Icons" section explains the achievement badge (genuinely new this release) and the
+    difficulty skull icons (not new, but still worth a legend for anyone seeing the panel for
+    the first time) -- checked against the actual current feature set rather than assuming
+    what counts as "new." Splash content strings go through `Locales/Locales.lua`'s existing
+    English-default pattern (the same one the 3.0 splash already used for
+    `PREYDATOR_3_0_WHATS_NEW_BODY`), since these are multi-line, non-plain-English `L()` keys
+    that need an explicit default rather than relying on `LocalizationAdapter`'s
+    key-as-fallback behavior. Self-inits behind `PLAYER_LOGIN`, same standing rule as every
+    other `UI/*.lua` file. Considered Plumber's data-driven `Changelog/Template.lua` system
+    (per-entry types: date/h1/Checkbox/p/img/tocVersionCheck) and Narcissus's 3D-model splash
+    as reference points (product owner's own suggestion to look at other addons) -- both
+    rejected as over-scoped for Preydator's needs (Plumber's ties directly into its own
+    per-module settings toggles; Narcissus's is a character-model viewer) in favor of
+    Preydator's own simpler, already-proven pattern.
+
+    **Old-file cleanup, second pass** (first pass was item 75): nine more files removed after
+    confirming zero live references (grep across all `.lua`/`.md` files, not assumed) --
+    `issues/Possibletaint.md` (2026-03-29 taint audit against the old monolith's now-gone line
+    numbers, superseded by the resolved `StaticPopupDialogs` finding, item 14, and memory
+    `preydator-taint-elimination-method`), `issues/Predaytor PR19.md` (a raw old-codebase diff
+    dump, not documentation), `issues/Stale Code Removal candidates.md` (a pre-rewrite
+    dead-code tracking doc for files -- `CurrencyTracker.lua`, `EditMode.lua` -- that don't
+    exist in this branch, fully superseded by item 75's own rewrite-era audit),
+    `issues/roadmap.md` (an old "Midnight Prey" plan whose Epic 1 is the permanently-out-of-
+    scope Currency Ledger CLAUDE.md Section 2 bans, and whose one epic that shipped --
+    achievements -- is already fully documented in this log and `session_status.md`),
+    `issues/currencies.md` (a currency-ID reference table for the same out-of-scope feature),
+    `issues/snapshot_diagnostics_runbook.md` and `issues/zone_inspection_workflows.md` (both
+    reference old-monolith function names -- `UpdatePreyState`, `RefreshInPreyZoneStatus` --
+    that don't exist in the rewrite, fully superseded by `/pd zinspect`/`/pd qinspect` and this
+    Decisions Log), `issues/Preydator_64.png` (an unreferenced stray duplicate of the real
+    `media/Preydator_64.png`, sitting in `issues/` since the repo's first commit), and
+    `media/PreyHuntTableDifficulty_light.png` (the pre-per-difficulty-PNG icon sheet, confirmed
+    superseded in Section 2 of this same session log, 2026-08-27 -- zero code references,
+    saves 709KB). `localization-audit.ps1` (a real, still-used sanitizer for the *other* three
+    reference docs -- `achievements.md`/`quest_list.md`/`questrewards.md`, which stay, being
+    live data-curation sources for `PreyQuestData.lua` and the achievement mapping) had
+    `currencies.md` dropped from its default file list rather than being deleted itself.
+    `issues/bar_rendering_research.md` and `issues/relational-id-simplification-plan.md` were
+    checked and kept -- both are still actively cited by live code/`CLAUDE.md` (see item 75's
+    own note on the former). `media/Buy me a coffee 200x48.png` was flagged to the product
+    owner, not removed -- zero repo references either, but it's plausibly a manually-uploaded
+    CurseForge-page asset rather than dead weight, and less certain to judge alone.
+
+    **`UI/Splash.lua` rendered completely blank in-game, confirmed live the same session --
+    root cause and fix.** The first version used a `UIPanelScrollFrameTemplate` scroll frame
+    with a scroll child sized via `OnSizeChanged`, and body fontstrings anchored via a
+    `RIGHT`-to-parent point to inherit the scroll child's width, with total content height
+    computed from `previous:GetHeight()`. All of this ran inside `ensureFrame()`, which never
+    shows the frame (it explicitly `Hide()`s at the end, only shown later by `Splash.Show()`)
+    -- so every one of those measurements (`OnSizeChanged` firing, a fresh fontstring's
+    `GetHeight()`, the scroll child's actual rendered width) was being read before the frame
+    had ever been part of an on-screen layout pass, and came back unreliable, leaving the
+    header/body fontstrings sized/positioned in a way that rendered nothing at all -- title,
+    close button, and Got It button (none of which depended on any of that) all rendered fine,
+    which is what pointed at the scroll-content-sizing path specifically rather than the frame
+    itself. **Fixed by removing the scroll frame entirely**, matching the shape of the old
+    codebase's own, actually-shipped 3.0 splash (`D:\Dev\PreydatorLive\Preydator.lua:634-712`)
+    more closely than the first attempt did: a plain fixed-size frame (600x620, sized
+    generously for the known content), fontstrings given an explicit fixed `SetWidth`
+    (`CONTENT_WIDTH`) instead of a parent-relative anchor, and no height math at all --
+    sections just stack via `TOPLEFT`-to-previous-`BOTTOMLEFT` anchors. Trade-off accepted
+    deliberately: if a future content edit makes the three sections taller than fits in 620px,
+    text will overflow past the frame edge (no clipping without a scroll frame) rather than
+    silently vanish -- a visibly-wrong failure mode is preferable to an invisibly-wrong one for
+    a file with no interactive test loop available. `luacheck`: 0 warnings/0 errors.
+
+    **Retested live immediately, found a second, unrelated bug: `"GameFontNormalMedium"` isn't
+    a real Blizzard font template.** `luacheck` can't catch an invalid string argument to
+    `CreateFontString` (it's not a syntax/static-analysis error, only a runtime one) --
+    confirmed live via the exact error `luacheck` would never surface:
+    `Frame:CreateFontString(): Couldn't find inherited node "GameFontNormalMedium"`. This
+    error aborted `ensureFrame()` partway through the very first `addSection` call, which is
+    why title/close/Got It (created earlier in the function) rendered fine while every section
+    was completely missing, even after the scroll-frame removal above -- two independent bugs
+    in the same file, not one. Checked what's actually proven working in this codebase instead
+    of guessing again: `GameFontNormal`/`GameFontNormalSmall`/`GameFontHighlight`/
+    `GameFontHighlightSmall`/`GameFontNormalLarge` are all already used successfully elsewhere
+    (`UI/BarFrame.lua`, `UI/SettingsPanel.lua`, `Modules/HuntScanner/HuntTablePanel.lua`) --
+    `GameFontNormalMedium` was a guessed name with no such prior use anywhere in the codebase,
+    exactly the kind of invented-API mistake `CLAUDE.md` Section 10 warns against. Fixed by
+    switching the header font to the confirmed `GameFontNormal`. Also verified
+    `UIPanelCloseButton` (this file's close-X button template, likewise with no prior use in
+    this codebase) against other real, currently-loaded addons in the same client install
+    (AceGUI-3.0's `AceGUIContainer-Window.lua`, used by several installed addons) rather than
+    trusting memory alone, given the font-name mistake just proved memory alone isn't
+    sufficient here. `luacheck`: 0 warnings/0 errors. **Not yet re-tested live** -- next step
+    is confirming the popup now shows all three sections' text and that 620px is tall enough
+    not to overflow past the Got It button.
+
+80. **Real bug found and fixed live (2026-09-06): the bar froze on stale data and stayed
+    visible indefinitely inside a Delve, instead of correctly going quiet like the
+    architecture doc's "fail closed in restricted instances" rule requires.** Product owner
+    reported the bar still showing 10+ minutes into a Delve, pasted `/pd inspect`:
+    `restrictedInstance=scenario` (so `MapContextAdapter.IsRestrictedInstance()` correctly
+    detected the Delve as `"scenario"` -- not a detection-accuracy bug at all, ruling out the
+    otherwise-plausible theory that Blizzard's API was misreporting) alongside
+    `pollingActive=false` but `activeQuestID`/`inPreyZone=true`/`expectedZoneMapID`/
+    `widgetSnapshot` all still fully populated with pre-Delve values, and the bar's own view
+    model showing `visible=true`. Root cause: `EventRuntime.HandleEvent`'s own fail-closed
+    branch (step 2, `EventRuntime.lua` ~line 402) is a SECOND, incomplete copy of the
+    restricted-instance handling `PreyContextRuntime.RefreshPreyContext()` already implements
+    correctly (Section 4 architecture rule: `state.SetPollingActive(false)` +
+    `state.SetInPreyZone(false)` + `state.ClearActiveQuest()`, all together) -- the dispatcher's
+    own copy only ever called `state.SetPollingActive(false)` and `stopProgressTicker()`, then
+    `return`ed immediately, which both skipped the real clear AND prevented step 3 from ever
+    reaching `RefreshPreyContext()` (the only function that actually clears
+    activeQuestID/inPreyZone/expectedZoneMapID) -- so every field but `pollingActive` stayed
+    frozen at its last pre-Delve value for as long as the player stayed restricted, and
+    `BarRuntime`, reading that frozen-but-still-`inPreyZone=true` snapshot, correctly rendered
+    a bar for state that was no longer real. A second, independent symptom of the exact same
+    bug: the progress ticker being stopped here (`stopProgressTicker()`) meant `RefreshPreyContext`
+    would never run again from the ticker either, so nothing would have self-corrected even by
+    waiting -- only leaving the restricted instance (which fires a fresh `CONTEXT_EVENT`,
+    reaching step 3 normally) would have. **Fixed** by removing the dispatcher's own partial
+    copy and having it call `PreyContextRuntime.RefreshPreyContext()` directly instead --
+    `RefreshPreyContext()`'s own already-correct restricted-instance branch now runs from
+    both call sites (its usual per-event/ticker path, and this fail-closed short-circuit),
+    single source of truth per Section 3's own architecture rule, no logic duplicated. The
+    unrelated `hidePanel()`/`stopProgressTicker()` calls in this branch are unaffected and
+    still correct on their own terms. `luacheck`: 0 warnings/0 errors (also removed an
+    `EventRuntime.HandleEvent`-local `state` variable this fix made unused). **Not yet
+    re-tested live** -- next step is the product owner re-entering a Delve (or any
+    restricted instance) with an active hunt and confirming the bar/sounds correctly go
+    quiet (or show the out-of-zone label, depending on `general.only_show_in_prey_zone`)
+    within moments of entering, instead of freezing on stale data.
 
 ### 19.1 Deployment & Branching Plan
 

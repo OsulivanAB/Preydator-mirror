@@ -3,8 +3,7 @@ param(
 	[string[]]$Files = @(
 		"issues/achievements.md",
 		"issues/quest_list.md",
-		"issues/questrewards.md",
-		"issues/currencies.md"
+		"issues/questrewards.md"
 	)
 )
 

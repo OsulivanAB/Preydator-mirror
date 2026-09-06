@@ -6,7 +6,11 @@
 -- SoundsRuntime and State -- never touches chat frames or UI.
 -- Reads: Core/State.lua, Settings, MapContextAdapter, PreyContextRuntime
 -- (ResolveQuestOnMap, the single source of truth for zone status).
--- Writes: nothing (delegates playback to SoundsRuntime).
+-- Writes: Core/State.lua's ambush-text fields (State.SetAmbushText), only
+-- when the ambush/Pack Ambush sound actually plays -- ties the transient bar
+-- text to the same cooldown-gated event as the sound, so the two can't drift
+-- out of sync. No text for Exploding Corpse Snakes (no prefix/suffix settings
+-- exist for it -- not invented here without being asked).
 --
 -- Entirely nameplate-based (NAME_PLATE_UNIT_ADDED, dispatched by
 -- EventRuntime.lua) -- there is no chat-text detection left in this file.
@@ -40,6 +44,22 @@ local AlertsRuntime = {}
 -- than giving up after one snapshot.
 local PENDING_NAME_EXPIRY_SECONDS = 30
 local pendingNameResolution = {}
+
+-- How long the ambush/Pack Ambush bar text stays swapped in before
+-- BarRuntime reverts to the normal per-stage text -- long enough to actually
+-- read, short enough not to hide real stage progress for the rest of the
+-- fight. A fixed window, not a setting: the duration/timeout behavior was an
+-- open question (session_status.md Section 4) with no prior product decision
+-- to port, so this is a fresh judgment call rather than a guessed setting.
+local AMBUSH_TEXT_DISPLAY_SECONDS = 6
+
+local function setAmbushText(state, kind, sourceName)
+    local okTime, now = pcall(GetTime)
+    if not okTime or type(now) ~= "number" then
+        return
+    end
+    state.SetAmbushText(kind, sourceName, now + AMBUSH_TEXT_DISPLAY_SECONDS)
+end
 
 local function prunePendingNameResolution(now)
     for unit, pending in pairs(pendingNameResolution) do
@@ -240,7 +260,9 @@ local function processResolvedName(name)
     -- evidence of proximity) -- only a CONFIRMED false blocks it.
     if matchesPrey then
         if isOnMap ~= false then
-            sounds.PlayAmbushSound()
+            if sounds.PlayAmbushSound() then
+                setAmbushText(state, "ambush", preyTargetName)
+            end
         else
             sounds.RecordBlockedAttempt("ambush", "isOnMap was false" .. nameSuffix)
         end
@@ -248,13 +270,14 @@ local function processResolvedName(name)
 
     -- Mob Scanner: see this function's own header comment for why this rule
     -- (isOnMap, no stage/difficulty gate) is deliberately different from the
-    -- ambush rule above.
+    -- ambush rule above. Bar text only for pack_ambush -- Exploding Corpse
+    -- Snakes has no prefix/suffix settings (see this file's header comment).
     if mechanicKey then
         if isOnMap == true then
             local soundFnName = MOB_SCANNER_SOUND_FUNCTIONS[mechanicKey]
             local soundFn = soundFnName and sounds[soundFnName]
-            if type(soundFn) == "function" then
-                soundFn()
+            if type(soundFn) == "function" and soundFn() and mechanicKey == "pack_ambush" then
+                setAmbushText(state, "pack_ambush", name)
             end
         else
             sounds.RecordBlockedAttempt(mechanicKey, "isOnMap was not true" .. nameSuffix)

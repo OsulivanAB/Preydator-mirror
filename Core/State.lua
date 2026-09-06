@@ -20,6 +20,9 @@ local state = {
     expectedZoneMapID = nil,
     questListenUntil = nil,
     pollingActive = true,
+    ambushTextKind = nil,
+    ambushTextSourceName = nil,
+    ambushTextExpiresAt = nil,
 }
 
 local subscribers = {}
@@ -107,6 +110,30 @@ function State.SetQuestListenUntil(timestamp)
     notify()
 end
 
+-- Transient ambush/Pack Ambush bar-text state. `kind` is "ambush",
+-- "pack_ambush", or nil to clear; `sourceName` is the token value BarRuntime
+-- substitutes into text.ambush_suffix_template/text.pack_ambush_suffix_template
+-- ({preyTargetName}/{packAmbushSourceName}); `expiresAt` is a GetTime()
+-- timestamp -- BarRuntime treats the text as active only while GetTime() is
+-- still before it. AlertsRuntime is the only caller (it owns "how long should
+-- this display" as part of the trigger it just fired), so this setter just
+-- stores whatever it's given rather than computing a duration itself.
+function State.SetAmbushText(kind, sourceName, expiresAt)
+    if kind ~= nil and kind ~= "ambush" and kind ~= "pack_ambush" then
+        return
+    end
+    if sourceName ~= nil and type(sourceName) ~= "string" then
+        return
+    end
+    if expiresAt ~= nil and type(expiresAt) ~= "number" then
+        return
+    end
+    state.ambushTextKind = kind
+    state.ambushTextSourceName = sourceName
+    state.ambushTextExpiresAt = expiresAt
+    notify()
+end
+
 function State.SetPollingActive(value)
     state.pollingActive = value == true
 end
@@ -123,6 +150,9 @@ function State.ClearActiveQuest()
     state.preyTargetDifficulty = nil
     state.expectedZoneMapID = nil
     state.questListenUntil = nil
+    state.ambushTextKind = nil
+    state.ambushTextSourceName = nil
+    state.ambushTextExpiresAt = nil
     notify()
 end
 

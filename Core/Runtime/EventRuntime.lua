@@ -44,8 +44,16 @@
 -- Reads: MapContextAdapter, Core/State.lua, Core/Settings.lua,
 -- Modules/HuntScanner/HuntTableAdapter.lua (read-only signals only --
 -- HuntTableAdapter remains the only file that reads actual pin/quest data).
--- Writes: Core/State.lua (SetPollingActive only, via PreyContextRuntime/its own
--- fail-closed gate).
+-- Writes: nothing directly -- the fail-closed gate below calls
+-- PreyContextRuntime.RefreshPreyContext() (the single source of truth for
+-- the restricted-instance clear: SetPollingActive/SetInPreyZone/
+-- ClearActiveQuest all together) rather than writing State itself. An
+-- earlier version called State.SetPollingActive(false) directly here and
+-- returned before ever reaching RefreshPreyContext -- correctly stopped the
+-- progress ticker, but never cleared activeQuestID/inPreyZone/
+-- expectedZoneMapID, leaving the bar frozen on stale pre-restricted-instance
+-- data for as long as the player stayed restricted (found live 2026-09-06,
+-- a Delve -- see Decisions Log item 80).
 
 local Preydator = _G.Preydator
 local CreateFrame = _G.CreateFrame
@@ -387,13 +395,17 @@ function EventRuntime.HandleEvent(_, event, ...)
     end
 
     local mapContext = Preydator:GetModule("MapContextAdapter")
-    local state = Preydator:GetModule("State")
 
     -- 2. FAIL-CLOSED
     if not ALWAYS_ALLOWED_EVENTS[event] then
         if mapContext and mapContext.IsRestrictedInstance() then
-            if state then
-                state.SetPollingActive(false)
+            -- Delegates to RefreshPreyContext's own restricted-instance
+            -- branch (SetPollingActive(false) + SetInPreyZone(false) +
+            -- ClearActiveQuest(), all together) instead of duplicating a
+            -- partial copy of it here -- see this file's header comment.
+            local preyContext = Preydator:GetModule("PreyContextRuntime")
+            if preyContext then
+                preyContext.RefreshPreyContext()
             end
             if huntInteractionActive then
                 hidePanel()

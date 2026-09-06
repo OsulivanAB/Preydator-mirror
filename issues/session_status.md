@@ -1,15 +1,66 @@
 # Preydator Rewrite — Session Status / Handoff
 
-Last updated: 2026-09-04. Read this before doing anything else in a fresh session — it's
+Last updated: 2026-09-06. Read this before doing anything else in a fresh session — it's
 the fastest way back to full context after a restart. This supplements, not replaces,
 `CLAUDE.md` Section 0's reading list.
 
 **Start here, not at Section 0 below (that's the 2026-09-02 session's own summary, kept
-for history):** two commits now exist on this branch (`e09e583`, `c74fb36`), covering the
-achievement system (fully closed, Section 5d), Hunt Panel/Settings polish (Section 5g),
-and the vertical bar (signed off, Decisions Log item 66). **Section 5f has the product
-owner's current prioritized punch list** for what's actually left before full release —
-read that first for "what's next." Nothing is currently uncommitted as of this update.
+for history):** four commits now exist on this branch (`e09e583`, `c74fb36`, `440e291`,
+`55301c3`), covering everything through the achievement system, Hunt Panel/Settings
+polish, the vertical bar sign-off, sound amplification, the Voidstorm zone-detection
+chain, old-monolith cleanup, and the PTR-found bugs. **Section 5f has the product owner's
+current prioritized punch list** for what's actually left before full release — read that
+first for "what's next." **As of 2026-09-06, every item on that punch list is closed**:
+ambush/Pack Ambush bar-text wiring (item 3, Decisions Log item 78) is built and confirmed
+live, and today's live test pass also re-confirmed the minimap drag fix (item 76) and
+sound amplification (item 68). The only remaining open item project-wide is the
+`koKR`/`zhCN` difficulty-detection locale gap (item 4), blocked on finding a native
+speaker, not on engineering — now documented as a Known Limitation rather than a release
+blocker (see below).
+
+**Also done today, ahead of the 4.0.0 release itself (Decisions Log item 79):**
+`CHANGELOG.md`'s `## Unreleased` section replaced with a single player-facing `## 4.0.0`
+entry (plain language, no internal function/API names — it ships inside the release zip);
+`README.md` fully rewritten (the old one described `v3.0.5`, dead Currency Tracker
+features, and removed slash commands) with Known Limitations up top; new `UI/Splash.lua`
+one-time "what's new" popup (ported from the old codebase's own splash pattern, ~/pd
+Advanced → "Show What's New" to reopen); and a second old-file cleanup pass (nine more
+files `git rm`'d — see Decisions Log item 79 for the full list and why each was safe).
+`CURSEFORGE_DESCRIPTION.md` is just as stale (`v2.1.0`, leads with the removed Currency
+Tracker) but wasn't rewritten — flag to the product owner before the CurseForge listing
+goes out, since that copy is customer-facing marketing, not just internal docs.
+
+**`UI/Splash.lua` rendered blank in-game, found and fixed the same day (Decisions Log item
+79 follow-up).** The first version's scroll-frame content-sizing math (`OnSizeChanged`,
+`GetHeight()`, a parent-relative width anchor) was all read before the frame was ever
+shown, and came back unreliable -- title/close/Got It all rendered fine, only the body text
+was affected. Fixed by dropping the scroll frame entirely in favor of a plain fixed-size
+frame (600x620) with explicit fixed-width fontstrings, closer to the old codebase's own
+proven 3.0 splash shape.
+
+**Retested immediately, found a second bug: `"GameFontNormalMedium"` isn't a real font
+template** (`Frame:CreateFontString(): Couldn't find inherited node "GameFontNormalMedium"`)
+-- this aborted `ensureFrame()` before any section got built at all, the real reason nothing
+showed even after the scroll-frame fix. Switched to `GameFontNormal`, already proven working
+elsewhere in this codebase (`UI/BarFrame.lua`, `UI/SettingsPanel.lua`). `luacheck`: 0
+warnings/0 errors (this class of bug -- an invalid string argument to a Blizzard API --
+isn't something `luacheck` can catch; only a live test surfaces it). **Not yet re-tested
+live** -- next step is confirming all three sections now show and 620px doesn't overflow
+past the button.
+
+**Real bug found and fixed today, from a live report (Decisions Log item 80):** the bar
+froze showing stale hunt progress indefinitely inside a Delve instead of correctly going
+quiet. Root cause was a genuine internal bug, not a Blizzard API surprise --
+`EventRuntime.HandleEvent`'s own fail-closed branch had a second, incomplete copy of
+`PreyContextRuntime.RefreshPreyContext()`'s already-correct restricted-instance clear, and
+by returning early it also prevented the real one from ever running. Fixed by having the
+dispatcher call `RefreshPreyContext()` directly instead of duplicating its logic.
+`luacheck`: 0 warnings/0 errors. **Not yet re-tested live** -- next step is confirming the
+bar/sounds go quiet immediately on entering a restricted instance with an active hunt.
+
+Nothing is currently uncommitted except today's changes (ambush-text wiring, the
+documentation/splash/cleanup pass, and this Delve fix) and a harmless local
+`.vscode/settings.json` diff.
 
 ---
 
@@ -1154,11 +1205,12 @@ Read top to bottom as the actual next-up order, not just a backlog dump:
    research.~~ **DONE, fully signed off.** Text & Labels layout, custom sound file UI, and
    sound amplification (Decisions Log items 61-62, 67-68) are all **CONFIRMED LIVE**
    (2026-09-04) -- no known open items on any of the three.
-3. **Ambush/Pack Ambush bar-text wiring.** `text.ambush_prefix`/`pack_ambush_prefix`
-   settings already exist and are user-facing, but `BarRuntime` never reads them -- the bar
-   text never actually changes on ambush despite the setting implying it should. **Still
-   open -- the next real item to pick up.** The one item on this list that's a genuine
-   functional gap, not polish.
+3. ~~**Ambush/Pack Ambush bar-text wiring.**~~ **DONE, CONFIRMED LIVE 2026-09-06**
+   (Decisions Log item 78): `BarRuntime` swaps in `text.ambush_prefix`/`pack_ambush_prefix`
+   + a rendered suffix template for ~6 seconds whenever the corresponding sound actually
+   plays, then reverts to normal stage text. Product owner triggered both a real ambush
+   and a real Pack Ambush and confirmed the swap/revert worked both times. No known open
+   items.
 4. `koKR`/`zhCN` difficulty-detection locale gap -- needs a native speaker, not a guessed
    translation (Section 5c). **Still open**, blocked on finding a native speaker, not on
    engineering effort.
