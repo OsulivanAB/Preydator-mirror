@@ -28,14 +28,20 @@ $stagingAddonDir = Join-Path $stagingDir $addonName
 try {
     New-Item -ItemType Directory -Path $stagingAddonDir -Force | Out-Null
 
-    # Only files actually reachable from Preydator.toc's active load list, plus the
-    # media/sound assets code paths reference at runtime. Superseded pre-rewrite files
-    # (old Modules/*.lua monoliths, unused media, the sounds placeholder note) are
-    # intentionally excluded -- see Preydator.toc's trailing comment block for why each
-    # superseded file is still kept in the working tree but must not ship.
+    # Files reachable from Preydator.toc's active load list, the media/sound assets
+    # code paths reference at runtime, plus the two player-facing docs (README/
+    # CHANGELOG) worth shipping alongside the addon itself. Everything else at repo
+    # root (CLAUDE.md, PREYDATOR_AGENT.md, PREYDATOR_ARCHITECTURE.md,
+    # CURSEFORGE_DESCRIPTION.md, issues/, this script itself, etc.) is developer-only
+    # and deliberately excluded, same as the superseded pre-rewrite files (old
+    # Modules/*.lua monoliths, unused media) -- see Preydator.toc's trailing comment
+    # block for why each superseded file is still kept in the working tree but must
+    # not ship.
     $releaseInclude = @(
         "Preydator.toc",
         "Preydator.lua",
+        "README.md",
+        "CHANGELOG.md",
         "Locales",
         "Core\State.lua",
         "Core\Settings.lua",
