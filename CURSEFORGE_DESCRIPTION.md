@@ -2,71 +2,52 @@
 
 **Your Prey Is Never Alone… and Neither Are You.**
 
-Preydator sharpens your senses for Midnight’s Prey Hunts, delivering real‑time stage tracking, cinematic Predator‑style audio cues, and a clean, customizable progress bar built for modern Edit Mode layouts. Every transition, every ambush warning, every moment of the hunt is delivered with clarity and intention—no clutter, no noise, just the information you need when the prey is near.
+Preydator sharpens your senses for Prey Hunts, delivering real-time stage tracking, cinematic Predator-style audio cues, and a clean, customizable progress bar built for modern Edit Mode layouts. Every transition, every ambush warning, every moment of the hunt is delivered with clarity and intention — no clutter, no noise, just the information you need when the prey is near.
 
-Designed specifically for Midnight’s hunt systems, Preydator goes far beyond a simple bar. It adds a full Prey Currency Tracker, a Warband‑wide prey overview, a Hunt Table companion panel with reward intelligence, and weekly‑aware snapshots for all your characters. Whether you’re chasing your next crest, planning your weekly rewards, or managing a roster of alts, Preydator keeps your prey state, rewards, and opportunities visible at a glance.
-
- 
+Version 4.0.0 is a complete rewrite on a new, more reliable foundation — the same Hunt tracking you know, rebuilt from the ground up.
 
 ### Why Preydator
 
-Preydator is built for players who want clarity, immersion, and control during Midnight’s Prey Hunts. Blizzard exposes only stage transitions—not true percentages—so the addon interprets the hunt the way the game actually works: stage‑based, event‑driven, and zone‑aware. Every cue, every transition, every alert is grounded in real API data, not guesswork.
+Blizzard exposes only stage transitions for Prey Hunts, not a true percent-complete — so Preydator interprets the hunt the way the game actually works: stage-based, event-driven, and zone-aware. Every cue, every transition, every alert is grounded in real API data, not guesswork.
 
 Players choose Preydator because it delivers:
 
-*   **Reliable stage tracking** driven by Blizzard’s quest and widget APIs
-*   **Cinematic Predator‑inspired audio cues** that make each stage feel alive
-*   **A clean, customizable progress bar** that stays readable in combat
-*   **A Hunt Table companion panel** with grouping, sorting, reward intel, and direct quest actions
-*   **A full Prey Currency Tracker** with session deltas, themes, and layout controls
-*   **Warband‑wide prey visibility**, including weekly‑aware snapshots and N/H/Ni tracking
-*   **Deep customization** for textures, colors, percent modes, vertical orientation, labels, and audio
-*   **Modern Edit Mode integration**, including a compact quick‑settings window
-*   **Stable, predictable behavior** that avoids taint‑prone Blizzard paths and respects your UI
+* **Reliable stage tracking** driven by Blizzard's own quest and widget APIs
+* **Cinematic Predator-inspired audio cues** for every stage, ambush, and Mob Scanner mechanic
+* **A clean, customizable progress bar** — horizontal or vertical, readable in combat
+* **A Hunt Table companion panel** with grouping, sorting, reward icons, achievement badges, and a direct Accept action
+* **Deep customization** for textures, colors, percent display modes, labels, and audio
+* **Modern Edit Mode integration**
+* **Stable, predictable behavior** that avoids taint-prone Blizzard paths and respects your UI
 
-Preydator is a focused, Midnight‑specific companion designed to enhance the hunt without overwhelming your screen or your workflow.
+### Major Features (v4.0.0)
 
-### Major Features (v2.1.0)
+* Redesigned, draggable/resizable progress bar with a full vertical layout option
+* Settings built into Blizzard's own Options window (Escape → Options → AddOns → Preydator, or `/preydator`)
+* Redesigned Hunt Table panel: reward icons (real item/currency art, hover for full name), achievement badges, and on-panel grouping/sorting by difficulty or zone
+* Mob Scanner: Pack Ambush and Exploding Corpse Snakes each get their own distinct alert sound, detected reliably instead of guessing from chat text
+* Bar text now changes during a real ambush or Pack Ambush, not just the sound
+* "Amplify Alert Sounds" option to briefly boost alert volume over music/ambience
+* Custom sound file support
+* Minimap button / Addon Compartment entry point
+* One-time "what's new" popup on first login after an update, with a Hunt Table icon legend and known limitations
+* `/pd` diagnostic commands for troubleshooting (`inspect`, `qinspect`, `hinspect`, `sinspect`, and more)
 
-*   Real‑time prey stage tracking with fallback percent modes
-*   Predator‑style audio cues for stages and ambushes
-*   Fully customizable progress bar (textures, colors, fonts, percent modes, vertical orientation, spark line)
-*   New module runtime controls for Bar, Sounds, Currency, Hunt Table, and Warband
-*   Module‑aware settings disabling with reload change detection
-*   New installs start with the bar unlocked for quick placement; lock it in Options when finished
-*   Currency and Warband windows auto‑close and stop live updates when modules are disabled
-*   Bar‑only routing improvements with robust prey-zone fallback when quest zone IDs are unavailable
-*   CPU optimizations for zone caching and reduced unnecessary refresh routes
-*   Prey Currency Tracker with session deltas, themes, and layout controls
-*   Warband currency table with sorting, grouping, and tracked‑currency visibility
-*   Hunt Table companion panel with reward icons, grouping/sorting, and direct accept/open actions
-*   Debug and diagnostics tools (`/pd inspect`, `/pd qinspect`, `/pd hinspect`, `/pd debug`) with a built-in copyable report window
+### Known Limitations
+
+* Blizzard's own default prey icon can briefly reappear mid-hunt if that happens while you're in combat — addons can't hide UI elements during combat. It corrects itself once combat ends.
+* A small number of unusual zone shapes may cause a brief bar flicker right at the very start of a hunt.
+* If Sound Channel is set to "Dialog," alerts firing close together can cut each other off — that's how WoW's Dialog channel works for every addon. Use "Master" or "SFX" to avoid this.
+* Korean/Simplified Chinese difficulty-text detection is incomplete for hunts not yet in the addon's internal data. Fluent in either? We'd love your help — see Support & Feedback below.
 
 ### Slash Commands
 
-*   Entry point: `/pd`
-*   UI and bar controls: `/pd options`, `/pd show`, `/pd hide`, `/pd toggle`
-*   Debug logs: `/pd debug on`, `/pd debug off`, `/pd debug show`, `/pd debug clear`
-*   Live inspect: `/pd inspect`, `/pd inspect bs` (built-in report window)
-*   Quest inspect: `/pd qinspect`, `/pd qinspect <questID>`, `/pd qinspect bs`, `/pd qinspect <questID> bs` (built-in report window)
-*   Hunt snapshot inspect: `/pd hinspect`, `/pd hinspect bs`, `/pd hinspectcopy`, `/pd hinspectcopy bs` (built-in report window)
-
-### Coming Soon
-
-Preydator continues to expand into a full Midnight Prey companion. Upcoming features include:
-
-*   **Weekly Hunt Cap Tracker**  
-    Track chest and sack progress for Normal, Hard, and Nightmare tiers, including remaining weekly opportunities and crest indicators.
-*   **Prey Achievement Gap Highlighter**  
-    Identify which hunts advance your missing Prey achievements and highlight qualifying options directly in the Hunt Table panel.
-*   **Reward Intelligence & Cost Context**  
-    Smarter reward summaries, value‑aware sorting, and optional Remnant of Anguish spending guidance.
-*   **Expanded Hunt Source Scanner**  
-    More reliable hunt discovery, improved grouping, and cleaner fallback behavior across NPC contexts.
-*   **Modular runtime improvements**  
-    Cleaner internal modules for prey state, UI rendering, and diagnostics to keep the addon fast, stable, and future‑proof.
+* Entry point: `/pd`
+* Settings: `/preydator` (or Escape → Options → AddOns → Preydator)
+* Diagnostics: `/pd inspect [bs]`, `/pd qinspect [questID] [bs]`, `/pd hinspect [bs]`, `/pd pinspect [bs]`, `/pd sinspect [bs]`, `/pd ninspect [bs]`, `/pd iinspect [bs]`, `/pd zinspect [bs]` — add a trailing `bs` to also send the report to BugSack
+* `/pd segments` — toggle the bar's progress-segment mode (quarters/thirds), macro-friendly
 
 ### Support & Feedback
 
-All issues, feature requests, and feedback should be filed at:  
+All issues, feature requests, and feedback — including offers to help translate Preydator into Korean or Simplified Chinese — should be filed at:
 **[https://github.com/RagingAltoholic/Preydator/issues](https://github.com/RagingAltoholic/Preydator/issues)**

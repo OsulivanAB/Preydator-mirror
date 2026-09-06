@@ -1332,6 +1332,17 @@ Resolved in review:
     quiet (or show the out-of-zone label, depending on `general.only_show_in_prey_zone`)
     within moments of entering, instead of freezing on stale data.
 
+81. **`CURSEFORGE_DESCRIPTION.md` rewritten for 4.0.0 (2026-09-06).** Flagged in item 79 as
+    just as stale as the old `README.md` was (`v2.1.0`, led with the removed Currency
+    Tracker/Warband features) but not rewritten at the time since it wasn't part of that
+    request -- product owner asked for it directly once the release itself was cut (`main`
+    fast-forwarded to `2b13374`, tagged `v4.0.0`, pushed to `origin/main`). Rewritten to match
+    the real 4.0.0 feature set and tone consistent with `README.md`'s own rewrite (item 79),
+    keeping the original's marketing structure (tagline, Why Preydator, Major Features, Slash
+    Commands, Support & Feedback) rather than reusing README's more reference-manual framing
+    verbatim -- this file is customer-facing listing copy, not in-addon documentation, so it
+    keeps its own persuasive voice.
+
 ### 19.1 Deployment & Branching Plan
 
 You raised the real tradeoff correctly: doing this in the current `AddOns\Preydator` folder risks old-code bleed-through while testing (stray files WoW still loads alongside the new ones), but doing it in a totally separate folder means manually shuttling files back into the real git repo when it's done — which throws away history and is exactly the kind of manual, error-prone step this whole rewrite is trying to get away from.
