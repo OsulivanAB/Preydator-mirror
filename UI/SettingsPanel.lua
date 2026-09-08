@@ -125,6 +125,17 @@ end
 local ROW_SPACING = 50
 local COMPACT_ROW_SPACING = 30
 
+-- General/Bar Display/Sound & Alerts/Hunt Scanner used to be Blizzard's
+-- native Settings API, which auto-spaces rows tightly on its own -- moving
+-- them to canvas (2026-09-08, see the category-registration section) used
+-- the same ROW_SPACING as Bar Colors/Text & Labels by default, which read
+-- as noticeably more sparse than those categories' own native 4.0.0 look
+-- (product owner feedback, live). This tighter constant is for exactly
+-- those four categories' title+control rows only -- Bar Colors/Text &
+-- Labels/Advanced are unaffected, still using ROW_SPACING/
+-- COMPACT_ROW_SPACING as before.
+local NATIVE_LIKE_ROW_SPACING = 36
+
 local function anchorRowTop(region, previous, canvas, spacing)
     region:ClearAllPoints()
     if previous then
@@ -323,14 +334,11 @@ local function attachTooltip(control, tooltip)
     end)
 end
 
--- Cycle-button "dropdown" for the custom-canvas categories -- avoids the
--- legacy UIDropDownMenu widget system entirely (one click advances to the
--- next option), which is simpler and lower-risk than reimplementing a real
--- dropdown by hand. `options` may be a plain array (the common case) or a
--- zero-arg function returning one -- the latter lets a caller rebuild the
--- list fresh on every read/click (e.g. the sound-path rows below, whose
--- option list depends on sound.custom_file_names and must reflect a file
--- added/removed after this row was already created).
+-- `options` may be a plain array (the common case) or a zero-arg function
+-- returning one -- the latter lets a caller rebuild the list fresh on every
+-- open (e.g. the sound-path rows below, whose option list depends on
+-- sound.custom_file_names and must reflect a file added/removed after this
+-- row was already created).
 local function resolveOptions(options)
     if type(options) == "function" then
         return options()
@@ -338,26 +346,102 @@ local function resolveOptions(options)
     return options
 end
 
-local function createDropdownRow(canvas, previous, label, options, getter, setter, tooltip)
-    local title = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    title:SetText(label)
-    anchorRowTop(title, previous, canvas)
+local function labelForValue(resolved, value)
+    for _, option in ipairs(resolved) do
+        if option.value == value then
+            return option.label
+        end
+    end
+    return resolved[1] and resolved[1].label or ""
+end
 
+-- Widget -> {kind, options, getter}, so any dropdown row (native or
+-- fallback) can resync its displayed text on ANY settings change, not just
+-- one made through the dropdown itself -- e.g. Reset All Settings, or a
+-- value changed via /pd. Native Settings.CreateDropdown did this
+-- automatically; matched here rather than silently regressing it. Same
+-- pattern as canvasSliderValueLabels above.
+local canvasDropdownRefreshers = {}
+local canvasDropdownLabelsSubscribed = false
+
+local function refreshCanvasDropdownLabels()
+    for widget, info in pairs(canvasDropdownRefreshers) do
+        local text = labelForValue(resolveOptions(info.options), info.getter())
+        if info.kind == "native" then
+            pcall(widget.SetDefaultText, widget, text)
+        else
+            widget:SetText(text)
+        end
+    end
+end
+
+local function subscribeDropdownRefresh(widget, kind, options, getter)
+    canvasDropdownRefreshers[widget] = { kind = kind, options = options, getter = getter }
+    local settings = getSettings()
+    if settings and not canvasDropdownLabelsSubscribed and type(settings.Subscribe) == "function" then
+        canvasDropdownLabelsSubscribed = true
+        settings.Subscribe(refreshCanvasDropdownLabels)
+    end
+end
+
+-- Real native dropdown look (WowStyle1DropdownTemplate -- the same modern
+-- flat/menu-style control Blizzard's own Settings API dropdowns use),
+-- instantiated directly rather than through Settings.RegisterProxySetting +
+-- Settings.CreateDropdown (2026-09-08). A first version of this row used a
+-- plain cycle-button instead, since a standalone native-style dropdown
+-- wasn't confirmed working yet -- product owner confirmed live that read as
+-- a visual regression from 4.0.0's actual native dropdowns, worth the extra
+-- risk to fix properly. Wrapped in pcall and falls back to the old
+-- cycle-button (createFallbackDropdownRow below) if anything about this
+-- widget/template doesn't behave as expected on the live client -- same
+-- defensive precedent as the old native slider value-label hook once used
+-- (pcall around hooksecurefunc/InitFrame) for the identical reason: never
+-- let an unconfirmed widget detail break the whole Settings panel.
+local function tryCreateNativeDropdown(canvas, title, options, getter, setter, tooltip)
+    local ok, dropdownOrErr = pcall(function()
+        local dropdown = CreateFrame("DropdownButton", nil, canvas, "WowStyle1DropdownTemplate")
+        dropdown:SetPoint("TOPLEFT", title, "BOTTOMLEFT", CONTROL_INDENT - 4, CONTROL_OFFSET)
+        dropdown:SetWidth(220)
+        attachTooltip(dropdown, tooltip)
+
+        dropdown:SetupMenu(function(_, rootDescription)
+            local resolved = resolveOptions(options)
+            local currentValue = getter()
+            for _, option in ipairs(resolved) do
+                rootDescription:CreateRadio(option.label,
+                    function() return getter() == option.value end,
+                    function()
+                        setter(option.value)
+                        dropdown:SetDefaultText(labelForValue(resolveOptions(options), getter()))
+                    end)
+            end
+            -- CreateRadio's IsSelected is consulted lazily (menu-open time
+            -- only), so the button's own displayed text still needs an
+            -- explicit refresh here to reflect currentValue even before the
+            -- user ever opens the menu once.
+            dropdown:SetDefaultText(labelForValue(resolved, currentValue))
+        end)
+        dropdown:SetDefaultText(labelForValue(resolveOptions(options), getter()))
+        subscribeDropdownRefresh(dropdown, "native", options, getter)
+        return dropdown
+    end)
+    if ok then
+        return dropdownOrErr
+    end
+    return nil
+end
+
+-- Cycle-button fallback -- avoids the legacy UIDropDownMenu widget system
+-- entirely (one click advances to the next option). Only used if
+-- tryCreateNativeDropdown above fails on this client build.
+local function createFallbackDropdownRow(canvas, title, options, getter, setter, tooltip)
     local button = CreateFrame("Button", nil, canvas, "UIPanelButtonTemplate")
     button:SetSize(220, 22)
     button:SetPoint("TOPLEFT", title, "BOTTOMLEFT", CONTROL_INDENT, CONTROL_OFFSET)
     attachTooltip(button, tooltip)
 
-    local function labelFor(resolved, value)
-        for _, option in ipairs(resolved) do
-            if option.value == value then
-                return option.label
-            end
-        end
-        return resolved[1] and resolved[1].label or ""
-    end
-
-    button:SetText(labelFor(resolveOptions(options), getter()))
+    button:SetText(labelForValue(resolveOptions(options), getter()))
+    subscribeDropdownRefresh(button, "fallback", options, getter)
     button:SetScript("OnClick", function()
         local resolved = resolveOptions(options)
         local currentIndex = 1
@@ -375,6 +459,18 @@ local function createDropdownRow(canvas, previous, label, options, getter, sette
         setter(nextOption.value)
         button:SetText(nextOption.label)
     end)
+
+    return button
+end
+
+local function createDropdownRow(canvas, previous, label, options, getter, setter, tooltip, spacing)
+    local title = canvas:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    title:SetText(label)
+    anchorRowTop(title, previous, canvas, spacing)
+
+    if not tryCreateNativeDropdown(canvas, title, options, getter, setter, tooltip) then
+        createFallbackDropdownRow(canvas, title, options, getter, setter, tooltip)
+    end
 
     return title
 end
@@ -402,11 +498,11 @@ local function refreshCanvasSliderValueLabels()
 end
 
 local sliderCounter = 0
-local function createSliderRow(canvas, previous, label, minValue, maxValue, step, getter, setter, tooltip)
+local function createSliderRow(canvas, previous, label, minValue, maxValue, step, getter, setter, tooltip, spacing)
     sliderCounter = sliderCounter + 1
     local slider = CreateFrame("Slider", "PreydatorSettingsSlider" .. sliderCounter, canvas, "OptionsSliderTemplate")
     slider:SetSize(220, 16)
-    anchorRowTop(slider, previous, canvas)
+    anchorRowTop(slider, previous, canvas, spacing)
     slider:SetMinMaxValues(minValue, maxValue)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
@@ -464,7 +560,7 @@ end
 -- (sound.stage_path[1..4]) and a dynamic option list built from
 -- sound.custom_file_names, both handled by createDropdownRow's getter/
 -- function-options support above.
-local function createSoundPathDropdownRow(canvas, previous, key, index, label, tooltip)
+local function createSoundPathDropdownRow(canvas, previous, key, index, label, tooltip, spacing)
     local settings = getSettings()
 
     local function getter()
@@ -504,7 +600,7 @@ local function createSoundPathDropdownRow(canvas, previous, key, index, label, t
         return list
     end
 
-    return createDropdownRow(canvas, previous, label, options, getter, setter, tooltip)
+    return createDropdownRow(canvas, previous, label, options, getter, setter, tooltip, spacing)
 end
 
 -- ---------------------------------------------------------------------------
@@ -584,7 +680,7 @@ local function buildBarDisplayCategory(category)
         { value = "vertical", label = L("Vertical") },
     }, function() return settings.Get("bar.orientation") end,
         function(value) settings.Set("bar.orientation", value) end,
-        L("Horizontal or vertical bar layout."))
+        L("Horizontal or vertical bar layout."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Bar Texture"), {
         { value = "default", label = L("Default") },
@@ -593,7 +689,7 @@ local function buildBarDisplayCategory(category)
         { value = "classic", label = L("Classic Skill Bar") },
     }, function() return settings.Get("bar.texture_key") end,
         function(value) settings.Set("bar.texture_key", value) end,
-        L("Fill texture preset."))
+        L("Fill texture preset."), NATIVE_LIKE_ROW_SPACING)
 
     -- Picking a theme bulk-applies Settings.ApplyBarAccessibilityTheme's six
     -- color fields, not just the enum value itself -- same as the native
@@ -604,7 +700,7 @@ local function buildBarDisplayCategory(category)
         { value = "protanopia", label = L("Protanopia") },
     }, function() return settings.Get("bar.accessibility_theme") end,
         function(value) settings.ApplyBarAccessibilityTheme(value) end,
-        L("One-click colorblind-friendly color preset."))
+        L("One-click colorblind-friendly color preset."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Percent Text Placement"), {
         { value = "inside", label = L("Inside Bar") },
@@ -615,53 +711,53 @@ local function buildBarDisplayCategory(category)
         { value = "off", label = L("Off") },
     }, function() return settings.Get("bar.percent_display") end,
         function(value) settings.Set("bar.percent_display", value) end,
-        L("Where the percent-complete text appears."))
+        L("Where the percent-complete text appears."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Progress Segments"), {
         { value = "quarters", label = L("Quarters (25/50/75/100)") },
         { value = "thirds", label = L("Thirds (33/66/100)") },
     }, function() return settings.Get("bar.progress_segments") end,
         function(value) settings.Set("bar.progress_segments", value) end,
-        L("Tick/segment division used when Blizzard doesn't expose a precise percent."))
+        L("Tick/segment division used when Blizzard doesn't expose a precise percent."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Vertical Fill Direction"), {
         { value = "up", label = L("Up") },
         { value = "down", label = L("Down") },
     }, function() return settings.Get("bar.vertical_fill_direction") end,
         function(value) settings.Set("bar.vertical_fill_direction", value) end,
-        L("Which way the bar fills in vertical orientation."))
+        L("Which way the bar fills in vertical orientation."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Vertical Text Side"), {
         { value = "left", label = L("Left") },
         { value = "right", label = L("Right") },
     }, function() return settings.Get("bar.vertical_text_side") end,
         function(value) settings.Set("bar.vertical_text_side", value) end,
-        L("Which side of the bar the label text sits on in vertical orientation."))
+        L("Which side of the bar the label text sits on in vertical orientation."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createSliderRow(scrollChild, previous, L("Horizontal Scale"), 0.5, 2, 0.05,
         function() return settings.Get("bar.scale_horizontal") end,
         function(value) settings.Set("bar.scale_horizontal", value) end,
-        L("Bar scale in horizontal orientation."))
+        L("Bar scale in horizontal orientation."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Vertical Scale"), 0.5, 2, 0.05,
         function() return settings.Get("bar.scale_vertical") end,
         function(value) settings.Set("bar.scale_vertical", value) end,
-        L("Bar scale in vertical orientation."))
+        L("Bar scale in vertical orientation."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Horizontal Width"), 100, 350, 1,
         function() return settings.Get("bar.width_horizontal") end,
         function(value) settings.Set("bar.width_horizontal", value) end,
-        L("Bar width in horizontal orientation."))
+        L("Bar width in horizontal orientation."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Horizontal Height"), 10, 60, 1,
         function() return settings.Get("bar.height_horizontal") end,
         function(value) settings.Set("bar.height_horizontal", value) end,
-        L("Bar height in horizontal orientation."))
+        L("Bar height in horizontal orientation."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Vertical Width"), 10, 60, 1,
         function() return settings.Get("bar.width_vertical") end,
         function(value) settings.Set("bar.width_vertical", value) end,
-        L("Bar width in vertical orientation."))
+        L("Bar width in vertical orientation."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Vertical Height"), 100, 350, 1,
         function() return settings.Get("bar.height_vertical") end,
         function(value) settings.Set("bar.height_vertical", value) end,
-        L("Bar height in vertical orientation."))
+        L("Bar height in vertical orientation."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createCheckboxRow(scrollChild, previous, L("Show Tick Marks"),
         function() return settings.Get("bar.show_ticks") end,
@@ -672,7 +768,7 @@ local function buildBarDisplayCategory(category)
         function(value) settings.Set("bar.show_in_edit_mode", value) end,
         L("Force the bar visible with placeholder text while Blizzard Edit Mode is open."))
 
-    scrollChild:SetHeight(((scrollChild.rowCount or 1) * ROW_SPACING) + ROW_LEFT_MARGIN)
+    scrollChild:SetHeight(((scrollChild.rowCount or 1) * NATIVE_LIKE_ROW_SPACING) + ROW_LEFT_MARGIN)
 
     return subcategory
 end
@@ -865,11 +961,11 @@ local function buildSoundCategory(category)
         { value = "Music", label = L("Music") },
     }, function() return settings.Get("sound.channel") end,
         function(value) settings.Set("sound.channel", value) end,
-        L("Which audio channel Preydator sounds play on."))
+        L("Which audio channel Preydator sounds play on."), NATIVE_LIKE_ROW_SPACING)
 
     for stage = 1, 4 do
         previous = createSoundPathDropdownRow(scrollChild, previous, "sound.stage_path", stage,
-            L("Stage " .. stage .. " Sound"), L("Sound played on entering this stage."))
+            L("Stage " .. stage .. " Sound"), L("Sound played on entering this stage."), NATIVE_LIKE_ROW_SPACING)
     end
 
     previous = createCheckboxRow(scrollChild, previous, L("Enable Ambush Sound"),
@@ -877,26 +973,27 @@ local function buildSoundCategory(category)
         function(value) settings.Set("sound.ambush_enabled", value) end,
         L("Play a sound when an ambush is detected."))
     previous = createSoundPathDropdownRow(scrollChild, previous, "sound.ambush_path", nil,
-        L("Ambush Sound"), L("Sound played on ambush."))
+        L("Ambush Sound"), L("Sound played on ambush."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Alert Cooldown"), 0, 300, 5,
         function() return settings.Get("sound.alert_cooldown_seconds") end,
         function(value) settings.Set("sound.alert_cooldown_seconds", value) end,
         L("Minimum time between ambush/Pack Ambush/Exploding Corpse Snakes alert sounds, so a "
-            .. "fast kill doesn't replay a sound awkwardly close together."))
+            .. "fast kill doesn't replay a sound awkwardly close together."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createCheckboxRow(scrollChild, previous, L("Enable Pack Ambush Sound"),
         function() return settings.Get("sound.pack_ambush_enabled") end,
         function(value) settings.Set("sound.pack_ambush_enabled", value) end,
         L("Play a sound when a Pack Scout or Pack Hunter appears (Season 2's Pack Ambush mechanic)."))
     previous = createSoundPathDropdownRow(scrollChild, previous, "sound.pack_ambush_path", nil,
-        L("Pack Ambush Sound"), L("Sound played when Pack Ambush's mobs appear."))
+        L("Pack Ambush Sound"), L("Sound played when Pack Ambush's mobs appear."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createCheckboxRow(scrollChild, previous, L("Enable Exploding Corpse Snakes Sound"),
         function() return settings.Get("sound.exploding_corpse_snakes_enabled") end,
         function(value) settings.Set("sound.exploding_corpse_snakes_enabled", value) end,
         L("Play a sound when a Venom-Bloated Python appears (Season 2's Exploding Corpse Snakes mechanic)."))
     previous = createSoundPathDropdownRow(scrollChild, previous, "sound.exploding_corpse_snakes_path", nil,
-        L("Exploding Corpse Snakes Sound"), L("Sound played when a Venom-Bloated Python appears."))
+        L("Exploding Corpse Snakes Sound"), L("Sound played when a Venom-Bloated Python appears."),
+        NATIVE_LIKE_ROW_SPACING)
 
     previous = createCheckboxRow(scrollChild, previous, L("Amplify Alert Sounds"),
         function() return settings.Get("sound.amplify_enabled") end,
@@ -910,9 +1007,9 @@ local function buildSoundCategory(category)
         L("How much to boost your current SFX/Master volume while an alert plays, on top of "
             .. "wherever it's already set (WoW's volume can't exceed 1, so once you're already "
             .. "at max there's nothing left to add -- the ambience/music muting is what still "
-            .. "helps at that point). 1 always plays alerts at full volume."))
+            .. "helps at that point). 1 always plays alerts at full volume."), NATIVE_LIKE_ROW_SPACING)
 
-    scrollChild:SetHeight(((scrollChild.rowCount or 1) * ROW_SPACING) + ROW_LEFT_MARGIN)
+    scrollChild:SetHeight(((scrollChild.rowCount or 1) * NATIVE_LIKE_ROW_SPACING) + ROW_LEFT_MARGIN)
 
     return subcategory
 end
@@ -945,7 +1042,7 @@ local function buildHuntScannerCategory(category)
         { value = "right", label = L("Right") },
     }, function() return settings.Get("hunt.panel_side") end,
         function(value) settings.Set("hunt.panel_side", value) end,
-        L("Which side of the screen the hunt list anchors to."))
+        L("Which side of the screen the hunt list anchors to."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Group By"), {
         { value = "none", label = L("None") },
@@ -953,7 +1050,7 @@ local function buildHuntScannerCategory(category)
         { value = "zone", label = L("Zone") },
     }, function() return settings.Get("hunt.group_by") end,
         function(value) settings.Set("hunt.group_by", value) end,
-        L("How hunts are grouped in the list."))
+        L("How hunts are grouped in the list."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Sort By"), {
         { value = "difficulty", label = L("Difficulty") },
@@ -961,27 +1058,27 @@ local function buildHuntScannerCategory(category)
         { value = "title", label = L("Title") },
     }, function() return settings.Get("hunt.sort_by") end,
         function(value) settings.Set("hunt.sort_by", value) end,
-        L("Primary sort field for the hunt list."))
+        L("Primary sort field for the hunt list."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Sort Direction"), {
         { value = "asc", label = L("Ascending") },
         { value = "desc", label = L("Descending") },
     }, function() return settings.Get("hunt.sort_direction") end,
         function(value) settings.Set("hunt.sort_direction", value) end,
-        L("Ascending or descending sort order."))
+        L("Ascending or descending sort order."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Reward Display Style"), {
         { value = "icon_inline", label = L("Icons Inline") },
         { value = "icon_count", label = L("Icon + Count") },
     }, function() return settings.Get("hunt.reward_display_style") end,
         function(value) settings.Set("hunt.reward_display_style", value) end,
-        L("How quest rewards are shown per hunt row."))
+        L("How quest rewards are shown per hunt row."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createDropdownRow(scrollChild, previous, L("Difficulty Icon Set"), {
         { value = "default", label = L("Default") },
     }, function() return settings.Get("hunt.difficulty_icon_set") end,
         function(value) settings.Set("hunt.difficulty_icon_set", value) end,
-        L("Which bundled icon set to use for difficulty badges."))
+        L("Which bundled icon set to use for difficulty badges."), NATIVE_LIKE_ROW_SPACING)
 
     previous = createCheckboxRow(scrollChild, previous, L("Show Achievement Badges"),
         function() return settings.Get("hunt.achievement_signals_enabled") end,
@@ -999,22 +1096,22 @@ local function buildHuntScannerCategory(category)
     previous = createSliderRow(scrollChild, previous, L("Panel Width"), 330, 600, 1,
         function() return settings.Get("hunt.width") end,
         function(value) settings.Set("hunt.width", value) end,
-        L("Hunt Table panel width."))
+        L("Hunt Table panel width."), NATIVE_LIKE_ROW_SPACING)
     -- Height floor raised 200->250 so at least ~3 real hunt rows plus the
     -- header/group controls stay visible -- not an overlap risk like width,
     -- just a usability floor against an unreadably short panel.
     previous = createSliderRow(scrollChild, previous, L("Panel Height"), 250, 800, 1,
         function() return settings.Get("hunt.height") end,
         function(value) settings.Set("hunt.height", value) end,
-        L("Hunt Table panel height."))
+        L("Hunt Table panel height."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Panel Scale"), 0.5, 2, 0.05,
         function() return settings.Get("hunt.scale") end,
         function(value) settings.Set("hunt.scale", value) end,
-        L("Hunt Table panel scale."))
+        L("Hunt Table panel scale."), NATIVE_LIKE_ROW_SPACING)
     previous = createSliderRow(scrollChild, previous, L("Font Size"), 8, 24, 1,
         function() return settings.Get("hunt.font_size") end,
         function(value) settings.Set("hunt.font_size", value) end,
-        L("Hunt Table panel font size."))
+        L("Hunt Table panel font size."), NATIVE_LIKE_ROW_SPACING)
 
     createCheckboxRow(scrollChild, previous, L("Preview Hunt Panel"),
         function() return settings.Get("hunt.preview_enabled") end,
@@ -1023,7 +1120,7 @@ local function buildHuntScannerCategory(category)
             .. "current hunts if any are cached or placeholder rows otherwise -- so "
             .. "layout changes are visible without leaving Settings."))
 
-    scrollChild:SetHeight(((scrollChild.rowCount or 1) * ROW_SPACING) + ROW_LEFT_MARGIN)
+    scrollChild:SetHeight(((scrollChild.rowCount or 1) * NATIVE_LIKE_ROW_SPACING) + ROW_LEFT_MARGIN)
 
     return subcategory
 end

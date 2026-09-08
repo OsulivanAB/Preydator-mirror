@@ -13,8 +13,10 @@ A safety fix for the Settings window itself.
   system that put that button there, so it can no longer appear on, or affect, any
   Preydator screen.
 - Fixed the Advanced settings tab running off the bottom of the panel with a lot of wasted
-  empty space between rows — it now scrolls properly and the spacing is tightened up,
-  matching the same fix already applied to the other settings tabs.
+  empty space between rows — it now scrolls properly and the spacing is tightened up.
+- Restored General/Bar Display/Sound & Alerts/Hunt Scanner's dropdown menus and row
+  spacing to look and feel like 4.0.0's original settings screens, after removing the
+  Defaults button changed how those controls had to be built.
 
 ## 4.0.1 - 2026-09-08
 
