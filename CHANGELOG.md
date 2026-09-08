@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.0.2 - 2026-09-08
+
+A safety fix for the Settings window itself.
+
+### Fixed
+- Removed Blizzard's own "Defaults" button from every Preydator settings category
+  (General, Bar Display, Sound & Alerts, Hunt Scanner). That button offered a choice
+  between resetting just the current screen or "All Settings" — and "All Settings" resets
+  every other addon's settings and Blizzard's own game settings too, with no way for any
+  addon to narrow or prevent that. Preydator no longer registers anything through the
+  system that put that button there, so it can no longer appear on, or affect, any
+  Preydator screen.
+- Fixed the Advanced settings tab running off the bottom of the panel with a lot of wasted
+  empty space between rows — it now scrolls properly and the spacing is tightened up,
+  matching the same fix already applied to the other settings tabs.
+
 ## 4.0.1 - 2026-09-08
 
 A focused bugfix update addressing a bar-visibility issue found right after 4.0.0 shipped.
