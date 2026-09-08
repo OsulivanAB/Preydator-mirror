@@ -147,11 +147,19 @@ end
 -- MigrateAll: legacy (pre-rewrite, flat/unversioned) PreydatorDB shape -> the
 -- new nested dotted-category schema (schema_version 1). Runs once per profile
 -- load, via SettingsStore.RunMigrations. Deliberately does NOT import fields
--- identified as dead/legacy in the architecture doc's Section 18: the
+-- confirmed genuinely dead/legacy per the architecture doc's Section 18: the
 -- duplicate width/height mirrors, tickLayerMode, showAlignmentDot,
 -- huntScannerDifficultyColors (replaced by an icon set), soundEnhance,
--- silenceArator, randomHuntCosts, customizationV2, or the bar's saved
--- position/point (not yet part of the Section 5 settings catalog).
+-- silenceArator, randomHuntCosts.
+--
+-- Two fields previously (and incorrectly) treated as dead/unmigrated were
+-- found to be real, user-facing settings and are now migrated (2026-09-08,
+-- audited against the actual last-shipped 3.0.5 source, not just this doc's
+-- own prior claims): the bar's saved position/point, and
+-- `customizationV2.moduleEnabled` (see both blocks below for the full
+-- reasoning). Silently resetting either on upgrade is exactly the kind of
+-- disruptive change to avoid for this addon's existing install base, which
+-- is larger than its new-install base.
 -- ---------------------------------------------------------------------------
 
 -- old flat key -> new dotted path. Values copied as-is (type-checked later by
@@ -197,6 +205,7 @@ local SIMPLE_KEY_MIGRATIONS = {
     bloodyCommandPrefix = { "text", "pack_ambush_prefix" },
     stageLabelMode = { "text", "stage_label_mode" },
     labelRowPosition = { "text", "label_row_position" },
+    percentFallbackMode = { "progress", "fallback_mode" },
     soundChannel = { "sound", "channel" },
     ambushSoundEnabled = { "sound", "ambush_enabled" },
     ambushSoundPath = { "sound", "ambush_path" },
@@ -278,6 +287,52 @@ function SettingsRuntime.MigrateAll(rawTable)
     end
     if type(rawTable.currencyMinimapAngle) == "number" then
         setPath(migrated, { "general", "minimap_angle" }, rawTable.currencyMinimapAngle)
+    end
+
+    -- `customizationV2.moduleEnabled.{bar,sounds,hunt}` was a live, real
+    -- per-module on/off switch in the old options UI (Modules/Settings.lua's
+    -- own "Module Enable" checkboxes, confirmed still wired at release
+    -- 3.0.5) -- NOT dead code, despite `customizationV2` as a whole being
+    -- listed dead/legacy above (only its *other*, genuinely unused fields
+    -- were dead). The old runtime required BOTH this flag AND the separate
+    -- flat soundsEnabled/huntScannerEnabled key to be true for that module to
+    -- actually run (Preydator:ShouldUseActivePolling/SetPollingActive) -- so
+    -- combine both old sources with AND rather than reusing
+    -- SIMPLE_KEY_MIGRATIONS' single-key direct copy, otherwise a user who
+    -- only ever unchecked the module-enable box (and never touched the
+    -- separate flat key) would have it silently re-enabled on upgrade.
+    -- Deliberately overrides whatever the SIMPLE_KEY_MIGRATIONS loop above
+    -- already set for sounds_enabled/hunt_enabled.
+    local oldModuleEnabled = type(rawTable.customizationV2) == "table"
+        and type(rawTable.customizationV2.moduleEnabled) == "table"
+        and rawTable.customizationV2.moduleEnabled or {}
+
+    local function migrateModuleEnabled(moduleKey, path, otherOldFlag)
+        local fromModuleV2 = oldModuleEnabled[moduleKey]
+        if fromModuleV2 == nil and otherOldFlag == nil then
+            return
+        end
+        setPath(migrated, path, fromModuleV2 ~= false and otherOldFlag ~= false)
+    end
+
+    migrateModuleEnabled("bar", { "general", "bar_enabled" }, nil)
+    migrateModuleEnabled("sounds", { "general", "sounds_enabled" }, rawTable.soundsEnabled)
+    migrateModuleEnabled("hunt", { "general", "hunt_enabled" }, rawTable.huntScannerEnabled)
+
+    -- Old schema hardcoded point.anchor/relativePoint to "CENTER" at both
+    -- save and apply time (see issues/bar_rendering_research.md Section 3),
+    -- so point.x/point.y are already a plain CENTER-to-UIParent-CENTER pixel
+    -- offset -- the exact same shape bar.position_x/position_y use. Prefer
+    -- the live point table; fall back to the flat corruption-recovery backup
+    -- only if point itself is missing/invalid, mirroring the old
+    -- RestoreBarPointFromBackup behavior.
+    if type(rawTable.point) == "table" and type(rawTable.point.x) == "number"
+        and type(rawTable.point.y) == "number" then
+        setPath(migrated, { "bar", "position_x" }, rawTable.point.x)
+        setPath(migrated, { "bar", "position_y" }, rawTable.point.y)
+    elseif type(rawTable.barPointX) == "number" and type(rawTable.barPointY) == "number" then
+        setPath(migrated, { "bar", "position_x" }, rawTable.barPointX)
+        setPath(migrated, { "bar", "position_y" }, rawTable.barPointY)
     end
 
     if rawTable.huntScannerRewardStyle ~= nil then

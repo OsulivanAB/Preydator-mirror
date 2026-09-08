@@ -413,6 +413,28 @@ local function currentFrameScale(frame)
     return scale
 end
 
+-- Keeps an absolute (UIParent-space) x/y inside the screen bounds. Used both
+-- when persisting a drag and when applying whatever's currently stored --
+-- the latter matters because a freshly-migrated or never-clamped default can
+-- otherwise land off-screen with no drag ever having happened.
+local function clampToScreen(frame, x, y)
+    local scale = currentFrameScale(frame)
+    local width, height = frame:GetSize()
+    local visualWidth, visualHeight = width * scale, height * scale
+    local screenWidth, screenHeight = UIParent:GetSize()
+    if screenWidth and screenHeight then
+        local halfWidth = (screenWidth / 2) - (visualWidth / 2) - DRAG_SCREEN_MARGIN
+        local halfHeight = (screenHeight / 2) - (visualHeight / 2) - DRAG_SCREEN_MARGIN
+        if halfWidth > 0 then
+            x = math.max(-halfWidth, math.min(halfWidth, x))
+        end
+        if halfHeight > 0 then
+            y = math.max(-halfHeight, math.min(halfHeight, y))
+        end
+    end
+    return x, y
+end
+
 function BarFrame.ApplyPosition(frame)
     local settings = getSettings()
     if not settings then
@@ -420,6 +442,7 @@ function BarFrame.ApplyPosition(frame)
     end
     local x = settings.Get("bar.position_x") or 0
     local y = settings.Get("bar.position_y") or 200
+    x, y = clampToScreen(frame, x, y)
     local scale = currentFrameScale(frame)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", x / scale, y / scale)
@@ -441,20 +464,7 @@ function BarFrame.SavePosition(frame)
     local x = frameCenterX - parentCenterX
     local y = frameCenterY - parentCenterY
 
-    local scale = currentFrameScale(frame)
-    local width, height = frame:GetSize()
-    local visualWidth, visualHeight = width * scale, height * scale
-    local screenWidth, screenHeight = UIParent:GetSize()
-    if screenWidth and screenHeight then
-        local halfWidth = (screenWidth / 2) - (visualWidth / 2) - DRAG_SCREEN_MARGIN
-        local halfHeight = (screenHeight / 2) - (visualHeight / 2) - DRAG_SCREEN_MARGIN
-        if halfWidth > 0 then
-            x = math.max(-halfWidth, math.min(halfWidth, x))
-        end
-        if halfHeight > 0 then
-            y = math.max(-halfHeight, math.min(halfHeight, y))
-        end
-    end
+    x, y = clampToScreen(frame, x, y)
 
     settings.Set("bar.position_x", x)
     settings.Set("bar.position_y", y)

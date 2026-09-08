@@ -213,6 +213,17 @@ local function buildRawDefaults()
             -- debug.logging_enabled aliases general.debug_logging_enabled
             -- (Section 5.8) and is resolved in Core/Settings.lua.
             pack_ambush_verbose = false,
+            -- Gates PreyContextRuntime's zoneResolutionTrace and
+            -- WidgetAdapter's suppressionTrace (/pd zinspect, /pd iinspect).
+            -- Both previously recorded unconditionally for every player --
+            -- small (capped at 20 entries each) and purely local/in-memory,
+            -- never written to SavedVariables or transmitted anywhere, but
+            -- the product owner asked (2026-09-07) that no diagnostic
+            -- tracing run at all without an explicit opt-in, however minor
+            -- the footprint. Off by default; AlertsRuntime's own nameplate
+            -- trace already had this exact gate via pack_ambush_verbose
+            -- above and didn't need changing.
+            enable_tracing = false,
         },
     }
 end
@@ -430,6 +441,16 @@ function SettingsStore.Load()
     local db = ensureProfileRoot()
     local rawProfile = db.profiles[db.activeProfile]
 
+    -- A raw profile with no nested `general`/`bar` tables is either a
+    -- never-migrated legacy (pre-rewrite) shape or a brand-new profile --
+    -- either way it still has its old flat/dead keys (or nothing at all)
+    -- sitting on disk. Save the clean, migrated-and-normalized result back
+    -- immediately below rather than waiting on some future settings change
+    -- to happen to overwrite it, so an upgrading user's leftover legacy
+    -- fields (already-migrated ones and true dead ones alike) don't linger
+    -- in SavedVariables indefinitely.
+    local needsWriteBack = type(rawProfile) ~= "table" or type(rawProfile.general) ~= "table"
+
     local migrated = SettingsStore.RunMigrations(deepCopy(rawProfile))
 
     local defaults = getDefaultsInternal()
@@ -444,6 +465,10 @@ function SettingsStore.Load()
         if ok and type(normalized) == "table" then
             merged = normalized
         end
+    end
+
+    if needsWriteBack then
+        SettingsStore.Save(merged)
     end
 
     return merged

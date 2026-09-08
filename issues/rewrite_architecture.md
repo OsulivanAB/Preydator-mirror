@@ -1343,6 +1343,282 @@ Resolved in review:
     verbatim -- this file is customer-facing listing copy, not in-addon documentation, so it
     keeps its own persuasive voice.
 
+82. **Bar stuck visible in Silvermoon City after hearthing out of a Delve mid-hunt
+    (2026-09-07), recurring at next login too.** Product owner reported leaving stage 1
+    active in The Coiled Isle, delving, then hearthing to Silvermoon City -- the bar stayed
+    on screen there with real (pre-Delve) stage/progress content, self-correcting after
+    roughly two minutes; recurred the next morning at login before self-correcting again.
+    `/pd inspect`/`qinspect`/`pinspect` all captured AFTER each self-correction showed a
+    fully consistent, correct `inPreyZone=false`/hidden state both times -- no contradiction
+    in the data, just diagnostics that ran too late to catch the bug live. Root-caused via
+    code audit (not yet re-confirmed with a live `/pd zinspect` trace, since the report
+    already resolved by the time it was investigated -- same "resolved before it could be
+    caught" pattern as items 69/71): `PreyContextRuntime.ResolveQuestOnMap`'s
+    `CONFIRMED_ACTIVE_WINDOW_SECONDS` latch (item 74, the Voidstorm fix) can be armed not
+    just by a genuine `isOnMap=true`, but by `WidgetAdapter.IsPreyWidgetVisible()`'s own
+    `lastShownAt`/`WIDGET_RECENTLY_SHOWN_WINDOW` (20s) fallback -- and a hearth's
+    cast-plus-loading-screen duration is easily under 20 seconds. Landing in Silvermoon
+    right after Blizzard's icon was last shown pre-Delve made that fallback read `true`,
+    which both rendered the bar with stale content and re-armed the 120s latch for a
+    zone that was never actually confirmed. **Fixed**: entering a restricted instance
+    (`PreyContextRuntime.RefreshPreyContext`'s existing restricted-instance branch, item 80)
+    now also clears the confirm-latch (new local `resetConfirmedLatch()`) and calls a new
+    `WidgetAdapter.ResetVisibilityTracking()` (clears `lastShownAt` only -- no frame/
+    suppression state touched) -- neither a stale "confirmed in zone" nor a stale "icon
+    recently shown" reading from before the instance can survive into wherever the player
+    lands after it. `luacheck`: 0 warnings/0 errors on both changed files. **Honest gap**:
+    this fully explains the delve-then-hearth leg, but not with certainty why it recurred at
+    the *next login* -- `lastShownAt` is a fresh Lua local that resets on login, so this
+    specific mechanism can't carry across a real relog. Left as an open question rather than
+    guessed at; if it recurs, `/pd zinspect` (shows `resolvedVia`/`latchAgeSeconds` per
+    resolution) and `/pd iinspect` (shows the suppression trace including `lastShownAtAge`)
+    caught live, before it self-corrects, would settle it. **Not yet re-tested live.**
+
+83. **Item 82's real root cause, confirmed live with a clean repro (2026-09-07): the
+    confirm-active latch (item 74) has no concept of the player having left, only of time
+    elapsed.** Product owner reproduced with NO restricted instance involved at all: stage 2
+    confirmed active in Eversong Woods, then a plain hearthstone to Silvermoon City.
+    `/pd qinspect` post-hearth showed `isOnMap=false | resolvedIsOnMap=true` -- the real
+    Blizzard answer was correctly `false` the instant the player landed, but
+    `ResolveQuestOnMap`'s latch overrode it anyway, and the bar (real stage 2/33% content)
+    stayed visible for roughly the full `CONFIRMED_ACTIVE_WINDOW_SECONDS` (120s) before
+    self-correcting -- item 82's restricted-instance-only fix doesn't touch this path at all
+    since hearthing to a city is never a restricted instance. The actual flaw: the refresh
+    ticker runs every ~2s, so while genuinely in the prey zone the latch is re-armed almost
+    continuously -- meaning at the exact moment a player leaves by ANY means (hearth, flight
+    path, taxi, on foot), the latch is essentially guaranteed to still read as freshly
+    confirmed purely from elapsed time, with no way to distinguish "still nearby, between
+    confirming events" (the actual Voidstorm case item 74 was built for -- no zone change
+    involved) from "just teleported across the continent." **Fixed**: the latch now also
+    records the `playerMapID` it was confirmed on (`MapContextAdapter.GetPlayerMapID()`,
+    already the same call `DiagnosticsRuntime` uses), and `confirmedTrueAgeSeconds` returns
+    `nil` (never latched) unless the CURRENT map still matches the one the confirmation
+    happened on -- narrows an existing time-based confirmation, never grants a new one on
+    its own, so it's not a reintroduction of the map-hierarchy pre-filter items 29/32/35/36
+    already rejected (that heuristic asserted zone membership from map hierarchy ALONE as a
+    pre-filter; this only ever gates whether a real prior confirmation is still trustworthy).
+    Both call sites in `ResolveQuestOnMap` (the real `isOnMap=true` case and the
+    widget-visible fallback) now capture `currentMapID` via `MapContextAdapter` and pass it
+    through `markConfirmedTrue`/`confirmedTrueAgeSeconds`. Item 82's restricted-instance
+    latch/`lastShownAt` reset is kept alongside this as defense-in-depth, not superseded --
+    it still closes the specific case of a Delve exit landing back on the exact same map ID
+    the player was confirmed on before entering (rare, but the mapID check alone wouldn't
+    catch it). `luacheck`: 0 warnings/0 errors. **Not yet re-tested live** -- next step is
+    the product owner repeating the exact same Eversong Woods -> hearth repro and confirming
+    the bar now clears within moments instead of ~2 minutes.
+
+84. **Item 83 didn't fix it -- the bad confirmation is fresh, not stale.** Product owner
+    found a faster repro (no hearth/cooldown needed): fly into the zone, confirm tracking,
+    fly straight back to Silvermoon -- same ~2-minute stuck bar. Added `currentMapID`/
+    `confirmedMapID` to `/pd zinspect`'s trace (this session) specifically to settle it, and
+    the very next capture did: `resolvedVia=latch` with `currentMapID=2393` (Silvermoon)
+    **equal to** `confirmedMapID=2393` -- proving the latch was armed with Silvermoon's own
+    map ID, not a stale carry-over from Eversong Woods at all. Item 83's mapID gate only
+    guards against an OLD confirmation surviving into a NEW zone; it does nothing when a
+    fresh, wrong confirmation is minted in the new zone itself. Root cause: `isOnMap` (or the
+    widget-visible fallback) read `true` for exactly one tick immediately after landing in
+    Silvermoon, before quest-log/map state settled from the loading screen -- a known class
+    of WoW timing quirk, now with a second confirmed instance beyond item 74's Voidstorm
+    case. This exact tick was invisible to every previous trace: `recordZoneResolution` only
+    ever fires on the `isOnMap==false` path, so a bogus `true` reading left zero evidence
+    until this investigation's trace widening exposed it structurally (by comparing map IDs
+    on the surrounding `latch` entries), not by directly catching the triggering tick.
+    **Fixed**: `ResolveQuestOnMap` now tracks `lastSeenMapID` across every call (shared,
+    module-level -- see its own comment) and refuses to trust ANY `true` reading (real
+    `isOnMap` or the widget fallback) on the exact tick the player's map ID just changed --
+    returns `nil` instead (never guesses `false` either, same "never guess" rule as the
+    existing unresolved-`isOnMap` branch), leaving `inPreyZone` at its prior value for
+    exactly one more tick (~2s, the ticker's own cadence) rather than latching a wrong `true`
+    for 120s. A genuine entry into a real hunt zone simply confirms one tick later instead of
+    immediately -- an accepted, minor cosmetic delay, same trade-off class as the ticker
+    cadence itself. Both the direct-`isOnMap` and widget-fallback branches now record a new
+    `resolvedVia="settling"` trace entry so this exact moment is visible in `/pd zinspect` if
+    it recurs, instead of leaving zero evidence the way it did this time. `luacheck`: 0
+    warnings/0 errors. Item 83's mapID gate is kept alongside this -- different failure mode
+    (stale vs. fresh), not superseded. **Confirmed live (2026-09-07)**: product owner
+    retested both the fly-in/fly-out repro and a plain hearth from the prey zone -- bar no
+    longer stays lit in either case. Still to confirm: the original Voidstorm scenario (item
+    74's own case, an intermittent-visibility zone the player stays IN rather than leaves) --
+    the one path this investigation hasn't re-exercised yet, to make sure the settling-window
+    check above doesn't reintroduce the flicker item 74 was built to fix.
+
+85. **Diagnostic tracing gated behind opt-in (2026-09-07), product owner request.**
+    `PreyContextRuntime`'s `zoneResolutionTrace` (`/pd zinspect`), `WidgetAdapter`'s
+    `suppressionTrace` (`/pd iinspect`), and `SoundsRuntime`'s `recentPlays` (`/pd sinspect`)
+    had each been built and reasoned about independently as "low-concern to record
+    unconditionally" (rare events, capped ring buffers, never persisted to SavedVariables or
+    transmitted anywhere) -- but the product owner asked, while this session's live bug hunt
+    was making heavy use of all three, that no diagnostic tracing run at all without explicit
+    authorization, regardless of how small the footprint. New setting
+    `debug.enable_tracing` (boolean, default `false`, `SettingsStore.lua`), checked at the top
+    of each of the three `record*` functions (single check per file, not at every call site).
+    Each affected `/pd` report now also prints the current `debug.enable_tracing` value with a
+    note that its trace section will be empty unless it's on, so an empty report reads as
+    "tracing is off" rather than "nothing happened." Exposed in Settings -> Advanced as
+    "Enable Diagnostic Tracing," a new row alongside (not replacing) the existing
+    `debug.pack_ambush_verbose` nameplate-trace toggle (`AlertsRuntime`'s own trace already
+    had its own opt-in gate from when it was built and needed no change). `luacheck`: 0
+    warnings/0 errors across all six touched files (`PreyContextRuntime.lua`,
+    `WidgetAdapter.lua`, `SoundsRuntime.lua`, `DiagnosticsRuntime.lua`, `SettingsStore.lua`,
+    `UI/SettingsPanel.lua`). **Not yet re-tested live** -- next step: confirm the Advanced
+    settings row shows and toggles correctly, and that all three `/pd` reports show empty
+    trace sections with the new setting reported as `false` when it's off.
+
+86. **Items 83/84 reverted -- map-ID comparison was the wrong tool, live-broke Voidstorm
+    itself.** Product owner retested the original item-74 Voidstorm scenario with items
+    83/84's mapID gating in place and it failed outright: `/pd zinspect` (now with tracing
+    enabled per item 85) showed the confirm-latch landing on `resolvedVia=none` the entire
+    time the player was genuinely standing in the zone, actively hunting -- `currentMapID`
+    read `2444` while `confirmedMapID` (from an earlier real confirmation) read `2405`. Both
+    are legitimate, STABLE map IDs for the same Voidstorm PvP-optional sub-zone -- not a
+    flicker between them, just two different named areas within one contiguous playspace
+    that Blizzard's own map system happens to number differently. Requiring the latch's
+    current map to match its confirmation-time map (items 83/84) is, structurally, the exact
+    same class of heuristic as the map-hierarchy pre-filter items 29/32/35/36 already
+    rejected three times over -- just applied to latch validity instead of direct zone
+    membership. Confirms the general lesson those items already established: this game's
+    map-ID system is not stable/comparable enough to use as a location-equality check in
+    either direction, for any purpose, in every zone shape.
+    **Real fix**: stopped comparing map IDs entirely. `PreyContextRuntime.RefreshPreyContext`
+    now takes an `isWorldTransition` parameter; `EventRuntime` passes
+    `event == "PLAYER_ENTERING_WORLD"` at both of its call sites (the fail-closed short
+    circuit and the normal context-check path). PLAYER_ENTERING_WORLD is the one Blizzard
+    event that reliably means an actual world reload happened (login, `/reload`,
+    entering/leaving an instance, a hearth/teleport, entering a phased/instanced capital
+    city) -- unlike `ZONE_CHANGED`/`ZONE_CHANGED_NEW_AREA`, which also fire for mundane
+    in-zone area-boundary crossings, exactly what Voidstorm's 2444/2405 split turned out to
+    be. `RefreshPreyContext` resets the confirm-latch and `WidgetAdapter.ResetVisibilityTracking()`
+    right at its own top whenever `isWorldTransition` is true, before the restricted-instance
+    check -- covering entering AND leaving instances from a single call site, and subsuming
+    item 82's own narrower restricted-instance-only reset (removed as redundant; entering an
+    instance always fires this same event too). `markConfirmedTrue`/`/pd zinspect` still
+    capture `mapID`/`currentMapID`/`confirmedMapID` purely for diagnostic display -- useful
+    for exactly the kind of live investigation that caught this, just no longer used to gate
+    anything. `luacheck`: 0 warnings/0 errors on both changed files
+    (`PreyContextRuntime.lua`, `EventRuntime.lua`). **Partially confirmed live (2026-09-07)**:
+    product owner retested Voidstorm -- bridges gaps correctly now, no regression, confirming
+    flying there for its world quests (normal open-world travel, no loading screen) correctly
+    never triggers the reset. The hearth leg, however, still failed.
+
+87. **Item 86's reset alone wasn't sufficient -- needed to also distrust the very next
+    confirmation attempt, not just clear the old one.** Retesting the Eversong Woods hearth
+    with item 86 in place: bar still persisted in Silvermoon City. `/pd zinspect` (tracing
+    still on from item 85) showed `resolvedVia=latch` with `confirmedMapID=2393` (Silvermoon
+    itself) and `latchAgeSeconds` starting under 1 second -- so `PLAYER_ENTERING_WORLD` DID
+    fire and DID reset the latch as item 86 intended (confirmed: `isWorldTransition` is
+    working), but within under a second of that reset, the exact same one-tick
+    post-loading-screen glitch item 84 originally found (`isOnMap`, or the widget fallback,
+    reading `true` for one tick before quest-log/map state settles) simply re-armed a brand
+    new 120s latch in the new, wrong location. Clearing the OLD confirmation was necessary
+    but not sufficient -- the very next confirmation attempt also needed to be distrusted,
+    which is exactly what item 84's now-removed "settling" check used to do, just keyed off
+    the wrong signal (map-ID comparison) before. **Fixed**: new module-level
+    `suppressNextConfirm` flag, set to `true` alongside the latch reset whenever
+    `RefreshPreyContext` runs for `isWorldTransition`, and consumed by `ResolveQuestOnMap`
+    the next time (and only the next time) a `true` reading -- real `isOnMap` or the widget
+    fallback -- would otherwise confirm the quest as in-zone; that one attempt is logged as
+    `resolvedVia="settling"` and returns `nil` (never guesses `false` either) instead of
+    arming the latch. Deliberately only consumed inside an actual confirm attempt, not
+    unconditionally at the top of `ResolveQuestOnMap` -- an unresolved or plain-false tick in
+    between the transition and the eventual real attempt must not burn the one-time
+    protection for nothing. Unlike items 83/84, this never compares map IDs anywhere --
+    it's keyed entirely off the same `PLAYER_ENTERING_WORLD` event that already resets the
+    latch, so it activates only on a genuine world reload and still can't affect Voidstorm's
+    internal area movement at all. `luacheck`: 0 warnings/0 errors. **Partially confirmed
+    live (2026-09-07)**: `resolvedVia=settling` did appear in the very next `/pd zinspect`
+    entry after a real-world retest, proving `PLAYER_ENTERING_WORLD` fires and the one-shot
+    suppression engages correctly -- but the retest itself (a more complex path than a plain
+    hearth) still failed overall. See item 88.
+
+88. **Item 87's one-shot suppression wasn't wide enough for a compound (multi-leg)
+    transition.** Retest sequence: fly to Voidstorm (bridged correctly, no regression) ->
+    use a second hearth-type item that leads through an instanced area -> exit that instanced
+    area back into Silvermoon City -- bar reappeared again. `/pd zinspect` showed exactly why:
+    entry of `resolvedVia=settling` at `currentMapID=2537` (an intermediate/transitional map,
+    not the final destination) confirmed the one-shot flag correctly caught the FIRST
+    post-transition attempt -- but ~2 seconds later, once the client had settled onto the
+    real destination map (`2393`, Silvermoon City), the exact same glitch struck a SECOND
+    time and sailed straight through, since the one-shot flag had already been spent on the
+    first (premature) attempt -- `resolvedVia=latch` with `confirmedMapID=2393` and
+    `latchAgeSeconds` starting under 0.2s. A multi-leg exit (instance -> intermediate map ->
+    final city) can apparently keep producing this glitch for more than one tick while the
+    world continues settling. **Fixed**: replaced the one-shot `suppressNextConfirm` flag
+    with a time window -- new `WORLD_TRANSITION_SETTLE_SECONDS` (5s, a starting value) and
+    `worldTransitionAt` (a timestamp, set whenever `RefreshPreyContext` runs for
+    `isWorldTransition`) -- `isSettlingFromWorldTransition()` is checked fresh on every
+    would-be confirmation attempt (not consumed after the first), so it keeps distrusting
+    `true` readings for the whole window regardless of how many attempts occur inside it,
+    covering exactly this kind of multi-tick settle. Still never compares map IDs anywhere,
+    still keyed purely off the same `PLAYER_ENTERING_WORLD` event, still inert for
+    Voidstorm's internal movement. `luacheck`: 0 warnings/0 errors. **Confirmed live
+    (2026-09-07)**: product owner re-ran the full sequence -- Voidstorm fly-in, the
+    second-hearth-type item into an instanced area, exiting back to Silvermoon City -- "working
+    as expected." Combined with the earlier same-session confirmations (Voidstorm bridging,
+    plain hearth, fly-in/fly-out), all four known repro shapes for the original "bar stuck
+    after leaving the prey zone" report (issues opened this session, starting with the
+    delve-then-hearth report that kicked off items 82-88) are now resolved. This closes out
+    that investigation; if a new stuck-bar shape surfaces later, start from
+    `WORLD_TRANSITION_SETTLE_SECONDS`/`isSettlingFromWorldTransition` (this item) and
+    `CONFIRMED_ACTIVE_WINDOW_SECONDS` (item 74) as the two tunables most likely to need
+    another look, rather than re-deriving the whole mechanism from scratch.
+
+89. **Migration audit (2026-09-08) — two settings incorrectly treated as
+    dead/unmigrated turned out to be real, live behavior for upgrading users;
+    both now migrate. Corrects Decision 7's 4th bullet and Section 18's
+    framing.** Triggered by live bug reports of the bar "snapping to odd
+    locations" after updating to 4.0.0, reproducible only on upgrade, never on
+    a fresh install. Root cause, confirmed against the actual shipped
+    `Preydator-4.0.0.zip` and the last pre-rewrite source (`main` @
+    `558cb5c`, tag "Release 3.0.5"): `SettingsRuntime.MigrateAll` never
+    carried the old `point.x`/`point.y` bar position forward, so it silently
+    reset to the new hardcoded default on first login post-update — not the
+    drag/scale bug (already fixed and confirmed live 2026-08-27) a
+    third-party bug-tracker comment guessed at; that patch was not applied.
+    Fixed: `point.x`/`point.y` (falling back to the old `barPointX`/
+    `barPointY` recovery backup) now migrate directly onto `bar.position_x`/
+    `position_y` — both schemas share the same CENTER-offset semantics, no
+    transform needed. This walks back part of Decision 7's 4th bullet, which
+    reads as if position data itself, not just the always-`"CENTER"`
+    anchor/relativePoint fields, was meant to be dropped; the anchor/
+    relativePoint fields are still correctly dropped, only the actual x/y
+    values are now preserved. `BarFrame.ApplyPosition` also gained the same
+    screen-bounds clamp `SavePosition` already applied after a drag, so
+    neither a migrated nor a default position can render off-screen on an
+    unusual resolution/UI Scale combination.
+
+    Prompted by this, a full audit of every field in the old 3.0.5 `DEFAULTS`
+    table against `SettingsRuntime.SIMPLE_KEY_MIGRATIONS` and the "deliberately
+    dead" list found one more real gap: **`customizationV2.moduleEnabled.
+    {bar,sounds,hunt}`** was listed as dead alongside the rest of
+    `customizationV2`, but it was actually `Modules/Settings.lua`'s live
+    per-module "Module Enable" checkboxes (confirmed still wired at 3.0.5),
+    gating `Preydator:ShouldUseActivePolling`/`SetPollingActive` — a real
+    control some users had genuinely unchecked. Now migrated into
+    `general.bar_enabled`/`sounds_enabled`/`hunt_enabled`, AND'd against the
+    already-migrated flat `soundsEnabled`/`huntScannerEnabled` keys (the old
+    runtime required both true for a module to run), so a user who disabled a
+    module through *either* old control keeps it disabled. Every other field
+    on the prior dead-list (duplicate width/height mirrors, `tickLayerMode`,
+    `showAlignmentDot`, `huntScannerDifficultyColors`, `soundEnhance`,
+    `silenceArator`, `randomHuntCosts`) was re-checked and is confirmed
+    genuinely unused in the new architecture (either replaced by a named
+    equivalent or never read anywhere in current code) — those stay dropped.
+    Also added: `percentFallbackMode` -> `progress.fallback_mode`, same
+    silent-drop shape as position (field exists both sides, just no mapping).
+
+    **Standing rule going forward, per explicit product-owner direction**:
+    this addon's existing install base (upgraders from 3.0.5) is larger than
+    its new-install base, so a migration gap that silently resets or
+    re-enables something a real user configured is treated as a real bug, not
+    a documentation footnote — any future "deliberately not migrated" claim
+    needs to be verified against what the old code actually *did*, not just
+    against what this doc happened to already say. Also fixed in the same
+    pass: `SettingsStore.Load()` now writes the freshly migrated/normalized
+    profile straight back to `PreydatorDB` the first time it runs on an
+    unmigrated (or brand-new) profile, instead of leaving old dead keys
+    sitting in SavedVariables indefinitely until some unrelated future
+    settings change happens to overwrite them.
+
 ### 19.1 Deployment & Branching Plan
 
 You raised the real tradeoff correctly: doing this in the current `AddOns\Preydator` folder risks old-code bleed-through while testing (stray files WoW still loads alongside the new ones), but doing it in a totally separate folder means manually shuttling files back into the real git repo when it's done — which throws away history and is exactly the kind of manual, error-prone step this whole rewrite is trying to get away from.

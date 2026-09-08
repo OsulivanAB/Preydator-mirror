@@ -37,10 +37,20 @@ local lastPlayedStage = { questID = nil, stage = nil }
 -- sound played but which trigger it was and, when it didn't play, why not
 -- (cooldown, disabled, no path configured, etc.). Exposed via
 -- DiagnosticsRuntime.BuildSoundInspectReport / `/pd sinspect`.
+--
+-- Gated on debug.enable_tracing (Decisions Log item 85, product owner
+-- request 2026-09-07) -- previously recorded unconditionally for every
+-- player. Off by default; same gate as PreyContextRuntime's
+-- zoneResolutionTrace and WidgetAdapter's suppressionTrace.
 local RECENT_PLAYS_LIMIT = 12
 local recentPlays = {}
 
 local function recordPlay(key, path, outcome, detail)
+    local settings = Preydator:GetModule("Settings")
+    if not (settings and settings.Get("debug.enable_tracing") == true) then
+        return
+    end
+
     local okTime, now = pcall(GetTime)
     table.insert(recentPlays, {
         key = key,

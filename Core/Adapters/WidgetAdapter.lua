@@ -46,20 +46,29 @@ local lastShownAt = nil
 -- to be re-derived from scratch.
 local WIDGET_RECENTLY_SHOWN_WINDOW = 20
 
--- Passive trace of every icon-suppression-relevant event, always recording
--- (not opt-in like AlertsRuntime's nameplate trace -- these are rare
--- state-transition events, not a per-frame flood, so there's no volume
--- concern to gate behind a setting). Built 2026-09-04 after the product
--- owner reported the default prey icon reappearing "randomly" and too
--- briefly to react to live with /pd pinspect -- same reasoning as
--- SoundsRuntime's recordPlay/RecordBlockedAttempt: catch it passively so
--- the trace already has the answer by the time anyone notices. Exposed via
--- GetSuppressionTrace() / DiagnosticsRuntime.BuildIconSuppressionInspectReport
--- / `/pd iinspect`.
+-- Passive trace of every icon-suppression-relevant event. Built 2026-09-04
+-- after the product owner reported the default prey icon reappearing
+-- "randomly" and too briefly to react to live with /pd pinspect -- same
+-- reasoning as SoundsRuntime's recordPlay/RecordBlockedAttempt: catch it
+-- passively so the trace already has the answer by the time anyone notices.
+-- Exposed via GetSuppressionTrace() /
+-- DiagnosticsRuntime.BuildIconSuppressionInspectReport / `/pd iinspect`.
+--
+-- Gated on debug.enable_tracing (Decisions Log item 85, product owner
+-- request 2026-09-07) -- previously recorded unconditionally for every
+-- player, reasoned at the time as low-concern (rare events, not a
+-- per-frame flood, capped at 20 entries). Off by default now regardless of
+-- that reasoning; same gate as PreyContextRuntime's zoneResolutionTrace and
+-- SoundsRuntime's recentPlays.
 local SUPPRESSION_TRACE_LIMIT = 20
 local suppressionTrace = {}
 
 local function recordSuppressionEvent(action, detail)
+    local settings = Preydator:GetModule("Settings")
+    if not (settings and settings.Get("debug.enable_tracing") == true) then
+        return
+    end
+
     local GetTime = _G.GetTime
     local okTime, now = pcall(GetTime)
     local inCombat = type(InCombatLockdown) == "function" and InCombatLockdown() == true
@@ -511,6 +520,23 @@ end
 function WidgetAdapter.SuppressDefaultPreyIcon(suppress)
     desiredSuppression = suppress == true
     applyDesiredSuppression()
+end
+
+-- Clears lastShownAt (IsPreyWidgetVisible's "Blizzard recently showed the
+-- icon" fallback timestamp) without touching the icon frame itself or
+-- suppression state. Called by PreyContextRuntime when entering a restricted
+-- instance (Decisions Log item 82) -- a "shown recently" reading from BEFORE
+-- the restricted instance is not evidence about the zone the player lands in
+-- AFTER it (a Delve/scenario, or the loading screen leaving one), and
+-- WIDGET_RECENTLY_SHOWN_WINDOW (20s) is easily still within a hearth's
+-- cast-plus-loading-screen duration -- confirmed live 2026-09-07 as the root
+-- cause of the bar staying lit in Silvermoon City for up to
+-- CONFIRMED_ACTIVE_WINDOW_SECONDS after hearthing out of a Delve mid-hunt:
+-- this stale "recently shown" reading fed PreyContextRuntime.ResolveQuestOnMap's
+-- widget-visible fallback, which both showed the bar and re-armed that
+-- 120s latch on arrival in the new zone.
+function WidgetAdapter.ResetVisibilityTracking()
+    lastShownAt = nil
 end
 
 -- Whether Blizzard's own prey-hunt widget currently wants to be visible for

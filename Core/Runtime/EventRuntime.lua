@@ -405,7 +405,7 @@ function EventRuntime.HandleEvent(_, event, ...)
             -- partial copy of it here -- see this file's header comment.
             local preyContext = Preydator:GetModule("PreyContextRuntime")
             if preyContext then
-                preyContext.RefreshPreyContext()
+                preyContext.RefreshPreyContext(event == "PLAYER_ENTERING_WORLD")
             end
             if huntInteractionActive then
                 hidePanel()
@@ -417,10 +417,14 @@ function EventRuntime.HandleEvent(_, event, ...)
 
     -- 3. CONTEXT CHECK -- context-relevant events (and login/init) refresh
     -- prey context; a nameplate event goes straight to AlertsRuntime instead.
+    -- The `event == "PLAYER_ENTERING_WORLD"` argument (Decisions Log item 86)
+    -- tells RefreshPreyContext this call represents an actual world reload,
+    -- not just any context-relevant event -- see its own comment for why
+    -- that specific event (and only that one) resets the confirm-latch.
     if CONTEXT_EVENTS[event] or ALWAYS_ALLOWED_EVENTS[event] then
         local preyContext = Preydator:GetModule("PreyContextRuntime")
         if preyContext then
-            preyContext.RefreshPreyContext()
+            preyContext.RefreshPreyContext(event == "PLAYER_ENTERING_WORLD")
         end
         syncProgressTicker()
     end

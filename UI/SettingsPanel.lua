@@ -1019,7 +1019,21 @@ local function buildAdvancedCategory(category)
     -- No tooltip support in this canvas checkbox helper (unlike the native
     -- Settings-API checkboxes elsewhere in this file) -- the label itself
     -- names the command that reads this setting's recorded data.
-    local previous = createCheckboxRow(canvas, nil, L("Record Nameplates Seen During Hunts (see /pd ninspect)"),
+    --
+    -- debug.enable_tracing gates the zone/icon/sound diagnostic traces (/pd
+    -- zinspect, /pd iinspect, /pd sinspect) -- added 2026-09-07 (Decisions
+    -- Log item 85) after those three previously recorded unconditionally for
+    -- every player; product owner asked that no diagnostic tracing run at
+    -- all without explicit opt-in. Kept as its own row, separate from
+    -- pack_ambush_verbose below (which already had its own opt-in gate and
+    -- didn't need to change) -- one flips on the nameplate trace specifically,
+    -- this one flips on the other three together.
+    local previous = createCheckboxRow(canvas, nil,
+        L("Enable Diagnostic Tracing (see /pd zinspect, /pd iinspect, /pd sinspect)"),
+        function() return settings.Get("debug.enable_tracing") == true end,
+        function(value) settings.Set("debug.enable_tracing", value) end)
+
+    previous = createCheckboxRow(canvas, previous, L("Record Nameplates Seen During Hunts (see /pd ninspect)"),
         function() return settings.Get("debug.pack_ambush_verbose") == true end,
         function(value) settings.Set("debug.pack_ambush_verbose", value) end)
 

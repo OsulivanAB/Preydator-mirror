@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.0.1 - 2026-09-08
+
+A focused bugfix update addressing a bar-visibility issue found right after 4.0.0 shipped.
+
+### Fixed
+- Fixed the bar resetting to a default screen position for anyone upgrading from a version
+  before 4.0.0 — your custom-placed bar position now carries over correctly instead of
+  jumping somewhere new the first time you logged in after updating. As a safety net, the
+  bar can also no longer render partially off-screen on an unusual resolution/UI Scale
+  combination, whether from an old saved position or the new default. Thanks to
+  Gigapwned, RazewrWolf3000, and 22raider for reporting this.
+- Fixed the "Enable Bar"/"Enable Sounds"/"Enable Hunt Scanner" master toggles not carrying
+  over for some upgrading players — if you'd turned one of these off in the old addon
+  version's settings, it could silently turn back on after updating to 4.0.0. Now correctly
+  preserved.
+- Fixed the progress bar sometimes staying visible with stale hunt progress for up to two
+  minutes after you'd actually left the prey zone — hearthing out, taking a flight path,
+  or exiting an instance (like a Delve) could all trigger it. The bar now clears within
+  moments in every case, while still correctly bridging brief real signal gaps in zones
+  with unusual internal boundaries (e.g. Voidstorm) so it doesn't flicker off there either.
+- Fixed the bar being able to get stuck on if you entered a Delve (or other restricted
+  instance) mid-hunt and then left it, in some cases beyond what 4.0.0's own Delve fix
+  already covered.
+
+### New
+- New "Enable Diagnostic Tracing" option (Settings → Advanced, off by default). The
+  `/pd zinspect`, `/pd iinspect`, and `/pd sinspect` diagnostic commands now only record
+  data while this is turned on, so nothing is tracked in the background unless you
+  explicitly opt in for troubleshooting.
+
 ## 4.0.0 - 2026-09-06
 
 Preydator has been rebuilt from the ground up. This is the biggest update yet — same Hunt

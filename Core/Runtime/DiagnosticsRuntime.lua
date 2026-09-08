@@ -260,6 +260,8 @@ function DiagnosticsRuntime.BuildSoundInspectReport()
     local function add(line) lines[#lines + 1] = tostring(line or "") end
 
     add("Preydator Sound Inspect | addon=" .. getAddonVersion())
+    add("- settings debug.enable_tracing=" .. safeValue(settings and settings.Get("debug.enable_tracing"))
+        .. " (recent play attempts below are empty unless this is true)")
     add("- settings sounds_enabled=" .. safeValue(settings and settings.Get("general.sounds_enabled"))
         .. " | channel=" .. safeValue(settings and settings.Get("sound.channel"))
         .. " | alert_cooldown_seconds=" .. safeValue(settings and settings.Get("sound.alert_cooldown_seconds")))
@@ -327,9 +329,9 @@ end
 
 -- Built 2026-09-04 after the product owner reported the default prey icon
 -- reappearing "randomly" and too briefly to react to live with /pd
--- pinspect. WidgetAdapter.GetSuppressionTrace() records passively (not
--- opt-in), so this always has the answer by the time anyone thinks to
--- check it, same reasoning as sinspect/ninspect above.
+-- pinspect. WidgetAdapter.GetSuppressionTrace() records passively, gated on
+-- debug.enable_tracing (item 85) since 2026-09-07, so this only has the
+-- answer by the time anyone thinks to check it if that's turned on first.
 function DiagnosticsRuntime.BuildIconSuppressionInspectReport()
     local widgetAdapter = Preydator:GetModule("WidgetAdapter")
     local settings = Preydator:GetModule("Settings")
@@ -338,6 +340,8 @@ function DiagnosticsRuntime.BuildIconSuppressionInspectReport()
     local function add(line) lines[#lines + 1] = tostring(line or "") end
 
     add("Preydator Icon Suppression Inspect | addon=" .. getAddonVersion())
+    add("- settings debug.enable_tracing=" .. safeValue(settings and settings.Get("debug.enable_tracing"))
+        .. " (recent suppression events below are empty unless this is true)")
     local iconSetting = settings and settings.Get("general.disable_default_prey_icon")
     add("- settings disable_default_prey_icon=" .. safeValue(iconSetting))
 
@@ -364,11 +368,14 @@ end
 -- means; Decisions Log item 71.
 function DiagnosticsRuntime.BuildZoneInspectReport()
     local preyContext = Preydator:GetModule("PreyContextRuntime")
+    local settings = Preydator:GetModule("Settings")
 
     local lines = {}
     local function add(line) lines[#lines + 1] = tostring(line or "") end
 
     add("Preydator Zone Inspect | addon=" .. getAddonVersion())
+    add("- settings debug.enable_tracing=" .. safeValue(settings and settings.Get("debug.enable_tracing"))
+        .. " (resolutions below are empty unless this is true)")
 
     local trace = preyContext and type(preyContext.GetZoneResolutionTrace) == "function"
         and preyContext.GetZoneResolutionTrace() or {}
@@ -380,6 +387,8 @@ function DiagnosticsRuntime.BuildZoneInspectReport()
             .. " | resolvedIsOnMap=" .. safeValue(entry.resolvedIsOnMap)
             .. " | resolvedVia=" .. safeValue(entry.resolvedVia)
             .. " | latchAgeSeconds=" .. safeValue(entry.latchAgeSeconds))
+        add("        map | currentMapID=" .. safeValue(entry.currentMapID)
+            .. " | confirmedMapID=" .. safeValue(entry.confirmedMapID))
         add("        widget | iconFrameFound=" .. safeValue(entry.widgetIconFrameFound)
             .. " | desiredSuppression=" .. safeValue(entry.widgetDesiredSuppression)
             .. " | inCombat=" .. safeValue(entry.widgetInCombat)
