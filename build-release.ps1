@@ -79,6 +79,22 @@ try {
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Recurse -Force
     }
 
+    # UI\ is copied whole above (recursive), which sweeps in any untracked
+    # dev-only file physically sitting in that folder alongside the real
+    # ones -- e.g. UI\OLD_SettingsPanel.lua, a working backup copy, not
+    # referenced by Preydator.toc's load list at all. Excluded from the
+    # staged copy only (never touches the actual working-tree file) so it
+    # can't leak into a shipped zip.
+    $stagingExclude = @(
+        "UI\OLD_SettingsPanel.lua"
+    )
+    foreach ($entry in $stagingExclude) {
+        $stagingPath = Join-Path $stagingAddonDir $entry
+        if (Test-Path -LiteralPath $stagingPath) {
+            Remove-Item -LiteralPath $stagingPath -Force
+        }
+    }
+
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
         $stagingDir,
         $zipPath,

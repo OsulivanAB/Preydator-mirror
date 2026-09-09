@@ -1,5 +1,36 @@
 # Changelog
 
+## 4.0.3 - 2026-09-09
+
+A follow-up refinement to 4.0.2's Settings window fix, plus a zone-detection and a sound fix.
+
+### Fixed
+- Removed Blizzard's own "Defaults" button from Preydator, Bar Display, Sound & Alerts, and
+  Hunt Scanner (the four screens that still had it after 4.0.2's own fix attempt). That
+  button offered a choice between resetting just the current screen or "All Settings" — and
+  "All Settings" resets every other addon's settings and Blizzard's own game settings too,
+  with no way for any addon to narrow or prevent that.
+- Fixed Bar Colors and Text & Labels unintentionally being affected by that same fix —
+  their dropdown menus and the Font Size slider are now guaranteed to look and behave
+  exactly as they did in 4.0.0, with nothing shared between them and the four screens above.
+- Tightened the Advanced tab's spacing so everything fits on a single page without needing
+  to scroll, and tightened it further on Preydator, Bar Display, Sound & Alerts, and Hunt
+  Scanner too.
+- Fixed those same four screens' dropdown-style settings not showing your actual saved value
+  when you first opened Settings or reloaded/relogged — the correct value only appeared after
+  changing it once. They now always show your real current setting.
+- Fixed the bar occasionally staying visible in a zone that isn't part of any active hunt.
+  Zone visibility is back to trusting Blizzard's own signals directly, with nothing
+  remembered between checks.
+- Fixed alert sounds silently failing to play when Sound Channel was set to "Ambience" (or
+  "Music") together with Amplify Alert Sounds — the amplify feature was muting the very
+  channel the alert needed to play on, right before trying to play it.
+- Fixed errors on the World Map, on tooltips, and on vignette countdowns that were
+  attributed to Preydator but never actually touched Preydator's own UI — caused by an
+  internal hook watching Blizzard's shared prey-icon container, which briefly interfered
+  with unrelated Blizzard UI code sharing that same container. Removed. Thanks to Holy_Z
+  for reporting this.
+
 ## 4.0.2 - 2026-09-08
 
 A safety fix for the Settings window itself.

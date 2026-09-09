@@ -79,6 +79,21 @@ local AMPLIFY_CVARS_TO_SILENCE = { "Sound_EnableAmbience", "Sound_MusicVolume", 
 local AMPLIFY_CVARS_TO_ENABLE = { "Sound_EnableSFX", "Sound_EnableAllSound", "Sound_EnableSoundWhenGameIsInBG" }
 local AMPLIFY_VOLUME_CVARS = { "Sound_SFXVolume", "Sound_MasterVolume" }
 
+-- Which of AMPLIFY_CVARS_TO_SILENCE would mute the very channel an alert is
+-- about to play on -- silencing it during a boost self-blocks the alert.
+-- Confirmed live (2026-09-09): Sound Channel set to "Ambience" plus Amplify
+-- Alert Sounds enabled meant every boost disabled Sound_EnableAmbience an
+-- instant before PlaySoundFile(path, "Ambience") ran, so PlaySoundFile
+-- correctly returned false every time -- not a Blizzard bug, a self-inflicted
+-- one. "Music" has the same shape via Sound_MusicVolume (silent instead of
+-- blocked, since that CVar is a volume level, not an on/off switch). Only
+-- these two channels appear here -- SFX/Master/Dialog aren't in
+-- AMPLIFY_CVARS_TO_SILENCE at all, so they have no such conflict.
+local SILENCE_CVAR_BY_CHANNEL = {
+    Ambience = "Sound_EnableAmbience",
+    Music = "Sound_MusicVolume",
+}
+
 local boostRefCount = 0
 local cachedCVars = nil
 
@@ -90,9 +105,12 @@ local cachedCVars = nil
 -- diagnosable once actual before/after numbers were visible).
 local lastBoostSnapshot = nil
 
+-- activeChannel is the channel the alert about to play will actually use
+-- (sound.channel) -- see SILENCE_CVAR_BY_CHANNEL's own comment for why this
+-- matters: silencing the same channel the alert plays on self-blocks it.
 -- Returns true if a boost is now active (caller owes a matching
 -- RestoreVolume call) and false if CVar access itself isn't available.
-function SoundAdapter.BoostVolume(scale)
+function SoundAdapter.BoostVolume(scale, activeChannel)
     if type(GetCVar) ~= "function" or type(SetCVar) ~= "function" then
         return false
     end
@@ -126,9 +144,13 @@ function SoundAdapter.BoostVolume(scale)
         local before = { Sound_SFXVolume = snapshot.Sound_SFXVolume, Sound_MasterVolume = snapshot.Sound_MasterVolume }
         local after = {}
 
+        local skipCvar = SILENCE_CVAR_BY_CHANNEL[activeChannel]
+
         pcall(function()
             for _, cvar in ipairs(AMPLIFY_CVARS_TO_SILENCE) do
-                SetCVar(cvar, 0)
+                if cvar ~= skipCvar then
+                    SetCVar(cvar, 0)
+                end
             end
             for _, cvar in ipairs(AMPLIFY_CVARS_TO_ENABLE) do
                 SetCVar(cvar, 1)

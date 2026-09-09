@@ -155,43 +155,37 @@ local function scheduleDeferredPreyContextRefresh()
     end)
 end
 
--- Frames already given an OnShow hook (see ensureOnShowHooked) -- guards
--- against hooking the same frame twice across repeated captureLiveFrames()
--- calls.
-local hookedOnShowFrames = setmetatable({}, { __mode = "k" })
-
--- Fires the same deferred re-suppression as the Setup hook, but keyed off
--- the frame's own OnShow script instead of any specific Blizzard method.
--- Added 2026-08-28 to replace the earlier PlayGainProgressAnim hook: that
--- approach only caught the ONE specific code path that plays the pulse
--- animation, but the product owner confirmed live the icon still flashed
--- afterward -- meaning something else (most likely the generic UIWidget
--- container's own layout/pooling code, which calls Show() on the widget
--- frame directly as part of laying out newly-updated widgets, entirely
--- outside the PreyHunt-specific mixin methods this file hooks) was also
--- showing the frame. HookScript("OnShow", ...) is Blizzard/WoW's standard
--- taint-safe way to observe "this frame just became shown" regardless of
--- which code path caused it, so it covers every trigger at once instead of
--- chasing individual methods one at a time. Same taint-safety rule as every
--- other hook in this file: read-only observation, defers any protected work
--- via scheduleDeferredPreyContextRefresh rather than acting from inside the
--- hook itself.
-local function ensureOnShowHooked(frameRef)
-    if not frameRef or hookedOnShowFrames[frameRef] or type(frameRef.HookScript) ~= "function" then
-        return
-    end
-    local ok = pcall(frameRef.HookScript, frameRef, "OnShow", function()
-        recordSuppressionEvent("onshow_fired", "Blizzard showed the icon frame")
-        local okTime, now = pcall(_G.GetTime)
-        if okTime and type(now) == "number" then
-            lastShownAt = now
-        end
-        scheduleDeferredPreyContextRefresh()
-    end)
-    if ok then
-        hookedOnShowFrames[frameRef] = true
-    end
-end
+-- REMOVED (2026-09-09) -- this used to HookScript("OnShow", ...) on child
+-- frames pulled from Blizzard's shared UIWidget containers
+-- (UIWidgetPowerBarContainerFrame etc.), reasoned at the time as "Blizzard/
+-- WoW's standard taint-safe way to observe this." That reasoning was wrong:
+-- unlike hooksecurefunc (which runs your callback AFTER the original
+-- function returns, in a separate execution -- genuinely taint-safe by
+-- design), HookScript on a frame's own script handler runs your code INSIDE
+-- whatever call chain triggered Show() on that frame. These containers are
+-- shared/pooled across many unrelated Blizzard UIWidget types (renown bars,
+-- world quest timers, vignette countdowns, prey hunt progress), and their
+-- Show() calls happen as part of Blizzard's own secure widget-layout/map
+-- refresh passes -- so merely executing this hook's Lua (even though it was
+-- 100% read-only/deferred, doing nothing "dangerous" itself) tainted that
+-- entire secure execution chain downstream. Confirmed live (2026-09-09,
+-- real player error logs) as the root cause of three previously-unexplained
+-- errors, all attributed to Preydator but nowhere touching Preydator code
+-- directly: ADDON_ACTION_BLOCKED on SetPropagateMouseClicks while opening
+-- the World Map (SharedMapPoiTemplates/DungeonEntranceDataProvider), a
+-- "secret number" compare failure in GameTooltip's widget layout
+-- (LayoutFrame.lua, via GameTooltip_ClearWidgetSet), and a SetWidth-with-
+-- secret-value failure processing a vignette countdown widget
+-- (UIWidgetTemplateTextWithState). All three are Blizzard code that has
+-- nothing to do with Preydator's own UI -- exactly the signature of a
+-- tainted secure chain, not a direct bad call. Removing this hook trades
+-- away lastShownAt/WIDGET_RECENTLY_SHOWN_WINDOW's "Blizzard recently
+-- (re-)showed the icon" fallback signal (see IsPreyWidgetVisible's own
+-- comment -- already documented there as "known-weak, not a real fix," for
+-- one narrow zone-shape edge case) in exchange for not corrupting unrelated
+-- Blizzard UI (world map, tooltips, vignettes) for the player. The
+-- taint-safe Setup mixin hook (hooksecurefunc, below) is unaffected and
+-- still the primary data source.
 
 -- Every widget container name DebugWidgetState's own diagnostic already
 -- checked (built 2026-08-28 specifically because current-patch container
@@ -221,7 +215,6 @@ local function captureLiveFrames()
                     if isPreyHuntProgressFrame(child) then
                         trackedFrames[child] = true
                         iconFrame = child
-                        ensureOnShowHooked(child)
                     end
                 end
             end

@@ -89,6 +89,19 @@ function MapContextAdapter.GetMapInfoAtPosition(mapID, x, y)
     return info
 end
 
+-- Map-relatedness bridging (a time window, then a parentMapID hierarchy
+-- walk, then a hand-confirmed sibling table) lived here briefly (2026-09-09)
+-- to paper over isOnMap/widget-visible going momentarily false without the
+-- player actually leaving. Every version live-confirmed a false positive --
+-- the bar staying visible somewhere the player had genuinely left (a
+-- 2-minute window in Silvermoon City; then, once replaced with a hierarchy
+-- walk, the bar never disappearing anywhere in the whole Quel'Thalas/2561
+-- zone family). Removed entirely per the product owner's own direction:
+-- trust only Blizzard's own two direct, live signals (isOnMap, then
+-- WidgetAdapter.IsPreyWidgetVisible() as PreyContextRuntime's fallback) with
+-- nothing remembered between refreshes -- see PreyContextRuntime.
+-- ResolveQuestOnMap's own comment.
+
 -- Returns one of "pvp" | "arena" | "party" | "raid" | "scenario" | "delve" | nil.
 function MapContextAdapter.IsRestrictedInstance()
     local inInstance, instanceType = false, nil

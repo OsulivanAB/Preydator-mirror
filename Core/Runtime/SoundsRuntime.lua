@@ -154,7 +154,7 @@ local function playPath(key, path, cooldownSeconds)
     -- actually starts.
     local boosted = false
     if settings and settings.Get("sound.amplify_enabled") == true and type(adapter.BoostVolume) == "function" then
-        boosted = adapter.BoostVolume(settings.Get("sound.amplify_scale"))
+        boosted = adapter.BoostVolume(settings.Get("sound.amplify_scale"), channel)
     end
 
     local willPlay, actualChannel = adapter.Play(path, channel)

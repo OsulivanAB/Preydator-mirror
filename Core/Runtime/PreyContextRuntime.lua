@@ -47,14 +47,7 @@ local FOUND_STAGE = 4
 local ZONE_TRACE_LIMIT = 20
 local zoneResolutionTrace = {}
 
--- currentMapID/confirmedMapID added (Decisions Log item 83) alongside the
--- mapID gate itself on confirmedTrueAgeSeconds -- without these, a future
--- "latch still fired/didn't fire" report would need a third round of
--- guessing to tell whether the mapID check itself is even the deciding
--- factor. confirmedMapID is nil whenever resolvedVia isn't "latch" (no
--- latch entry existed to compare against).
-local function recordZoneResolution(questID, isOnMap, resolvedIsOnMap, widgetInfo, resolvedVia, latchAgeSeconds,
-    currentMapID, confirmedMapID)
+local function recordZoneResolution(questID, isOnMap, resolvedIsOnMap, widgetInfo, resolvedVia)
     -- Opt-in only (Decisions Log item 85, product owner request 2026-09-07)
     -- -- previously recorded unconditionally for every player. Checked here,
     -- not at each of ResolveQuestOnMap's call sites, so there's exactly one
@@ -71,9 +64,6 @@ local function recordZoneResolution(questID, isOnMap, resolvedIsOnMap, widgetInf
         isOnMap = isOnMap,
         resolvedIsOnMap = resolvedIsOnMap,
         resolvedVia = resolvedVia,
-        latchAgeSeconds = latchAgeSeconds,
-        currentMapID = currentMapID,
-        confirmedMapID = confirmedMapID,
         widgetIconFrameFound = widgetInfo and widgetInfo.iconFrameFound,
         widgetDesiredSuppression = widgetInfo and widgetInfo.desiredSuppression,
         widgetInCombat = widgetInfo and widgetInfo.inCombat,
@@ -95,9 +85,6 @@ function PreyContextRuntime.GetZoneResolutionTrace()
             isOnMap = entry.isOnMap,
             resolvedIsOnMap = entry.resolvedIsOnMap,
             resolvedVia = entry.resolvedVia,
-            latchAgeSeconds = entry.latchAgeSeconds,
-            currentMapID = entry.currentMapID,
-            confirmedMapID = entry.confirmedMapID,
             widgetIconFrameFound = entry.widgetIconFrameFound,
             widgetDesiredSuppression = entry.widgetDesiredSuppression,
             widgetInCombat = entry.widgetInCombat,
@@ -106,126 +93,6 @@ function PreyContextRuntime.GetZoneResolutionTrace()
         }
     end
     return copy
-end
-
--- "Confirmed active" latch (Decisions Log item 74): a genuine hunt-progress
--- signal (isOnMap itself, or the widget-visible fallback) confirming this
--- quest as in-zone is remembered for CONFIRMED_ACTIVE_WINDOW_SECONDS, so a
--- brief confirming moment (an ambush/Mob Scanner nameplate match, which
--- typically starts combat and is exactly when the widget-visible fallback is
--- most reliable -- see WidgetAdapter.IsPreyWidgetVisible's combat-lockdown
--- handling) keeps the bar/sounds active through the gaps until the next one,
--- instead of re-deriving zone status from scratch on every ~2s tick and
--- flickering off between confirming events. Product owner's own diagnosis
--- (2026-09-04, Voidstorm): the bar only ever appeared during brief windows
--- right after a container/ambush/Pack Ambush/Exploding Corpse Snakes event,
--- then vanished again immediately after -- "if we can show it during those
--- brief windows why can we not show it the entire time."
---
--- Deliberately bounded, not sticky for the whole hunt -- a genuinely
--- unbounded latch would reintroduce the exact false-positive shape that
--- caused the old pre-rewrite codebase's Eversong Woods bug (Decisions Log
--- items 29/32/35/36's own history) if the player travels far away from the
--- prey zone while still holding the same quest. 120s is a starting value,
--- not a confirmed-safe one -- chosen to comfortably bridge normal gaps
--- between combat encounters within one continuous hunt (the default ambush
--- alert cooldown is 60s, so confirming events can naturally be tens of
--- seconds apart) without staying latched for many minutes after genuinely
--- leaving. If live testing shows false positives (bar staying lit well after
--- clearly leaving the area) OR gaps still slipping through (bar still
--- vanishing between genuinely-close-together events), this single constant
--- is the place to retune -- not a redesign either direction.
-local CONFIRMED_ACTIVE_WINDOW_SECONDS = 120
-local lastConfirmedTrue = { questID = nil, time = nil, mapID = nil }
-
--- How long after a genuine PLAYER_ENTERING_WORLD event (see
--- RefreshPreyContext's own comment) ANY would-be confirmation is distrusted,
--- however many attempts occur in that window. Item 87's first attempt at
--- this consumed a one-shot flag on exactly the NEXT attempt, which worked
--- for a simple hearth but failed live 2026-09-07 on a compound transition
--- (hearthing INTO an instanced area, then exiting it back to Silvermoon
--- City): that exit produced an intermediate/transitional map reading
--- (currentMapID=2537) correctly suppressed by the one-shot flag, but the
--- world kept settling for another ~2s after that, landing on the real
--- destination map (2393) only on the FOLLOWING tick -- by which point the
--- one-shot flag had already been spent, so that second glitchy true reading
--- sailed through and re-armed the latch anyway. A short time window,
--- checked fresh on every attempt within it rather than consumed after the
--- first, covers a multi-tick settle the same one-shot version couldn't.
--- 5s is a starting value (comfortably longer than the ~2s gap observed
--- live), not confirmed-safe -- same "retune this one constant, not the
--- design" spirit as CONFIRMED_ACTIVE_WINDOW_SECONDS' own comment.
-local WORLD_TRANSITION_SETTLE_SECONDS = 5
-local worldTransitionAt = nil
-
--- True while still within WORLD_TRANSITION_SETTLE_SECONDS of the last
--- genuine PLAYER_ENTERING_WORLD event -- see WORLD_TRANSITION_SETTLE_SECONDS'
--- own comment for why this replaced item 87's one-shot flag. Distinct from
--- (and replaces) items 83/84's map-ID comparison, which live-broke Voidstorm
--- (item 86) -- this keys off the same real Blizzard EVENT that resets the
--- confirm-latch itself, never off comparing location values, so it's active
--- only after an actual world reload (hearth/teleport/instance
--- boundary/login) and never during ordinary movement within one zone
--- (Voidstorm's internal area boundaries included).
-local function isSettlingFromWorldTransition()
-    if worldTransitionAt == nil then
-        return false
-    end
-    local okTime, now = pcall(_G.GetTime)
-    if not okTime or type(now) ~= "number" then
-        return false
-    end
-    return (now - worldTransitionAt) <= WORLD_TRANSITION_SETTLE_SECONDS
-end
-
-local function markConfirmedTrue(questID, mapID)
-    local okTime, now = pcall(_G.GetTime)
-    if okTime and type(now) == "number" then
-        lastConfirmedTrue.questID = questID
-        lastConfirmedTrue.time = now
-        -- mapID is diagnostic only (surfaced via /pd zinspect's
-        -- confirmedMapID) -- see Decisions Log item 86 for why it is NOT
-        -- used to gate the latch's validity. Items 83/84 tried exactly that
-        -- (require the current map to match the map a confirmation happened
-        -- on) and it live-broke Voidstorm: that PvP-optional sub-zone
-        -- reports TWO DIFFERENT, stable map IDs (2444 and 2405) for what is,
-        -- to the player, one contiguous playspace, with no loading screen
-        -- between them -- comparing map IDs to decide "did the player
-        -- leave" turned out to be exactly the already-rejected
-        -- map-hierarchy heuristic (items 29/32/35/36) wearing a different
-        -- hat. See suppressNextConfirm above and RefreshPreyContext below
-        -- for the actual fix (item 87).
-        lastConfirmedTrue.mapID = mapID
-    end
-end
-
--- Returns the age in seconds of the last confirmation for questID (nil if
--- none/expired/for a different quest -- never carries over between hunts,
--- since a fresh activeQuestID means lastConfirmedTrue.questID no longer
--- matches). Deliberately does NOT compare map IDs -- see markConfirmedTrue's
--- own comment (item 86) for why that was tried and reverted.
-local function confirmedTrueAgeSeconds(questID)
-    if lastConfirmedTrue.questID ~= questID or lastConfirmedTrue.time == nil then
-        return nil
-    end
-    local okTime, now = pcall(_G.GetTime)
-    if not okTime or type(now) ~= "number" then
-        return nil
-    end
-    return now - lastConfirmedTrue.time
-end
-
--- Clears the confirmed-active latch entirely. Called from
--- PreyContextRuntime.RefreshPreyContext whenever it's invoked for a
--- PLAYER_ENTERING_WORLD event (see that function's own comment, and item 86)
--- -- a confirmation from wherever the player was before a real world reload
--- (hearth, teleport, entering/leaving an instance, login) has no bearing on
--- wherever they land afterward, and letting it survive is exactly what
--- produced two separate live-confirmed false positives (items 82, 83/84).
-local function resetConfirmedLatch()
-    lastConfirmedTrue.questID = nil
-    lastConfirmedTrue.time = nil
-    lastConfirmedTrue.mapID = nil
 end
 
 local function getModules()
@@ -339,45 +206,38 @@ end
 -- overrides a CONFIRMED false -- an unresolved/nil isOnMap is left alone,
 -- same "never guess" rule as before.
 --
--- Deliberately does NOT gate a `true` reading on the player's current map ID
--- in any way (no "just crossed a boundary" check, no "must match the map
--- last confirmed on" check) -- items 83/84 tried exactly that and it
--- live-broke this exact function's own Voidstorm case: that PvP-optional
--- sub-zone reports two different, stable map IDs for what is, to the
--- player, one contiguous playspace, so comparing map IDs to judge "did the
--- player leave" is just the already-rejected map-hierarchy heuristic
--- (29/32/35/36) again, wearing a different hat. RefreshPreyContext's
--- isWorldTransition reset (item 86) plus suppressNextConfirm below (item 87)
--- is the actual, event-based fix -- currentMapID is still captured and
--- threaded into recordZoneResolution purely for /pd zinspect's own
--- diagnostic value.
+-- No latching/bridging of any kind (removed 2026-09-09, item 88): a
+-- time-based "confirmed active" window and, after that, map-relatedness
+-- bridging were both tried here to paper over isOnMap/widget-visible going
+-- momentarily false without the player actually leaving -- and both produced
+-- real, live-confirmed false positives where the bar stayed visible long
+-- after the player had genuinely left the hunt's zone (a 2-minute window in
+-- Silvermoon City, then an entire zone family via Quel'Thalas/2561 once the
+-- window was replaced with a hierarchy walk). Product owner's own call: go
+-- back to trusting only Blizzard's own two direct signals, live, every
+-- refresh, with nothing remembered between calls -- isOnMap is the
+-- authoritative source, IsPreyWidgetVisible() (Blizzard's own icon-widget
+-- visibility) is the fallback for isOnMap's own confirmed false negatives
+-- (the Voidstorm case, 2026-09-04), and if both are false the zone is simply
+-- not active -- no grace period, no memory.
 function PreyContextRuntime.ResolveQuestOnMap(questID)
     local questApi = Preydator:GetModule("QuestApiAdapter")
     if not questApi then
         return nil
     end
 
-    local mapContext = Preydator:GetModule("MapContextAdapter")
-    local currentMapID = mapContext and mapContext.GetPlayerMapID()
-
     local isOnMap = questApi.GetQuestIsOnMap(questID)
     if isOnMap == true then
-        -- See WORLD_TRANSITION_SETTLE_SECONDS' own comment (item 87) for why
-        -- this checks a time window instead of consuming a one-shot flag.
-        if isSettlingFromWorldTransition() then
-            recordZoneResolution(questID, isOnMap, false, nil, "settling", nil, currentMapID, nil)
-            return nil
-        end
-        markConfirmedTrue(questID, currentMapID)
         return true
     end
     if isOnMap == nil then
-        -- Never guess on unresolved -- leave inPreyZone/callers untouched,
-        -- same rule as before. Does not touch or consume the latch either.
+        -- Never guess on unresolved -- leave inPreyZone/callers untouched.
         return nil
     end
 
-    -- isOnMap == false from here down.
+    -- isOnMap == false from here down -- fall back to Blizzard's own
+    -- icon-widget visibility (see WidgetAdapter.IsPreyWidgetVisible's own
+    -- comment for why this is trustworthy, not a guess).
     local widgetAdapter = Preydator:GetModule("WidgetAdapter")
     local widgetVisible = false
     local widgetInfo = nil
@@ -390,65 +250,18 @@ function PreyContextRuntime.ResolveQuestOnMap(questID)
         end
     end
 
-    if widgetVisible then
-        if isSettlingFromWorldTransition() then
-            recordZoneResolution(questID, isOnMap, false, widgetInfo, "settling", nil, currentMapID, nil)
-            return nil
-        end
-        markConfirmedTrue(questID, currentMapID)
-        recordZoneResolution(questID, isOnMap, true, widgetInfo, "widget", nil, currentMapID, nil)
-        return true
-    end
-
-    -- Neither isOnMap nor the widget-visible check currently confirms zone
-    -- membership -- bridge the gap using the last time THIS quest was
-    -- confirmed true (see CONFIRMED_ACTIVE_WINDOW_SECONDS' own comment)
-    -- rather than immediately flipping off.
-    local latchAge = confirmedTrueAgeSeconds(questID)
-    local latchedTrue = latchAge ~= nil and latchAge <= CONFIRMED_ACTIVE_WINDOW_SECONDS
-    recordZoneResolution(questID, isOnMap, latchedTrue, widgetInfo,
-        latchedTrue and "latch" or "none", latchAge, currentMapID, lastConfirmedTrue.mapID)
-    return latchedTrue
+    recordZoneResolution(questID, isOnMap, widgetVisible, widgetInfo, widgetVisible and "widget" or "none")
+    return widgetVisible
 end
 
--- isWorldTransition (Decisions Log item 86): true only when EventRuntime is
--- calling this specifically for a PLAYER_ENTERING_WORLD event -- the one
--- Blizzard event that reliably means "the world just reloaded" (login,
--- /reload, entering/leaving an instance, a hearth/teleport, entering a
--- phased/instanced capital city), as opposed to ZONE_CHANGED/
--- ZONE_CHANGED_NEW_AREA, which also fire for mundane in-zone area-boundary
--- crossings -- exactly what Voidstorm's internal 2444/2405 split turned out
--- to be (see markConfirmedTrue's own comment for the live data that proved
--- it). Resets the confirm-latch and WidgetAdapter's lastShownAt right away,
--- before anything else -- neither a stale "confirmed in zone" nor a stale
--- "icon recently shown" reading from before the reload can survive into
--- wherever the player lands after it, without ever comparing map IDs to
--- decide that. Placed first (ahead of the restricted-instance check) so it
--- covers entering AND leaving instances alike, and subsumes item 82's own
--- narrower restricted-instance-only reset (entering an instance always
--- fires this event too).
 function PreyContextRuntime.RefreshPreyContext(isWorldTransition)
     local questApi, mapContext, widgetAdapter, state, settings, huntScanner = getModules()
     if not (questApi and mapContext and state) then
         return
     end
 
-    if isWorldTransition then
-        resetConfirmedLatch()
-        if widgetAdapter and type(widgetAdapter.ResetVisibilityTracking) == "function" then
-            widgetAdapter.ResetVisibilityTracking()
-        end
-        -- See WORLD_TRANSITION_SETTLE_SECONDS' own comment (item 87): the
-        -- reset alone isn't enough -- any confirmation attempt for the next
-        -- few seconds also needs to be distrusted, since a hearth/teleport
-        -- (especially a multi-leg one, like exiting an instanced area) can
-        -- keep producing the same post-loading-screen glitch for more than
-        -- just the first tick, which would otherwise re-arm a fresh (wrong)
-        -- latch right after the reset.
-        local okTime, now = pcall(_G.GetTime)
-        if okTime and type(now) == "number" then
-            worldTransitionAt = now
-        end
+    if isWorldTransition and widgetAdapter and type(widgetAdapter.ResetVisibilityTracking) == "function" then
+        widgetAdapter.ResetVisibilityTracking()
     end
 
     if mapContext.IsRestrictedInstance() then
