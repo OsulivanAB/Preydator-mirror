@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.0.4 - 2026-09-10
+
+A small follow-up with two community-reported-and-fixed bugs.
+
+### Fixed
+- Fixed the default prey icon's "recently shown" fallback signal going permanently dead
+  after 4.0.3's taint fix removed the hook that used to feed it, silently weakening one edge
+  case of the bar's zone-visibility detection. Restored by feeding it from the other, already
+  taint-safe hook instead. Thanks to MetaTheDruid for both finding this and suggesting the
+  exact fix.
+- Fixed a Hunt Scanner achievement-matching helper that had been silently returning no
+  results at all, ever, since it was built — a missing value in how it read one of
+  Blizzard's own API responses meant it was reading the wrong piece of data. Thanks to
+  MetaTheDruid for both finding this and correcting it.
+
 ## 4.0.3 - 2026-09-09
 
 A follow-up refinement to 4.0.2's Settings window fix, plus a zone-detection and a sound fix.

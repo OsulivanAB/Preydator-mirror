@@ -71,7 +71,15 @@ function AchievementAdapter.GetAllCriteria(achievementID)
 
     local criteria = {}
     for index = 1, count do
-        local ok, criteriaString, _, _, _, _, _, _, _, criteriaID =
+        -- Blizzard's real return order is criteriaString, criteriaType,
+        -- completed, quantity, reqQuantity, charName, flags, assetID,
+        -- quantityString, criteriaID, eligible -- criteriaID is the 10th
+        -- value, not the 9th. A missing underscore here (fixed 2026-09-10,
+        -- community report, MetaTheDruid) meant criteriaID was actually
+        -- capturing quantityString (a string), so the type(criteriaID) ==
+        -- "number" check below always failed and this returned zero criteria
+        -- for every achievement, silently.
+        local ok, criteriaString, _, _, _, _, _, _, _, _, criteriaID =
             pcall(GetAchievementCriteriaInfo, achievementID, index)
         if ok and type(criteriaString) == "string" and criteriaString ~= "" and type(criteriaID) == "number" then
             criteria[#criteria + 1] = { criteriaID = criteriaID, label = criteriaString }

@@ -26,24 +26,36 @@ local widgetSnapshot = nil
 local desiredSuppression = false
 local pendingAfterCombat = false
 
--- Timestamp of the last time Blizzard's own code showed the tracked prey-hunt
--- widget frame (see ensureOnShowHooked below) -- kept independent of whether
--- Preydator itself is currently suppressing it. See IsPreyWidgetVisible's
--- comment for why this exists.
+-- Timestamp of the last time Blizzard's own code triggered the Setup mixin
+-- hook below for the tracked prey-hunt widget frame -- kept independent of
+-- whether Preydator itself is currently suppressing it. See
+-- IsPreyWidgetVisible's comment for why this exists.
+--
+-- Was set from a HookScript("OnShow", ...) hook until 2026-09-09 (see the
+-- Setup hook's own comment for why that was removed for tainting unrelated
+-- Blizzard UI) -- permanently dead for a few hours as a result, then restored
+-- (community suggestion, MetaTheDruid, 2026-09-10) by setting it from the
+-- Setup hook instead, which is genuinely taint-safe. Weaker signal than
+-- OnShow was: Setup fires on creation and on some but not all progress
+-- changes, not on every re-show, so the tuning below (measured against
+-- OnShow's own cadence) is a starting point, not re-validated against
+-- Setup's likely-sparser firing pattern yet.
 local lastShownAt = nil
 
--- How long a "Blizzard showed the icon" event stays trusted as still-current
--- for IsPreyWidgetVisible's suppressed-icon fallback path. A first guess (6s,
--- assumed to match PreyContextRuntime's ~2s refresh-tick cadence) was wrong
--- -- /pd zinspect's live trace (2026-09-04) showed Blizzard actually
--- re-triggers OnShow on its own much slower cadence, ~14.6s apart in that
--- sample, not every couple of seconds -- so the 6s window was expiring
--- between real re-shows and flickering resolvedIsOnMap false for roughly
--- half of every cycle even though the player never left the zone. Widened to
--- comfortably clear the observed gap with margin; if Blizzard's real cadence
--- turns out to vary wider than this, the fix is a one-line number change,
--- and /pd zinspect will show the gap directly next time rather than needing
--- to be re-derived from scratch.
+-- How long a "Blizzard (re-)triggered the widget" event stays trusted as
+-- still-current for IsPreyWidgetVisible's suppressed-icon fallback path. A
+-- first guess (6s, assumed to match PreyContextRuntime's ~2s refresh-tick
+-- cadence) was wrong -- /pd zinspect's live trace (2026-09-04, back when this
+-- was fed by the OnShow hook) showed Blizzard actually re-triggers OnShow on
+-- its own much slower cadence, ~14.6s apart in that sample, not every couple
+-- of seconds -- so the 6s window was expiring between real re-shows and
+-- flickering resolvedIsOnMap false for roughly half of every cycle even
+-- though the player never left the zone. Widened to comfortably clear the
+-- observed gap with margin. Now fed by the Setup hook instead (see
+-- lastShownAt's own comment) -- if Setup's own real cadence turns out to need
+-- a different window, the fix is a one-line number change, and /pd zinspect
+-- will show the gap directly next time rather than needing to be re-derived
+-- from scratch.
 local WIDGET_RECENTLY_SHOWN_WINDOW = 20
 
 -- Passive trace of every icon-suppression-relevant event. Built 2026-09-04
@@ -178,14 +190,16 @@ end
 -- secret-value failure processing a vignette countdown widget
 -- (UIWidgetTemplateTextWithState). All three are Blizzard code that has
 -- nothing to do with Preydator's own UI -- exactly the signature of a
--- tainted secure chain, not a direct bad call. Removing this hook trades
+-- tainted secure chain, not a direct bad call. Removing this hook traded
 -- away lastShownAt/WIDGET_RECENTLY_SHOWN_WINDOW's "Blizzard recently
 -- (re-)showed the icon" fallback signal (see IsPreyWidgetVisible's own
 -- comment -- already documented there as "known-weak, not a real fix," for
 -- one narrow zone-shape edge case) in exchange for not corrupting unrelated
 -- Blizzard UI (world map, tooltips, vignettes) for the player. The
 -- taint-safe Setup mixin hook (hooksecurefunc, below) is unaffected and
--- still the primary data source.
+-- still the primary data source -- and now also sets lastShownAt itself
+-- (2026-09-10, community suggestion, MetaTheDruid), restoring a real (if
+-- sparser-firing) version of the same fallback signal without the taint risk.
 
 -- Every widget container name DebugWidgetState's own diagnostic already
 -- checked (built 2026-08-28 specifically because current-patch container
@@ -429,6 +443,18 @@ local function ensureMixinHooked()
             widgetSnapshot = snapshot
         end
 
+        -- Restores a real (if weaker than the removed OnShow hook) signal for
+        -- lastShownAt/IsPreyWidgetVisible's fallback (community suggestion,
+        -- MetaTheDruid, 2026-09-10) -- Setup doesn't fire on every re-show
+        -- the way OnShow did, but hooksecurefunc is genuinely taint-safe (runs
+        -- after the original Setup call returns, in its own execution),
+        -- unlike the OnShow HookScript this replaced, so this is live data
+        -- again instead of permanently dead code.
+        local okTime, now = pcall(_G.GetTime)
+        if okTime and type(now) == "number" then
+            lastShownAt = now
+        end
+
         -- NOTE: never call applyDesiredSuppression()/applyFrameSuppression() from
         -- here -- see the comment on applyDesiredSuppression for why.
         --
@@ -556,18 +582,20 @@ end
 -- fight) -- this function didn't originally account for it at all.
 --
 -- Outside both of those cases (actively suppressed, not in combat), there is
--- NO reliable direct signal -- falls back to "has Blizzard tried to
--- (re-)show it recently" (lastShownAt/WIDGET_RECENTLY_SHOWN_WINDOW). This
--- fallback is known-weak, not a real fix: two separate live /pd zinspect
--- traces (2026-09-04) proved Blizzard does NOT re-trigger OnShow on any
--- predictable cadence while actively suppressed -- one sample showed a
--- 70+ second gap with zero re-triggers -- so widening the window further
--- would just be another guess with no evidence of an actual upper bound.
--- Kept anyway because it's harmless (can only make this function MORE
--- permissive, never less) and still catches the brief window right after a
--- genuine OnShow. The "suppressed AND out of combat AND no recent OnShow"
--- case has no known reliable fix at all right now -- see Decisions Log item
--- 73 for the honest status of this gap.
+-- NO reliable direct signal -- falls back to "has Blizzard (re-)triggered the
+-- widget recently" (lastShownAt/WIDGET_RECENTLY_SHOWN_WINDOW). This fallback
+-- was known-weak even when fed by the old OnShow hook, not a real fix: two
+-- separate live /pd zinspect traces (2026-09-04) proved Blizzard does NOT
+-- re-trigger OnShow on any predictable cadence while actively suppressed --
+-- one sample showed a 70+ second gap with zero re-triggers -- so widening the
+-- window further would just be another guess with no evidence of an actual
+-- upper bound. Now fed by the Setup mixin hook instead (2026-09-10, see
+-- lastShownAt's own comment) -- likely sparser still, since Setup fires on
+-- creation and some but not all progress changes, not on every re-show, so
+-- this remains harmless-but-weak (can only make this function MORE
+-- permissive, never less) rather than a real fix. The "suppressed AND out of
+-- combat AND no recent Setup fire" case has no known reliable fix at all
+-- right now -- see Decisions Log item 73 for the honest status of this gap.
 function WidgetAdapter.IsPreyWidgetVisible()
     ensureMixinHooked()
     captureLiveFrames()
