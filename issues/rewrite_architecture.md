@@ -1619,6 +1619,24 @@ Resolved in review:
     sitting in SavedVariables indefinitely until some unrelated future
     settings change happens to overwrite them.
 
+90. **Live bug report (#23, 2026-09-08): bar jumps to an unexpected position (usually
+    rightward) on drag release, in Edit Mode.** Root-caused (not yet live-confirmed) via
+    code audit of `UI/BarFrame.lua`: item 6's earlier fix for the "bounces while dragging"
+    bug (Section 2b of `issues/session_status.md`) only guarded `BarFrame.ApplyPosition`
+    behind `frame.isDragging` inside `Render()` — it left `frame:SetSize(width, height)`
+    and `frame:SetScale(scale)` running unconditionally on every render, drag or not. Every
+    `Core/State.lua` setter calls `notify()` unconditionally, and `EventRuntime.lua`'s 2s
+    progress ticker calls state setters continuously while a hunt is actively tracked, so a
+    re-render firing mid-drag is routine whenever the player repositions the bar while a
+    hunt is live in the background — exactly the Edit Mode workflow this project's own docs
+    already describe. Calling `SetSize`/`SetScale` on a frame mid-`StartMoving()` disrupts
+    WoW's internal move-tracking, producing the jump on release. **Fixed**: `SetSize`,
+    `SetScale`, and `ApplyPosition` are now all three gated together behind the same
+    `not frame.isDragging` check — every other step in `Render()` reads the frame's own
+    current size via `frame:GetSize()`, so deferring all three together is safe and they
+    apply on the very next render once the drag ends. `luacheck`: 0 warnings/0 errors.
+    **Confirmed live (2026-09-10)** by the product owner — shipped in 4.0.5.
+
 ### 19.1 Deployment & Branching Plan
 
 You raised the real tradeoff correctly: doing this in the current `AddOns\Preydator` folder risks old-code bleed-through while testing (stray files WoW still loads alongside the new ones), but doing it in a totally separate folder means manually shuttling files back into the real git repo when it's done — which throws away history and is exactly the kind of manual, error-prone step this whole rewrite is trying to get away from.

@@ -4,7 +4,7 @@ Preydator is a focused Prey Hunt companion addon for World of Warcraft: a custom
 progress bar, Predator-inspired audio cues, and a Hunt Table panel, all built on real
 Blizzard quest/widget data.
 
-Current release: `v4.0.4` — a bugfix update on top of 4.0.0's complete rewrite of the
+Current release: `v4.0.5` — a bugfix update on top of 4.0.0's complete rewrite of the
 addon on a new, more reliable foundation. See `CHANGELOG.md` for the full list of what's
 new.
 

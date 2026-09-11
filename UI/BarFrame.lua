@@ -552,20 +552,25 @@ function BarFrame.Render(viewModel)
     local orientation = settings.Get("bar.orientation") or "horizontal"
     local width, height, scale = resolveDimensions(orientation, settings)
 
-    frame:SetSize(width, height)
-    frame:SetScale(scale)
-    -- Re-anchor every render, not just on drag/creation: SetPoint's stored
-    -- offset is re-resolved against the frame's CURRENT scale continuously,
-    -- so a scale change alone (no drag) would otherwise visibly shift the
-    -- bar even though the stored absolute position never changed. Skipped
-    -- mid-drag -- StartMoving() already has the frame correctly tracking the
-    -- mouse, and a State/Settings change firing during the drag (routine in
-    -- the ~60s after login while the quest log/zone events settle) would
-    -- otherwise yank the frame back to its last-saved position every time it
-    -- re-renders, fighting the mouse and producing exactly the "bounces
-    -- around while dragging, but only right after login" bug this comment
-    -- is here to prevent someone re-introducing.
+    -- All three of SetSize/SetScale/ApplyPosition are skipped together while
+    -- a drag is in progress. StartMoving() already has the frame correctly
+    -- tracking the mouse, and a State/Settings change firing mid-drag --
+    -- routine in the ~60s after login while the quest log/zone events
+    -- settle, but also anytime a hunt is being actively tracked, since
+    -- EventRuntime's 2s progress ticker calls State setters that always
+    -- notify() -- would otherwise disturb WoW's internal move-tracking.
+    -- ApplyPosition alone was found to cause this (the "bounces around
+    -- while dragging" bug); SetSize/SetScale do too, just less often, which
+    -- is why it took a separate live report (#23: bar jumps to an
+    -- unexpected position, usually rightward, on drag release in Edit
+    -- Mode -- exactly when a player is likely to be repositioning the bar
+    -- while a hunt ticks live in the background) to surface it. Every other
+    -- step below reads the frame's OWN current size via frame:GetSize()
+    -- rather than the locals here, so deferring all three together is safe
+    -- -- they apply together on the very next render once the drag ends.
     if not frame.isDragging then
+        frame:SetSize(width, height)
+        frame:SetScale(scale)
         BarFrame.ApplyPosition(frame)
     end
 

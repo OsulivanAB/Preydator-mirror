@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.5 - 2026-09-10
+
+### Fixed
+- Fixed the bar jumping to an unexpected position (usually to the right) when releasing a
+  drag in Edit Mode. It could get nudged out of place by an ordinary background update —
+  most commonly your progress ticking during an active hunt — landing mid-drag. Thanks to
+  Odysseas68 for reporting.
+
 ## 4.0.4 - 2026-09-10
 
 A small follow-up with two community-reported-and-fixed bugs.
