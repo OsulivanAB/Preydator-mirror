@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.6 - 2026-09-11
+
+### Localization
+- Added full `ruRU` (Russian) localization coverage, expanding from 3 translated strings to
+  comprehensive coverage of UI elements, game mechanics terms, sound/accessibility settings,
+  Hunt Table tracking, and achievement features. Thanks to `ZamestoTV` for the translation
+  (PR #24).
+
 ## 4.0.5 - 2026-09-10
 
 ### Fixed
