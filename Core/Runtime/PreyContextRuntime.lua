@@ -14,6 +14,7 @@
 -- (see zoneResolutionTrace) for /pd zinspect -- not shared/domain state.
 
 local Preydator = _G.Preydator
+local C_Timer = _G.C_Timer
 
 local PreyContextRuntime = {}
 
@@ -175,12 +176,39 @@ end
 -- suppression state at all is correct, and leaves the live in-hunt case
 -- (the setting toggled off mid-hunt) as the only place un-suppression
 -- legitimately happens, which the every-refresh-tick call below still covers.
+--
+-- Deferred one frame via C_Timer.After(0, ...) (2026-09-16, community report,
+-- Holy_Z/MetaTheDruid) -- WidgetAdapter.SuppressDefaultPreyIcon transitively
+-- reaches applyFrameSuppression's SetAlpha/Hide on Blizzard's own prey-widget
+-- frame, which WidgetAdapter's own scheduleDeferredPreyContextRefresh already
+-- treats as unsafe to call un-deferred from inside a hooksecurefunc chain
+-- (see that function's comment). RefreshPreyContext (below) is also called
+-- directly and synchronously from EventRuntime on every CONTEXT_EVENTS event,
+-- including QUEST_LOG_UPDATE -- which can itself fire nested inside a
+-- Blizzard secure call chain (e.g. the World Map's own pin reacquisition on
+-- close), the same class of shared-secure-execution taint already root-caused
+-- for the removed OnShow hook (WidgetAdapter.lua's own history comment).
+-- Deferring here, the one place every RefreshPreyContext caller funnels
+-- through (the ticker, both EventRuntime call sites, and the Setup hook's own
+-- already-deferred path), closes all of them at once rather than needing each
+-- call site to separately remember to defer. Reads the setting fresh inside
+-- the deferred callback rather than capturing it now, so a setting change
+-- that lands in the same frame this was scheduled still takes effect.
 local function applyIconSuppression(widgetAdapter, settings)
     if not widgetAdapter or type(widgetAdapter.SuppressDefaultPreyIcon) ~= "function" then
         return
     end
-    local desiredSuppress = settings and settings.Get("general.disable_default_prey_icon") == true
-    widgetAdapter.SuppressDefaultPreyIcon(desiredSuppress == true)
+
+    local function apply()
+        local desiredSuppress = settings and settings.Get("general.disable_default_prey_icon") == true
+        widgetAdapter.SuppressDefaultPreyIcon(desiredSuppress == true)
+    end
+
+    if not (C_Timer and type(C_Timer.After) == "function") then
+        apply()
+        return
+    end
+    C_Timer.After(0, apply)
 end
 
 -- Single source of truth for "should this quest be considered in the prey

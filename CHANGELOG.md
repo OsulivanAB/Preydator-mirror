@@ -1,6 +1,20 @@
 # Changelog
 
-## 4.0.6 - 2026-09-11
+## 4.0.7 - 2026-09-16
+
+### Fixed
+- Deferred the default prey icon's suppression call by one frame when it's triggered by a
+  quest/zone event (`QUEST_LOG_UPDATE` and the other context events), matching the same
+  taint-safety pattern already used for the widget's own Setup hook. Follow-up to Holy_Z's
+  4.0.6 `ADDON_ACTION_BLOCKED` report (community diagnosis: MetaTheDruid) — that fix
+  converted two other hooks but missed that `RefreshPreyContext` itself still called the
+  suppression path synchronously and un-deferred from this event, which can fire nested
+  inside the World Map's own pin reacquisition when it closes. Still not confirmed as the
+  actual cause of that report (a further live attempt to reproduce it did not succeed), but
+  it's a real gap in the same class of issue, so closing it is a no-downside hardening
+  regardless. If you still see this error, please let us know.
+
+## 4.0.6 - 2026-09-15
 
 ### Localization
 - Added full `ruRU` (Russian) localization coverage, expanding from 3 translated strings to
