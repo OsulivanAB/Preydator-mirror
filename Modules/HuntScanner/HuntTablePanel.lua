@@ -21,6 +21,7 @@
 local Preydator = _G.Preydator
 local CreateFrame = _G.CreateFrame
 local UIParent = _G.UIParent
+local hooksecurefunc = _G.hooksecurefunc
 
 local HuntTablePanel = {}
 
@@ -717,12 +718,22 @@ do
     -- sense while Settings is open to compare against. settings.Set already
     -- notifies the Settings.Subscribe above, which re-renders (and hides,
     -- since preview is now off) -- no separate RequestRender() needed in
-    -- that branch. Same established, taint-safe hook pattern as
-    -- UI/BarFrame.lua's EditModeManagerFrame hook.
+    -- that branch.
+    --
+    -- hooksecurefunc(frame, "Show"/"Hide", ...), not HookScript("OnShow"/
+    -- "OnHide", ...) -- switched 2026-09-15 (see UI/BarFrame.lua's
+    -- EditModeManagerFrame hook for the full reasoning). This function used
+    -- to call the HookScript version here "the same established, taint-safe
+    -- hook pattern" -- that belief predates the 2026-09-09 discovery
+    -- (Core/Adapters/WidgetAdapter.lua) that HookScript on a Blizzard-owned
+    -- frame's script handler is NOT taint-safe, it just hadn't caused a
+    -- reported error from this specific call site yet. hooksecurefunc runs
+    -- after Blizzard's original Show()/Hide() call returns, in its own
+    -- separate execution, which is the genuinely safe pattern.
     local settingsFrame = _G.SettingsPanel
-    if settingsFrame and settingsFrame.HookScript then
-        settingsFrame:HookScript("OnShow", HuntTablePanel.RequestRender)
-        settingsFrame:HookScript("OnHide", function()
+    if settingsFrame and type(hooksecurefunc) == "function" then
+        pcall(hooksecurefunc, settingsFrame, "Show", HuntTablePanel.RequestRender)
+        pcall(hooksecurefunc, settingsFrame, "Hide", function()
             local settings = getSettings()
             if settings and settings.Get("hunt.preview_enabled") == true then
                 settings.Set("hunt.preview_enabled", false)

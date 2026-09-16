@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.7 - 2026-09-15
+
+### Fixed
+- Converted two remaining internal hooks (on Edit Mode and on the Settings window) away
+  from a pattern that can interfere with unrelated Blizzard UI in rare cases, matching the
+  fix already made for the World Map/tooltip/vignette issue in 4.0.3. Prompted by another
+  ADDON_ACTION_BLOCKED report while closing the World Map during an active hunt (thanks
+  again to Holy_Z for reporting) — not confirmed as the fix for that specific report (a
+  90-minute live test toggling the World Map repeatedly during an active hunt, including
+  real ambush triggers, could not reproduce it), but both hooks used the same
+  since-proven-unsafe pattern the 4.0.3 fix removed elsewhere, so converting them is a
+  no-downside hardening regardless. If you still see this error, please let us know.
+
+### Internal
+- Removed `HuntTableAdapter.OpenHuntDialog` — dead code, never wired to anything in the
+  panel. No behavior change.
+
 ## 4.0.6 - 2026-09-11
 
 ### Localization

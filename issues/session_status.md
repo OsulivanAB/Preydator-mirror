@@ -1,8 +1,92 @@
 # Preydator Rewrite — Session Status / Handoff
 
-Last updated: 2026-09-06. Read this before doing anything else in a fresh session — it's
-the fastest way back to full context after a restart. This supplements, not replaces,
-`CLAUDE.md` Section 0's reading list.
+**Updated 2026-09-15 — read this block first, it supersedes the "Last updated: 2026-09-06"
+framing below (stale; four more versions have shipped since, 4.0.1 through 4.0.6, see
+`CHANGELOG.md`).**
+
+**New player report today (Holy_Z, same reporter as the 4.0.3 World Map taint fix):**
+`3x [ADDON_ACTION_BLOCKED]` — `Button:SetPassThroughButtons()` — while closing the World
+Map (`TOGGLEWORLDMAP`) during an active hunt (gathering herbs). Stack trace is 100%
+Blizzard-internal (`HideUIPanel` → `QuestLogOwnerMixin` → `UIParentPanelManager` →
+`QuestDataProvider:AddQuest` → `AcquirePin` → `CheckMouseButtonPassthrough` →
+`SetPassThroughButtons`) — same taint signature as the bug fixed in 4.0.3 (also reported by
+Holy_Z: `ADDON_ACTION_BLOCKED` on `SetPropagateMouseClicks` while *opening* the World Map,
+root-caused to a `HookScript("OnShow", ...)` on Blizzard's shared `UIWidget*ContainerFrame`
+frames in `Core/Adapters/WidgetAdapter.lua`, since removed).
+
+Investigated this session (no live-game access available — code review only, not yet
+live-tested). `WidgetAdapter.lua`'s own Setup-hook code correctly defers all suppression
+side-effects via `C_Timer.After(0, ...)`, so that file is not implicated this time. Found
+two remaining `HookScript("OnShow"/"OnHide", ...)` sites on shared Blizzard frames —
+`UI/BarFrame.lua`'s `EditModeManagerFrame` hook and
+`Modules/HuntScanner/HuntTablePanel.lua`'s `_G.SettingsPanel` hook — both previously
+commented as "the same established, taint-safe hook pattern," which is now known to be
+wrong per `WidgetAdapter.lua`'s own updated 2026-09-09 reasoning (HookScript on a
+Blizzard-owned frame's script handler runs inside whatever call chain triggered Show()/
+Hide(), tainting it downstream, regardless of how harmless the callback itself is).
+**Neither frame actually appears in Holy_Z's stack trace**, so this is circumstantial
+pattern-matching, not a confirmed root cause — converted both to `hooksecurefunc(frame,
+"Show"/"Hide", ...)` anyway (the same genuinely taint-safe pattern already proven for the
+widget mixin's `Setup` hook) as a no-downside hardening, `luacheck` clean (0/0, both files),
+but **this is not yet confirmed as the actual fix** — needs a live repro from the product
+owner or another report from Holy_Z to close out. If it recurs after this ships, the next
+step is the standard elimination method (memory `preydator-taint-elimination-method`):
+get every trigger variant nailed down live, then bisect further — the remaining candidates
+if this fix doesn't hold are anything else that touches Blizzard's `UIParentPanelManager`/
+Edit Mode integration, which neither of the two hooks converted here was confirmed to be
+part of.
+
+**Follow-up same day, product owner testing in progress.** Live findings narrow this down
+further, with one dead end corrected in the process:
+1. **90 minutes of gathering, repeatedly opening/closing the World Map with an active hunt
+   tracked, did not reproduce Holy_Z's error.** This is the exact code path in Holy_Z's
+   stack trace (`ToggleWorldMap` → `UIParentPanelManager`), tested more thoroughly than the
+   single incident, with no repro — tempers confidence that the `EditModeManagerFrame`/
+   `SettingsPanel` hook conversion (shipped above) is the *sole* explanation, though it's a
+   no-downside hardening regardless of whether it's the actual fix.
+2. **Dead end, corrected:** initially reasoned that "opening the Hunt Table auto-closes the
+   World Map, and vice versa" (Blizzard's `UIParentPanelManager` treats them as
+   mutually-exclusive panels) meant a repro should specifically switch between the two. The
+   product owner corrected this — the Hunt Table can only be interacted with at its one
+   fixed physical location (a building in the city), which cannot be reached while
+   gathering, so Holy_Z's report (out gathering herbs) cannot have involved the Hunt Table
+   at all. Moot anyway on reflection: plain World Map open/close alone already goes through
+   the same `UIParentPanelManager` chain shown in the trace, Hunt Table or not, so no new
+   repro condition survives from this angle.
+3. **Also cleared by live behavior, not just code review:** the 90-minute test included 3
+   real nameplate-based triggers (2 true prey ambush, 1 Pack Ambush scout) — so
+   `Core/Runtime/AlertsRuntime.lua`'s `NAME_PLATE_UNIT_ADDED` handling (sound playback, bar
+   text swap, `State` writes) fired for real, layered on top of the repeated map toggling,
+   with no repro. That file was already clean on code review (plain `RegisterEvent`/
+   `OnEvent`, never touches a Blizzard secure frame) — this confirms it live too.
+
+No further code-level candidate identified after this pass. Further one-sided code review
+has diminishing returns without a reliable repro — next useful step is more detail from
+Holy_Z directly if the product owner can get it (does it happen every time they close the
+map during a hunt, or only sometimes; their full addon list, in case another addon holds
+the taint that a Preydator API call merely triggers).
+
+Also audited the rest of the codebase this session for other taint vectors (full sweep:
+every `HookScript`/`hooksecurefunc`/`SetAttribute`/shared-global-table-write/secure-frame
+pattern across every file). One more candidate found and assessed:
+`HuntTableAdapter.AcceptHunt`/`GetRewardWidgets` ([Modules/HuntScanner/HuntTableAdapter.lua](../Modules/HuntScanner/HuntTableAdapter.lua))
+drive `_G.AdventureMapQuestChoiceDialog` directly (`SetAlpha`/`ClearAllPoints`/`SetPoint`/
+`Hide`/`ShowWithQuest`/`AcceptQuest`) off-screen to accept hunts without a visible dialog
+flash — initiated by Preydator's own code, so architecturally the same class of risk as the
+already-fixed bug. **De-prioritized, not ruled out:** product owner confirmed live (same
+day) that both the Preydator panel's Accept button and native Hunt Table Accept have been
+exercised repeatedly since 4.0.0 shipped (2026-09-06) with zero errors — real, ongoing
+evidence against this being the cause, even though it wasn't specifically instrumented.
+`HuntTableAdapter.OpenHuntDialog` (same file, same dialog-driving pattern, but literally
+dead code — confirmed zero callers anywhere) was removed outright, no behavior change,
+`luacheck` clean.
+
+---
+
+Last updated: 2026-09-06 (historical framing below, superseded by the block above). Read
+this before doing anything else in a fresh session — it's the fastest way back to full
+context after a restart. This supplements, not replaces, `CLAUDE.md` Section 0's reading
+list.
 
 **Start here, not at Section 0 below (that's the 2026-09-02 session's own summary, kept
 for history):** four commits now exist on this branch (`e09e583`, `c74fb36`, `440e291`,
@@ -137,22 +221,26 @@ yet; everything since the rewrite began is still sitting in the working tree.
 
 ## 1. Where the code actually lives right now
 
+**Updated 2026-09-10 — this section was stale (described a pre-commit, pre-push state
+that no longer applies). Current reality:**
+
 - **`AddOns\Preydator`** (this folder — where WoW loads from) is git-linked to branch
-  **`rewrite/v2-architecture`**, not `main`. Run `git branch --show-current` to confirm if
-  unsure; don't assume `main` just because that's the usual default.
-- **`D:\Dev\PreydatorLive`** — a separate worktree holding branch `main` (the live/stable
-  shipped code), untouched, as a fallback/backup. Contains the real `.git` storage (it's
-  the "main worktree" in git terms).
+  **`rewrite/v2-architecture`**. This is the sole active development/testing/release
+  location going forward. Run `git branch --show-current` to confirm if unsure.
+- Every 4.0.x commit (4.0.0 through 4.0.5) lives on this branch, and as of 2026-09-10 it's
+  been fast-forward-pushed straight to **`origin/main` on GitHub** (`git push origin
+  HEAD:main`) — `origin/main` and this branch's tip are now the same commit.
+- **`D:\Dev\PreydatorLive`** (a separate worktree holding a local `main` branch, and the
+  physical location of this repo's real `.git` storage) is **no longer used** — the
+  product owner confirmed all testing now happens directly in `AddOns\Preydator`. Left on
+  disk untouched (do not delete without first migrating `.git` storage — see memory
+  `preydator-worktree-setup` and `git-worktree-move-gotchas`). Its local `main` ref is
+  stale/behind `origin/main` and should be ignored, not treated as a source of truth.
 - **`D:\Dev\PreydatorRewrite`** — a stale, orphaned plain-file duplicate, no longer
   git-linked to anything. Safe to delete whenever; low priority.
-- Everything below is **staged in git but not committed**. Nothing has been pushed
-  anywhere. Confirm current staged state with `git status --short` before continuing —
-  don't trust this list blindly if time has passed.
-
-If `AddOns\Preydator` needs to flip back to `main` for real testing/release at some
-point, see the "Deployment & Branching Plan" in `issues/rewrite_architecture.md` Section
-19.1, and the mechanics/pitfalls in this session's memory (`git-worktree-move-gotchas` —
-GitHub Desktop holds locks on this folder; close it before any move/rename attempt).
+- Confirm current state with `git status --short` / `git log --oneline -5` before
+  continuing regardless of the above — don't trust this snapshot blindly if more time has
+  passed.
 
 ---
 

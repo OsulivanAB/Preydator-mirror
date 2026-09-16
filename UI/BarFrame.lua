@@ -16,6 +16,7 @@ local Preydator = _G.Preydator
 local CreateFrame = _G.CreateFrame
 local GetLocale = _G.GetLocale
 local UIParent = _G.UIParent
+local hooksecurefunc = _G.hooksecurefunc
 
 local BarFrame = {}
 
@@ -602,16 +603,37 @@ do
         Settings.Subscribe(BarFrame.RequestRender)
     end
 
-    -- Event-driven, not polled: hooks Blizzard's own show/hide scripts once,
+    -- Event-driven, not polled: hooks Blizzard's own Show/Hide methods once,
     -- instead of re-checking EditModeManagerFrame:IsShown() on every render
     -- pass the way the old code did in three separate places. If
     -- Blizzard_EditMode hasn't loaded yet at this point, the bar simply won't
     -- force-show during Edit Mode until the next reload -- a minor known gap,
     -- not a crash risk (guarded, no error).
+    --
+    -- hooksecurefunc(frame, "Show"/"Hide", ...), not HookScript("OnShow"/
+    -- "OnHide", ...) -- switched 2026-09-15 after a player report
+    -- (Holy_Z, ADDON_ACTION_BLOCKED on SetPassThroughButtons while closing
+    -- the World Map) matched the exact taint signature already root-caused
+    -- and fixed once in Core/Adapters/WidgetAdapter.lua (2026-09-09/4.0.3,
+    -- also reported by Holy_Z): HookScript on a Blizzard-owned frame's own
+    -- script handler runs the callback INSIDE whatever call chain triggered
+    -- Show()/Hide() on that frame, tainting it downstream even if the
+    -- callback itself does nothing dangerous. This comment used to call this
+    -- "the same taint-safe hook pattern" -- that was true only by the
+    -- pre-2026-09-09 understanding; WidgetAdapter.lua's Setup hook comments
+    -- now document why HookScript on a shared/secure-adjacent Blizzard frame
+    -- is NOT safe. hooksecurefunc(frame, "Show", handler) runs the handler
+    -- AFTER Blizzard's original Show() call returns, in its own separate
+    -- execution, which is the genuinely taint-safe pattern already proven
+    -- out for the widget mixin's Setup hook. Not yet live-confirmed as the
+    -- fix for this specific report -- EditModeManagerFrame was never
+    -- directly implicated in Holy_Z's stack trace, only ruled "innocent" for
+    -- a different (StaticPopupDialogs) taint bug -- but converting away from
+    -- HookScript here is a no-downside hardening regardless.
     local editModeFrame = _G.EditModeManagerFrame
-    if editModeFrame and editModeFrame.HookScript then
-        editModeFrame:HookScript("OnShow", BarFrame.RequestRender)
-        editModeFrame:HookScript("OnHide", BarFrame.RequestRender)
+    if editModeFrame and type(hooksecurefunc) == "function" then
+        pcall(hooksecurefunc, editModeFrame, "Show", BarFrame.RequestRender)
+        pcall(hooksecurefunc, editModeFrame, "Hide", BarFrame.RequestRender)
     end
 
     -- SavedVariables (and therefore every Settings.Get value) aren't
