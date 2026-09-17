@@ -29,6 +29,21 @@ local HuntTablePanel = {}
 -- (difficulty/zone buckets) alongside the real hunts.
 local MAX_ROWS = 24
 local ROW_HEIGHT = 56
+local ROW_SPACING = 4
+-- Some target names don't fit ROW_HEIGHT's single-line budget and wrap to a
+-- 2nd line (issue #23 -- e.g. Russian localization's longer strings, but not
+-- locale-specific: any long enough title wraps, and a large hunt.font_size
+-- alone can also outgrow ROW_HEIGHT with no wrap at all -- live-tested,
+-- 2026-09-17). row.icon used to sit vertically CENTERED in the row, which
+-- made "how tall does the row need to be" and "where does the icon (and
+-- therefore name/zone/reward icons, all chained off it) sit" circularly
+-- dependent on each other -- growing the row shifted the icon, which shifted
+-- the content, which needed a different row height, etc. row.icon is now
+-- TOP-anchored instead (see createRow) so content position is purely
+-- height-independent, and measureRowContentHeight() below can just measure
+-- the real rendered extent of icon/name/zone/reward-icons and size the row
+-- to fit -- no guessed constant, correct at any font size or wrap count.
+-- (REWARD_ROW_GAP, used by that measurement, is declared further down.)
 -- Group header rows (hunt.group_by, Decisions Log item 48) are shorter than
 -- a real hunt row -- just a clickable collapse/expand label, no icon/reward/
 -- accept content.
@@ -38,7 +53,6 @@ local GROUP_HEADER_HEIGHT = 24
 -- crisp icon at small sizes -- more display size (still within ROW_HEIGHT)
 -- reduces how much that shows without changing the crop.
 local ICON_SIZE = 48
-local ROW_SPACING = 4
 
 -- Three separate, pre-cropped files (2026-08-27) replace the original
 -- shared-sheet-plus-texcoord approach -- that needed two rounds of
@@ -101,6 +115,11 @@ local ACHIEVEMENT_ANCHOR_HEIGHT = 20
 -- extends past it symmetrically (a Texture isn't clipped by its parent
 -- frame's bounds), using the same free space above the Accept button.
 local ACHIEVEMENT_ICON_SIZE = 32
+
+-- Vertical gap between row.zoneText's actual bottom (wrap-aware) and the
+-- reward-icon row anchored below it -- tuned to approximate the original
+-- fixed icon-bottom-anchored gap at the default row height/font size.
+local REWARD_ROW_GAP = 14
 
 local panel = nil
 local rows = {}
@@ -183,7 +202,12 @@ local function createRow(scrollChild)
 
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(ICON_SIZE, ICON_SIZE)
-    row.icon:SetPoint("LEFT", row, "LEFT", ROW_SPACING, 0)
+    -- TOPLEFT, not vertically-centered LEFT -- see ROW_FOOTER_HEIGHT's
+    -- comment for why. At the default ROW_HEIGHT (56) this offset
+    -- reproduces the exact same position centering used to give
+    -- ((56 - 48) / 2 = 4 = ROW_SPACING), so the untouched single-line/
+    -- default-font layout is visually unchanged.
+    row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", ROW_SPACING, -ROW_SPACING)
 
     row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.nameText:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -2)
@@ -244,7 +268,10 @@ local function createRow(scrollChild)
         if previousRewardIcon then
             rewardIcon:SetPoint("LEFT", previousRewardIcon, "RIGHT", REWARD_SLOT_SPACING, 0)
         else
-            rewardIcon:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 0)
+            -- Real anchor is (re)applied every render in applyRow, relative
+            -- to row.zoneText's actual bottom -- this is just a sane initial
+            -- position before the first render ever runs.
+            rewardIcon:SetPoint("TOPLEFT", row.zoneText, "BOTTOMLEFT", 0, -REWARD_ROW_GAP)
         end
 
         rewardIcon.texture = rewardIcon:CreateTexture(nil, "ARTWORK")
@@ -381,6 +408,14 @@ local function applyRow(row, hunt)
     row.nameText:SetText(hunt.title or "")
     row.zoneText:SetText(resolveZoneName(hunt.zoneMapID))
 
+    -- Always anchored off row.zoneText's actual bottom now, not row.icon's --
+    -- zoneText already tracks nameText's real (possibly wrapped) height via
+    -- its own anchor, so this one anchor is correct whether the name wraps
+    -- or not, at any font size, with no separate "did it wrap" branch to
+    -- keep in sync (issue #23; REWARD_ROW_GAP's comment has the tuning note).
+    row.rewardIcons[1]:ClearAllPoints()
+    row.rewardIcons[1]:SetPoint("TOPLEFT", row.zoneText, "BOTTOMLEFT", 0, -REWARD_ROW_GAP)
+
     -- hunt.reward_display_style (corrected 2026-09-02 -- the two were
     -- swapped from what their names say): icon_inline (default) is icons
     -- only, no quantity number in the row -- hover for it; icon_count is
@@ -404,6 +439,35 @@ local function applyRow(row, hunt)
     end)
 
     row:Show()
+end
+
+-- How tall this row needs to be to fit its current content -- must be
+-- called after applyRow (or applyRewardIcons) has already set/anchored
+-- everything, since it measures the row's REAL rendered extent rather than
+-- assuming ROW_HEIGHT. row.icon is TOP-anchored (see createRow), so its own
+-- GetTop() is a stable reference regardless of the row's current height, and
+-- row.rewardIcons[1] is always the lowest real content (anchored below
+-- row.zoneText, itself below the possibly-wrapped row.nameText). Falls back
+-- to ROW_HEIGHT if a freshly-created row hasn't been laid out yet (GetTop/
+-- GetBottom can come back nil before a frame's anchors have ever resolved).
+--
+-- Deliberately does NOT add extra room for the achievement badge/Accept
+-- button below the reward icons -- that footer is anchored to the row's own
+-- bottom-RIGHT corner, sharing the same vertical band as the reward icons
+-- (which run left-to-right starting next to the difficulty icon), not
+-- stacked underneath them. A first version of this function added a fixed
+-- "footer clearance" on the assumption they needed vertical separation --
+-- live-tested (2026-09-17), that just left a large empty gap above the
+-- Accept button on every row instead of fixing anything, since the footer
+-- already fits inside ROW_HEIGHT-sized rows the same way it always did.
+local function measureRowContentHeight(row)
+    local top = row.icon:GetTop()
+    local bottom = row.rewardIcons[1]:GetBottom()
+    if not (top and bottom) then
+        return ROW_HEIGHT
+    end
+    local contentHeight = math.ceil((top - bottom) + (2 * ROW_SPACING))
+    return math.max(ROW_HEIGHT, contentHeight)
 end
 
 -- Group header row (hunt.group_by) -- a clickable label toggling
@@ -665,12 +729,15 @@ function HuntTablePanel.Render(huntList)
         if entry then
             local isHeader = entry.isGroupHeader == true
             local rowHeight = isHeader and GROUP_HEADER_HEIGHT or ROW_HEIGHT
-            row:SetHeight(rowHeight)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", panel.scrollChild, "TOPLEFT", 0, -yOffset)
-            row:SetPoint("RIGHT", panel.scrollChild, "RIGHT", 0, 0)
-            yOffset = yOffset + rowHeight
 
+            -- Content (text/fonts) is applied BEFORE the row's own height/
+            -- position are finalized below -- applyRow() needs to run first
+            -- so measureRowContentHeight() can measure the row's real
+            -- rendered extent and this loop can grow rowHeight to match
+            -- before positioning this row and accumulating yOffset for the
+            -- next one. Row width is already fixed (anchored to
+            -- panel.scrollChild at row creation, independent of height), so
+            -- this reordering is safe.
             if isHeader then
                 applyGroupHeaderRow(row, entry)
             else
@@ -679,7 +746,14 @@ function HuntTablePanel.Render(huntList)
                 local zoneFont, _, zoneFlags = row.zoneText:GetFont()
                 row.zoneText:SetFont(zoneFont, math.max(8, fontSize - 2), zoneFlags)
                 applyRow(row, entry)
+                rowHeight = measureRowContentHeight(row)
             end
+
+            row:SetHeight(rowHeight)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", panel.scrollChild, "TOPLEFT", 0, -yOffset)
+            row:SetPoint("RIGHT", panel.scrollChild, "RIGHT", 0, 0)
+            yOffset = yOffset + rowHeight
         else
             row:Hide()
         end

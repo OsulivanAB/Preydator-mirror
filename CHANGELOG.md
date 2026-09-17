@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.0.8 - 2026-09-17
+
+### Fixed
+- Fixed the bar drifting away from its saved position on drag-release/Edit Mode whenever
+  its own Horizontal/Vertical Scale setting wasn't exactly 1.0 (direction of the drift
+  flipped depending on whether the scale was above or below 1.0) — issue #23, reported by
+  Odysseus68 and montezej. Root cause: saving the bar's position mixed screen coordinates
+  from two frames (the bar and the game's own UI root) that are measured in different units
+  whenever the bar's own scale isn't 1.0, without converting between them first. Not yet
+  live-tested by us — please let us know if this doesn't fully resolve it, especially the
+  Edit Mode case Odysseus68 flagged separately.
+- Fixed a long target name (e.g. some Russian-localization titles, or any name at a larger
+  Font Size) wrapping to a 2nd line and overlapping the reward icons/zone name instead of the
+  row growing to make room. Reported by unplayed. Live-tested by the product owner
+  (2026-09-17) through two rounds:
+  1. A first pass didn't actually move the reward-icon row — root cause was that the row's
+     icon sits vertically centered, so the reward icons and the row's own height were each
+     shifting independently instead of together. Re-fixed by anchoring the icon to the row's
+     top and sizing the row from its real measured content instead of a guessed extra amount.
+  2. That re-fix then left a large empty gap above the Accept button on every row (reported
+     via a screenshot at Font Size 15) — it had wrongly assumed the achievement badge/Accept
+     button needed dedicated vertical space below the reward icons, when they actually sit in
+     the same row alongside them (reward icons run left-to-right from the difficulty icon;
+     the badge/button anchor to the row's bottom-right corner) rather than stacked beneath.
+     Removed that extra clearance. Confirmed live by the product owner (2026-09-17) —
+     looks correct now.
+
 ## 4.0.7 - 2026-09-16
 
 ### Fixed

@@ -461,9 +461,27 @@ function BarFrame.SavePosition(frame)
         return
     end
 
+    -- GetCenter() returns each frame's center in ITS OWN "frame scaled"
+    -- coordinate system -- one unit there equals that frame's own effective
+    -- scale in root/screen units (see Warcraft Wiki "UI coordinates"). frame
+    -- and UIParent have different effective scales whenever this frame's own
+    -- scale isn't exactly 1.0, so frameCenterX/Y and parentCenterX/Y are in
+    -- two different unit systems and can't be subtracted directly -- doing
+    -- so (the previous code) silently dropped the frame's own scale factor
+    -- from one side of the subtraction only. That's invisible at scale 1.0
+    -- (a no-op factor) but produces a position error proportional to
+    -- (1 - scale) at any other scale -- shrinking the offset at scale > 1
+    -- (drifts toward center/UIParent's origin corner, i.e. down-left) and
+    -- growing it at scale < 1 (drifts away, i.e. up-right) -- exactly the
+    -- direction-flips-with-scale drag/Edit-Mode drift reported in #23.
+    -- Multiplying frameCenterX/Y by this frame's own current scale first
+    -- converts it into UIParent's coordinate system before subtracting,
+    -- matching the inverse of ApplyPosition's own "/ scale" conversion back.
+    local scale = currentFrameScale(frame)
+
     -- Absolute (UIParent-space) position -- what actually gets persisted.
-    local x = frameCenterX - parentCenterX
-    local y = frameCenterY - parentCenterY
+    local x = (frameCenterX * scale) - parentCenterX
+    local y = (frameCenterY * scale) - parentCenterY
 
     x, y = clampToScreen(frame, x, y)
 
