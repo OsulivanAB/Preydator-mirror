@@ -1,5 +1,29 @@
 # Changelog
 
+## 4.0.9 - 2026-09-20
+
+### Fixed
+- Fixed a taint bug that could corrupt the World Map/minimap tooltip system for the rest of
+  your session — after it happened, hovering completely unrelated map pins (anywhere, in any
+  zone, with no Preydator interaction at all) could throw repeated `"secret number"`/
+  arithmetic errors "tainted by 'Preydator'" out of Blizzard's own tooltip and UIWidget code.
+  Reported by Holy_Z (turn in a prey, accept a new one, abandon it) and reproduced directly
+  by the product owner (mousing over an unrelated World Map icon in Silvermoon City with no
+  active Preydator interaction). Root cause: building the Hunt Table's reward preview for a
+  quest with a container-type reward (a mystery chest) used Blizzard's own embedded
+  item-preview widget builder against the real, shared `GameTooltip` — which left that
+  tooltip's widget subsystem permanently tainted, not just for that one call. Fixed by
+  skipping that reward-preview build entirely whenever the quest has a bonus item/chest
+  reward (`Core/Adapters/QuestApiAdapter.lua`) — the Hunt Table already shows a generic
+  mystery-chest icon for those rewards regardless, so nothing is lost. Live-confirmed by the
+  product owner (2026-09-20): full turn-in/accept/abandon cycle plus a completed third hunt,
+  repeated map hovering, no recurrence.
+- Note: a separate, unrelated `SetPadding`/"Secret values" error reported while hovering
+  Bountiful Delve map highlights was investigated alongside this fix and confirmed to be a
+  Blizzard client-side bug, not caused by Preydator or any addon (reproduced by the product
+  owner with Preydator fully inactive). No action taken; nothing in Preydator touches Bountiful
+  Delve highlights or `AreaPoiUtil.lua`.
+
 ## 4.0.8 - 2026-09-17
 
 ### Fixed
@@ -8,9 +32,11 @@
   flipped depending on whether the scale was above or below 1.0) — issue #23, reported by
   Odysseus68 and montezej. Root cause: saving the bar's position mixed screen coordinates
   from two frames (the bar and the game's own UI root) that are measured in different units
-  whenever the bar's own scale isn't 1.0, without converting between them first. Not yet
-  live-tested by us — please let us know if this doesn't fully resolve it, especially the
-  Edit Mode case Odysseus68 flagged separately.
+  whenever the bar's own scale isn't 1.0, without converting between them first.
+  Live-tested by the product owner (2026-09-17), including changing the scale: could not
+  reproduce any drift, consistent with the fix resolving it. Odysseus68's separate Edit
+  Mode report (their own suggested patch, applied, still didn't resolve it for them) is
+  not independently confirmed fixed yet — please let us know if it recurs.
 - Fixed a long target name (e.g. some Russian-localization titles, or any name at a larger
   Font Size) wrapping to a 2nd line and overlapping the reward icons/zone name instead of the
   row growing to make room. Reported by unplayed. Live-tested by the product owner

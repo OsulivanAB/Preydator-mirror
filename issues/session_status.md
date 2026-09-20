@@ -1,8 +1,55 @@
 # Preydator Rewrite — Session Status / Handoff
 
-**Updated 2026-09-15 — read this block first, it supersedes the "Last updated: 2026-09-06"
-framing below (stale; four more versions have shipped since, 4.0.1 through 4.0.6, see
-`CHANGELOG.md`).**
+**Updated 2026-09-20 — read this block first, it supersedes the 2026-09-15 framing below
+(that block's own report is now resolved; see immediately below). Five more versions have
+shipped since (4.0.5 through 4.0.9, see `CHANGELOG.md`).**
+
+**RESOLVED, shipped 4.0.9: the persistent GameTooltip-taint bug (Holy_Z, this session's
+`SetPassThroughButtons`/World Map report below turned out to be the same underlying class,
+not a separate cause).** Root cause, finally nailed down via a live, on-demand repro (a
+first for this bug class — every prior report/fix in this doc was code-review-driven,
+never independently reproduced before shipping): `Core/Adapters/QuestApiAdapter.lua`'s
+`GetQuestRewardSummary`/`getRewardTooltipLines`, used by `HuntScannerRuntime`'s reward-cache
+warm-up, calls Blizzard's `QuestUtils_AddQuestRewardsToTooltip` against the real, shared
+`_G.GameTooltip` (not a private one — a private tooltip previously crashed on container-type
+rewards, see that function's own comment). When the quest's reward includes a container-type
+item (a mystery chest — confirmed live via a crash showing `itemName="Preyseeker's Champion
+Chest"` in the tainted widget's locals), that call builds Blizzard's own embedded
+item-preview widget, which leaves the GameTooltip's widget subsystem **permanently tainted
+by 'Preydator' for the rest of the session** — not just for that one call. Every later
+Blizzard tooltip anywhere that uses a widget set (any AreaPOI map pin, in any zone, with zero
+further Preydator interaction) then throws `"secret number"`/arithmetic taint errors. This is
+a different, more severe mechanism than the HookScript taint class fixed across
+4.0.3/4.0.6/4.0.7 (call-chain taint, one-shot, already covered by `WidgetAdapter.lua`'s
+comments) — this one contaminates the shared object itself.
+
+Fixed (`Core/Adapters/QuestApiAdapter.lua`, `GetQuestRewardSummary`) by checking
+`hasBonusItemReward` first and skipping `getRewardTooltipLines()` entirely whenever the quest
+has an item/container reward slot — `HuntTablePanel.lua` already renders a generic
+mystery-chest icon for that case regardless (see `MYSTERY_REWARD_ICON`), so nothing is lost
+for the common case; the only tradeoff is losing a separate currency/XP icon on the rare hunt
+that has both a bonus item and a distinct currency/XP reward. `luacheck` clean (0/0).
+**Live-confirmed by the product owner (2026-09-20):** full turn-in → accept → abandon cycle,
+a completed third hunt, repeated return-to-Silvermoon map hovering — no recurrence. Shipped
+as 4.0.9.
+
+**Also investigated same session, ruled NOT Preydator:** a `SetPadding`/"Secret values are
+only allowed during untainted execution" error (`Blizzard_FrameXMLUtil/AreaPoiUtil.lua:65`),
+reported while hovering Bountiful Delve map highlights specifically. No addon named in the
+error (`debugstack()`/`debuglocals()` both redacted as secrets, unlike every Preydator-tainted
+error in this doc, which always names `'Preydator'` explicitly) — confirmed unrelated via a
+full-codebase grep (zero references to `AreaPoiUtil`, `SetPadding`, `Bountiful`, or delve-map
+pins/highlights anywhere in Preydator; the only "delve" code that exists is
+`MapContextAdapter.lua`'s own-instance-type detection and `WidgetAdapter.lua`'s post-Delve
+bar-visibility handling, neither touching map pins) and by the product owner reproducing it a
+second time with Preydator fully inactive/no quests active. Appears to be a Blizzard
+client-side bug specific to Bountiful Delve reward-preview highlights. No Preydator action
+taken or needed.
+
+---
+
+**Updated 2026-09-15 — superseded by the 2026-09-20 block above for the report below (same
+root cause, now resolved) — kept for the investigation history.**
 
 **New player report today (Holy_Z, same reporter as the 4.0.3 World Map taint fix):**
 `3x [ADDON_ACTION_BLOCKED]` — `Button:SetPassThroughButtons()` — while closing the World

@@ -198,6 +198,23 @@ end
 -- exposes those once the quest is an actual quest-log entry, confirmed live
 -- by testing the same call both before and after accepting -- and a mystery
 -- chest has nothing meaningful to preview pre-completion anyway).
+--
+-- CALLER MUST GATE THIS (see GetQuestRewardSummary) whenever questID has an
+-- item/container reward slot. Root-caused 2026-09-20 (community reports,
+-- Holy_Z + live-reproduced by the product owner): once an accepted quest's
+-- reward includes a container-type item (a mystery chest), Blizzard's own
+-- embedded item-preview widget build inside QuestUtils_AddQuestRewardsToTooltip
+-- runs against this real, shared GameTooltip and leaves its widget subsystem
+-- tainted by 'Preydator' for the rest of the session -- not just for this
+-- call. Every later Blizzard tooltip anywhere that uses a widget set (any
+-- AreaPOI map pin, completely unrelated to Preydator or even to the zone the
+-- taint originated in) then throws "secret number"/arithmetic taint errors.
+-- This is a different, more severe mechanism than the HookScript taint class
+-- fixed in 4.0.3/4.0.6/4.0.7 (see WidgetAdapter.lua) -- persistent
+-- contamination of the shared GameTooltip itself, not a one-shot call-chain
+-- taint. Confirmed live: the crashing tooltip's own widget locals showed
+-- itemName="Preyseeker's Champion Chest" (itemID 262346) -- a Prey Hunt
+-- container reward, exactly this code path.
 local function getRewardTooltipLines(questID)
     local tooltip = _G.GameTooltip
     if not tooltip or type(tooltip.SetOwner) ~= "function" then
@@ -274,18 +291,21 @@ end
 -- an item reward slot exists (GetNumQuestLogRewards, confirmed reliable
 -- even pre-accept) even though its specific icon/name/quantity aren't
 -- resolvable until the quest is accepted.
+--
+-- hasBonusItemReward is checked FIRST and, when true, getRewardTooltipLines
+-- (the real-GameTooltip path) is skipped entirely rather than called and
+-- discarded -- see that function's comment (2026-09-20) for why calling it
+-- at all on a container-reward quest taints the shared GameTooltip's widget
+-- subsystem for the rest of the session. This trades away currency/XP icons
+-- on the rare hunt that has BOTH a bonus item AND a separate currency/XP
+-- reward (HuntTablePanel already shows the generic mystery-chest icon for
+-- hasBonusItemReward regardless, so nothing regresses for the common
+-- item-only case) -- an intentional, no-real-loss tradeoff against a bug
+-- that was corrupting players' World Map/tooltip UI for their whole session.
 function QuestApiAdapter.GetQuestRewardSummary(questID)
     questID = safeToNumber(questID)
     if not questID then
         return { entries = {}, hasBonusItemReward = false }
-    end
-
-    local entries = {}
-    for _, line in ipairs(getRewardTooltipLines(questID)) do
-        local entry = parseRewardLine(line)
-        if entry then
-            entries[#entries + 1] = entry
-        end
     end
 
     local hasBonusItemReward = false
@@ -293,6 +313,16 @@ function QuestApiAdapter.GetQuestRewardSummary(questID)
         local okCount, numItemRewards = pcall(GetNumQuestLogRewards, questID)
         local numeric = okCount and safeToNumber(numItemRewards)
         hasBonusItemReward = (numeric ~= nil and numeric > 0)
+    end
+
+    local entries = {}
+    if not hasBonusItemReward then
+        for _, line in ipairs(getRewardTooltipLines(questID)) do
+            local entry = parseRewardLine(line)
+            if entry then
+                entries[#entries + 1] = entry
+            end
+        end
     end
 
     return { entries = entries, hasBonusItemReward = hasBonusItemReward }
