@@ -1,8 +1,56 @@
 # Preydator Rewrite — Session Status / Handoff
 
-**Updated 2026-09-20 — read this block first, it supersedes the 2026-09-15 framing below
-(that block's own report is now resolved; see immediately below). Five more versions have
-shipped since (4.0.5 through 4.0.9, see `CHANGELOG.md`).**
+**Updated 2026-10-21 — read this block first. 4.0.10 supersedes the 4.0.9 "RESOLVED" claim
+in the 2026-09-20 block below: that fix was incomplete.**
+
+**4.0.10 (2026-10-21), all live-confirmed by the product owner:**
+
+1. **GameTooltip taint, actually fixed this time.** Holy_Z and the product owner both still
+   hit the "secret number ... tainted by 'Preydator'" errors on 4.0.9, hovering a World
+   Assault (AreaPOI) icon — repeating every hover until `/reload`, with item widgets for
+   things unrelated to Prey (Aqir Research Satchel). Mechanism, confirmed from Blizzard's own
+   source (Gethe/wow-ui-source, `live`): `GameTooltip_OnHide` → `GameTooltip_ClearWidgetSet`
+   → `UIWidgetContainerMixin:UnregisterForWidgetSet` writes `widgetSetID = nil`,
+   `widgetFrames = {}`, etc. on `GameTooltip.widgetContainer`. When Preydator's code caused
+   that hide, those writes are tainted; the next `RegisterForWidgetSet` reads
+   `self.widgetSetID` on its first line, runs tainted, and rewrites the same fields tainted
+   again — self-perpetuating. 4.0.9 only gated `getRewardTooltipLines` (invisible
+   `SetOwner` → `QuestUtils_AddQuestRewardsToTooltip` → `Hide` on the real GameTooltip) for
+   chest-reward hunts; it still ran for every other hunt on every scan. **Fix:** replaced it
+   with `getRewardEntries` in `Core/Adapters/QuestApiAdapter.lua`, which reads
+   `C_QuestLog.GetQuestRewardCurrencies` / `GetQuestLogRewardHonor` / `GetQuestLogRewardXP`
+   directly (the same APIs Blizzard's builder reads) and touches no frames. Also guarded every
+   Preydator OnLeave `GameTooltip:Hide()` to only hide when Preydator still owns the tooltip
+   (`HuntTablePanel.lua`, `Launcher.lua`, `SettingsPanel.lua`). **Rule going forward: never
+   call methods on the shared `_G.GameTooltip` from non-hover code.** Confirmed: World
+   Assault hover clean, Escape check clean.
+2. **Bar hiding in open-world event areas.** The Zul'Aman World Assault area reports
+   `IsInScenario()`/`GetScenarioInfo()` with stage metadata while the player is in the open
+   world (`IsInInstance()` false, playerMapID 2437 is a regular Zone map), so
+   `MapContextAdapter.IsRestrictedInstance()` returned `"scenario"` and
+   `RefreshPreyContext`'s fail-closed gate stopped tracking and hid the bar. 2.2.3 already
+   narrowed this same fallback once for hiding the bar outside instances. **Fix:** the
+   scenario fallbacks are skipped when `IsInInstance()` is false AND the player's map is an
+   outdoor Zone (`Enum.UIMapType.Zone`); real instance types are still caught first.
+   Confirmed: bar stays up there, `/pd zinspect` shows tracking running.
+
+**Tried and reverted (not shipped):** a `hooksecurefunc(UIWidgetTemplatePreyHuntProgressMixin,
+"OnReset")` lifecycle signal, meant to close Decisions Log item 73's "icon suppressed AND out of
+combat" gap. Live traces showed neither it nor the existing `Setup` hook fired after a
+`/reload` — the live prey-icon frame predates the hooks (Blizzard copies mixin methods at frame
+creation and reuses pooled frames), so mixin-level hooks never see it. A real version would
+need to hook the captured frame instance itself; not attempted. **That gap remains open:**
+with "Hide Blizzard's Prey Icon" on and out of combat, the bar can still drop in areas where
+`isOnMap` is false.
+
+**Known latent bug, not fixed:** `Core/Runtime/EventRuntime.lua`'s local
+`isRestrictedInstance()` compares `MapContextAdapter.IsRestrictedInstance()` `== true`, but
+the adapter returns a type string (`"scenario"`, `"party"`, ...), so it is never true. Only
+gates Hunt Table scanning (which happens in a city), so harmless in practice; one-line fix
+(`~= nil`) for a future release, with its own test.
+
+**Updated 2026-09-20** (historical — the 4.0.9 claim below was superseded by 4.0.10 above).
+Five more versions had shipped by then (4.0.5 through 4.0.9, see `CHANGELOG.md`).
 
 **RESOLVED, shipped 4.0.9: the persistent GameTooltip-taint bug (Holy_Z, this session's
 `SetPassThroughButtons`/World Map report below turned out to be the same underlying class,

@@ -118,6 +118,27 @@ function MapContextAdapter.IsRestrictedInstance()
         return instanceType
     end
 
+    -- Open-world scenarios (4.0.10, 2026-10-21): a World Assault event area
+    -- reports IsInScenario()/GetScenarioInfo() with valid stage metadata
+    -- while the player is still out in the open world -- found live in
+    -- Zul'Aman (playerMapID 2437, a regular Zone map, IsInInstance false,
+    -- active hunt, Blizzard's own prey icon still showing), where the
+    -- fallbacks below returned "scenario" and RefreshPreyContext's
+    -- fail-closed gate hid the bar. The restricted-instance policy was
+    -- always about instance content (2.2.3 already narrowed this same
+    -- fallback once for hiding the bar outside instances), so skip the
+    -- fallbacks when the engine says we're not in an instance AND the
+    -- player is standing on an ordinary outdoor Zone map. Instanced content
+    -- (Delves included) uses Dungeon/Micro maps, so the transition-lag case
+    -- the fallbacks exist for is unaffected.
+    if not inInstance then
+        local mapInfo = MapContextAdapter.GetMapInfo(MapContextAdapter.GetPlayerMapID())
+        local zoneMapType = (_G.Enum and _G.Enum.UIMapType and _G.Enum.UIMapType.Zone) or 3
+        if mapInfo and safeToNumber(mapInfo.mapType) == zoneMapType then
+            return nil
+        end
+    end
+
     -- Some delve/scenario transitions can lag behind IsInInstance()'s type reporting.
     if type(IsInScenario) == "function" then
         local ok, inScenario = pcall(IsInScenario)

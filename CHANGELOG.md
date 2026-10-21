@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.0.10 - 2026-10-21
+
+### Fixed
+- Fixed the same "secret number" taint errors 4.0.9 was meant to fix, which kept coming back
+  in 4.0.9. Hovering an unrelated map icon (for example a World Assault icon on the zone map)
+  could throw repeated `"secret number"`/arithmetic errors "tainted by 'Preydator'" out of
+  Blizzard's tooltip and UIWidget code, every hover, until `/reload`. Reported by Holy_Z and
+  reproduced by the product owner on 4.0.9. Root cause: 4.0.9 only stopped the Hunt Table's
+  hidden reward scan for hunts with a chest reward; for every other hunt it still drove the
+  real, shared `GameTooltip` in the background and then hid it. If that hide landed while the
+  tooltip was showing a map icon's widgets, Blizzard's widget cleanup ran tainted, and from
+  then on every widget tooltip re-read and re-wrote that tainted state. Fixed by reading
+  reward currency/honor/XP directly from Blizzard's quest reward APIs with no tooltip involved
+  at all (`Core/Adapters/QuestApiAdapter.lua`). Side benefit: hunts with both a chest and a
+  currency reward show their currency icons again (4.0.9 had dropped them).
+- Fixed the bar disappearing in open-world event areas (found in the Zul'Aman World Assault
+  area) while the hunt is still active and Blizzard's own prey icon is still showing. These
+  event areas count as a "scenario" even though you're still in the open world, and
+  Preydator's instance safety check treated them like a Delve or dungeon and stopped
+  tracking. Scenarios now only count when you're actually in instanced content
+  (`Core/Adapters/MapContextAdapter.lua`).
+- Hardened Preydator's own hover tooltips (Hunt Table rows, minimap/compartment button,
+  settings controls) to only hide the game tooltip when Preydator still owns it, so moving
+  the mouse off a Preydator control can never clear another tooltip's contents.
+
 ## 4.0.9 - 2026-09-20
 
 ### Fixed

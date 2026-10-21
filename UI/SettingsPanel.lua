@@ -177,8 +177,13 @@ local function attachTooltip(control, tooltip)
         _G.GameTooltip:SetText(tooltip, nil, nil, nil, nil, true)
         _G.GameTooltip:Show()
     end)
-    control:SetScript("OnLeave", function()
-        _G.GameTooltip:Hide()
+    control:SetScript("OnLeave", function(self)
+        -- Only hide if we still own it -- see QuestApiAdapter's
+        -- getRewardEntries comment for why hiding a GameTooltip that is
+        -- showing someone else's widget set taints it for the session.
+        if _G.GameTooltip:GetOwner() == self then
+            _G.GameTooltip:Hide()
+        end
     end)
 end
 

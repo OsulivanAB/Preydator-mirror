@@ -186,6 +186,15 @@ end
 -- Row position/height are no longer fixed at creation time -- Render() sets
 -- both every pass, since a group header row is shorter than a real hunt row
 -- and which rows are headers changes with the live data/settings.
+-- OnLeave for every row tooltip: only hide a GameTooltip we still own --
+-- see QuestApiAdapter's getRewardEntries comment for why hiding one that is
+-- showing someone else's widget set taints it for the session.
+local function hideOwnedTooltip(self)
+    if _G.GameTooltip:GetOwner() == self then
+        _G.GameTooltip:Hide()
+    end
+end
+
 local function createRow(scrollChild)
     local row = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
     row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
@@ -254,9 +263,7 @@ local function createRow(scrollChild)
         end
         _G.GameTooltip:Show()
     end)
-    row.achievementAnchor:SetScript("OnLeave", function()
-        _G.GameTooltip:Hide()
-    end)
+    row.achievementAnchor:SetScript("OnLeave", hideOwnedTooltip)
 
     -- Icon + quantity only (see MAX_REWARD_ICONS' comment); full name/quantity
     -- shown via GameTooltip on hover instead of trying to fit inline.
@@ -293,9 +300,7 @@ local function createRow(scrollChild)
             end
             _G.GameTooltip:Show()
         end)
-        rewardIcon:SetScript("OnLeave", function()
-            _G.GameTooltip:Hide()
-        end)
+        rewardIcon:SetScript("OnLeave", hideOwnedTooltip)
 
         rewardIcon:Hide()
         row.rewardIcons[i] = rewardIcon

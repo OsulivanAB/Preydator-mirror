@@ -184,124 +184,112 @@ function QuestApiAdapter.RequestLoadQuest(questID)
     pcall(C_QuestLog.RequestLoadQuestByID, questID)
 end
 
--- Returns the raw reward tooltip lines for questID (icon-tagged text, e.g.
--- "|T7734062:16:16|t 10 Veteran Mistcrest" per line) using Blizzard's own
--- QuestUtils_AddQuestRewardsToTooltip via the real shared GameTooltip (not a
--- custom-built one) -- confirmed live (2026-08-28) that a bare
--- CreateFrame(..., "GameTooltipTemplate") crashes on container-type rewards
--- (mystery chests) because QuestUtils_AddQuestRewardsToTooltip's embedded
--- item-preview step needs sub-widgets only a fully-built tooltip has; the
--- real GameTooltip already has them. Works for offered-but-unaccepted hunts
--- once RequestLoadQuest has been called for that questID (already happens
--- during normal HuntScannerRuntime scanning) -- currency/money/XP rewards
--- resolve this way; item/container reward details do not (Blizzard only
--- exposes those once the quest is an actual quest-log entry, confirmed live
--- by testing the same call both before and after accepting -- and a mystery
--- chest has nothing meaningful to preview pre-completion anyway).
+-- Builds reward entries ({icon, iconIsAtlas, quantity, name}) for questID
+-- straight from the same data APIs Blizzard's own
+-- QuestUtils_AddQuestRewardsToTooltip reads (C_QuestLog.GetQuestRewardCurrencies,
+-- GetQuestLogRewardHonor, GetQuestLogRewardXP) -- no tooltip, no frames, no
+-- widget code runs at all. Currency/honor/XP only; item/container reward
+-- details still aren't exposed pre-accept (see GetQuestRewardSummary).
 --
--- CALLER MUST GATE THIS (see GetQuestRewardSummary) whenever questID has an
--- item/container reward slot. Root-caused 2026-09-20 (community reports,
--- Holy_Z + live-reproduced by the product owner): once an accepted quest's
--- reward includes a container-type item (a mystery chest), Blizzard's own
--- embedded item-preview widget build inside QuestUtils_AddQuestRewardsToTooltip
--- runs against this real, shared GameTooltip and leaves its widget subsystem
--- tainted by 'Preydator' for the rest of the session -- not just for this
--- call. Every later Blizzard tooltip anywhere that uses a widget set (any
--- AreaPOI map pin, completely unrelated to Preydator or even to the zone the
--- taint originated in) then throws "secret number"/arithmetic taint errors.
--- This is a different, more severe mechanism than the HookScript taint class
--- fixed in 4.0.3/4.0.6/4.0.7 (see WidgetAdapter.lua) -- persistent
--- contamination of the shared GameTooltip itself, not a one-shot call-chain
--- taint. Confirmed live: the crashing tooltip's own widget locals showed
--- itemName="Preyseeker's Champion Chest" (itemID 262346) -- a Prey Hunt
--- container reward, exactly this code path.
-local function getRewardTooltipLines(questID)
-    local tooltip = _G.GameTooltip
-    if not tooltip or type(tooltip.SetOwner) ~= "function" then
-        return {}
+-- REPLACED in 4.0.10 (2026-10-21) the old getRewardTooltipLines, which drove the real
+-- shared GameTooltip invisibly (SetOwner -> QuestUtils_AddQuestRewardsToTooltip
+-- -> Hide) and scraped GameTooltipTextLeftN. 4.0.9 gated it off for
+-- container-reward quests only; it still ran for every other hunt, and the
+-- same persistent "secret number" taint kept showing up on unrelated AreaPOI
+-- map tooltips (Holy_Z + the product owner on 4.0.9, hovering a World
+-- Assault icon -- item widget for Aqir Research Satchel, nothing to do with
+-- Prey). Mechanism, confirmed from Blizzard's source: GameTooltip_OnHide ->
+-- GameTooltip_ClearWidgetSet -> UIWidgetContainerMixin:UnregisterForWidgetSet
+-- writes widgetSetID = nil, widgetFrames = {}, etc. on
+-- GameTooltip.widgetContainer. When our SetOwner/Hide caused that teardown
+-- (any scan landing while the tooltip was showing a widget set), those writes
+-- were tainted by 'Preydator'. The next RegisterForWidgetSet reads
+-- self.widgetSetID on its first line, so every later widget tooltip runs
+-- tainted -- and rewrites the same fields tainted again, which is why it
+-- never cleared until /reload.
+-- Rule: never call methods on the shared GameTooltip from non-hover code.
+local function formatQuantity(amount)
+    local okFmt, text = pcall(_G.BreakUpLargeNumbers, amount)
+    if okFmt and type(text) == "string" then
+        return text
     end
-
-    local ok = pcall(function()
-        tooltip:SetOwner(_G.UIParent, "ANCHOR_NONE")
-        if type(_G.QuestUtils_AddQuestRewardsToTooltip) == "function"
-            and type(_G.TOOLTIP_QUEST_REWARDS_STYLE_DEFAULT) == "table" then
-            _G.QuestUtils_AddQuestRewardsToTooltip(tooltip, questID, _G.TOOLTIP_QUEST_REWARDS_STYLE_DEFAULT)
-        end
-    end)
-
-    local lines = {}
-    if ok then
-        local numLines = (type(tooltip.NumLines) == "function") and tooltip:NumLines() or 0
-        for i = 1, numLines do
-            local fontString = _G["GameTooltipTextLeft" .. i]
-            local okText, text = pcall(function()
-                return fontString and fontString.GetText and fontString:GetText()
-            end)
-            if okText and type(text) == "string" and text ~= "" then
-                lines[#lines + 1] = text
-            end
-        end
-    end
-
-    pcall(tooltip.Hide, tooltip)
-    return lines
+    return tostring(amount)
 end
 
--- Parses one reward tooltip line into {icon, iconIsAtlas, quantity, name}.
--- Pure string pattern matching on text we already retrieved safely -- no
--- widget access, no taint risk. Handles both texture-ID icon tags
--- (|Tpath-or-id:w:h:...|t) and atlas tags (|Aname:w:h|a), and a leading
--- numeric quantity (e.g. "10 Veteran Mistcrest") -- falls back to
--- quantity=nil, name=the whole remaining text if there's no leading number
--- (e.g. a plain XP/honor line with no count).
-local function parseRewardLine(line)
-    if type(line) ~= "string" or line == "" then
-        return nil
-    end
+local function getRewardEntries(questID)
+    local entries = {}
 
-    local icon, iconIsAtlas, rest = nil, false, line
-
-    local atlasName, atlasRest = line:match("^|A(.-):%d+:%d+|a%s*(.*)$")
-    if atlasName then
-        icon, iconIsAtlas, rest = atlasName, true, atlasRest
-    else
-        local texturePath, textureRest = line:match("^|T(.-):%d+:%d+:?[%d:]*|t%s*(.*)$")
-        if texturePath then
-            icon, iconIsAtlas, rest = texturePath, false, textureRest
+    local currencyRewards = nil
+    if type(C_QuestLog) == "table" and type(C_QuestLog.GetQuestRewardCurrencies) == "function" then
+        local ok, result = pcall(C_QuestLog.GetQuestRewardCurrencies, questID)
+        if ok and type(result) == "table" then
+            currencyRewards = result
         end
     end
 
-    local quantity, name = rest:match("^([%d,]+)%s+(.+)$")
-    if not quantity then
-        name = rest
+    local C_CurrencyInfo = _G.C_CurrencyInfo
+    local CurrencyContainerUtil = _G.CurrencyContainerUtil
+    for _, reward in ipairs(currencyRewards or {}) do
+        local currencyID = reward.currencyID
+        local amount = safeToNumber(reward.totalRewardAmount)
+        local name, icon, quantity = reward.name, reward.texture, amount and formatQuantity(amount)
+
+        -- Currency containers (a bundle granting a variable amount) display
+        -- as the container's own name/icon with no count, matching
+        -- Blizzard's tooltip.
+        if currencyID and amount and type(C_CurrencyInfo) == "table"
+            and type(C_CurrencyInfo.IsCurrencyContainer) == "function"
+            and type(CurrencyContainerUtil) == "table"
+            and type(CurrencyContainerUtil.GetCurrencyContainerInfo) == "function" then
+            local okContainer, isContainer = pcall(C_CurrencyInfo.IsCurrencyContainer, currencyID, amount)
+            if okContainer and isContainer then
+                local okInfo, containerName, containerIcon = pcall(CurrencyContainerUtil.GetCurrencyContainerInfo, currencyID, amount)
+                if okInfo and type(containerName) == "string" then
+                    name, icon, quantity = containerName, containerIcon, nil
+                end
+            end
+        end
+
+        if type(name) == "string" and name ~= "" then
+            entries[#entries + 1] = { icon = icon, iconIsAtlas = false, quantity = quantity, name = name }
+        end
     end
 
-    return {
-        icon = icon,
-        iconIsAtlas = iconIsAtlas,
-        quantity = quantity,
-        name = (type(name) == "string" and name ~= "") and name or nil,
-    }
+    if type(_G.GetQuestLogRewardHonor) == "function" then
+        local ok, honor = pcall(_G.GetQuestLogRewardHonor, questID)
+        honor = ok and safeToNumber(honor)
+        if honor and honor > 0 then
+            entries[#entries + 1] = {
+                icon = "Interface\\ICONS\\Achievement_LegionPVPTier4", iconIsAtlas = false,
+                quantity = formatQuantity(honor), name = _G.HONOR or "Honor",
+            }
+        end
+    end
+
+    if type(_G.GetQuestLogRewardXP) == "function" then
+        local ok, _, baseXp = pcall(_G.GetQuestLogRewardXP, questID)
+        baseXp = ok and safeToNumber(baseXp)
+        if baseXp and baseXp > 0 then
+            entries[#entries + 1] = {
+                icon = nil, iconIsAtlas = false,
+                quantity = formatQuantity(baseXp), name = _G.XP or "XP",
+            }
+        end
+    end
+
+    return entries
 end
 
 -- Returns { entries = {{icon, iconIsAtlas, quantity, name}, ...},
--- hasBonusItemReward = boolean }. entries covers currency/money/XP rewards
--- (see getRewardTooltipLines' comment for why item/container rewards
--- aren't included there); hasBonusItemReward is true when Blizzard reports
+-- hasBonusItemReward = boolean }. entries covers currency/honor/XP rewards
+-- (see getRewardEntries); hasBonusItemReward is true when Blizzard reports
 -- an item reward slot exists (GetNumQuestLogRewards, confirmed reliable
 -- even pre-accept) even though its specific icon/name/quantity aren't
 -- resolvable until the quest is accepted.
 --
--- hasBonusItemReward is checked FIRST and, when true, getRewardTooltipLines
--- (the real-GameTooltip path) is skipped entirely rather than called and
--- discarded -- see that function's comment (2026-09-20) for why calling it
--- at all on a container-reward quest taints the shared GameTooltip's widget
--- subsystem for the rest of the session. This trades away currency/XP icons
--- on the rare hunt that has BOTH a bonus item AND a separate currency/XP
--- reward (HuntTablePanel already shows the generic mystery-chest icon for
--- hasBonusItemReward regardless, so nothing regresses for the common
--- item-only case) -- an intentional, no-real-loss tradeoff against a bug
--- that was corrupting players' World Map/tooltip UI for their whole session.
+-- getRewardEntries touches no frames, so it now runs regardless of
+-- hasBonusItemReward -- restores currency icons on hunts with both a bonus
+-- chest and a currency reward, which 4.0.9's gate had dropped.
 function QuestApiAdapter.GetQuestRewardSummary(questID)
     questID = safeToNumber(questID)
     if not questID then
@@ -315,17 +303,7 @@ function QuestApiAdapter.GetQuestRewardSummary(questID)
         hasBonusItemReward = (numeric ~= nil and numeric > 0)
     end
 
-    local entries = {}
-    if not hasBonusItemReward then
-        for _, line in ipairs(getRewardTooltipLines(questID)) do
-            local entry = parseRewardLine(line)
-            if entry then
-                entries[#entries + 1] = entry
-            end
-        end
-    end
-
-    return { entries = entries, hasBonusItemReward = hasBonusItemReward }
+    return { entries = getRewardEntries(questID), hasBonusItemReward = hasBonusItemReward }
 end
 
 Preydator:RegisterModule("QuestApiAdapter", QuestApiAdapter)

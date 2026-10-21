@@ -58,17 +58,32 @@ local function handleClick(mouseButton)
     end
 end
 
+-- Whatever showTooltip last anchored to, so hideTooltip only hides a
+-- GameTooltip we still own -- see QuestApiAdapter's getRewardEntries comment
+-- for why hiding one that is showing someone else's widget set taints it for
+-- the session.
+local tooltipOwner = nil
+
 local function showTooltip(owner)
     local gameTooltip = _G.GameTooltip
     if not gameTooltip or type(gameTooltip.SetOwner) ~= "function" then
         return
     end
-    gameTooltip:SetOwner(owner or UIParent, "ANCHOR_LEFT")
+    tooltipOwner = owner or UIParent
+    gameTooltip:SetOwner(tooltipOwner, "ANCHOR_LEFT")
     gameTooltip:ClearLines()
     gameTooltip:AddLine("Preydator")
     gameTooltip:AddLine("Left Click: Open Settings", 1, 1, 1)
     gameTooltip:AddLine("Right Click: Quick Inspect", 1, 1, 1)
     gameTooltip:Show()
+end
+
+local function hideTooltip()
+    local gameTooltip = _G.GameTooltip
+    if gameTooltip and tooltipOwner and gameTooltip:GetOwner() == tooltipOwner then
+        gameTooltip:Hide()
+    end
+    tooltipOwner = nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -140,7 +155,7 @@ local function createFallbackButton()
     end)
 
     button:SetScript("OnEnter", function(self) showTooltip(self) end)
-    button:SetScript("OnLeave", function() _G.GameTooltip:Hide() end)
+    button:SetScript("OnLeave", hideTooltip)
 
     button:SetScript("OnDragStart", function(self)
         self.wasDragged = false
@@ -290,9 +305,7 @@ function _G.Preydator_OnAddonCompartmentEnter(button)
 end
 
 function _G.Preydator_OnAddonCompartmentLeave()
-    if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
-        _G.GameTooltip:Hide()
-    end
+    hideTooltip()
 end
 
 -- ---------------------------------------------------------------------------
