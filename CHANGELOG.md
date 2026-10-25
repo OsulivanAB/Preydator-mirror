@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.0.11 - 2026-10-25
+
+### Fixed
+- Fixed another source of the "secret number" taint errors on map icon tooltips. Hovering a
+  timed map icon (for example a World Assault icon with a "Time Left" line) could throw
+  repeated `attempt to perform arithmetic on local 'textHeight' (a secret number value, while
+  execution tainted by 'Preydator')` errors out of Blizzard's UIWidget code, every hover, until
+  `/reload`. Reported by Holy_Z on 4.0.10. Root cause: the Hunt Table's reward-icon scan and
+  the "accept hunt" button both opened Blizzard's hunt quest dialog off-screen from addon
+  code. Opening that dialog sets up its own widget area, so Blizzard's shared widget code ran
+  tainted and kept that taint for the rest of the session. Rewards are now read directly from
+  Blizzard's quest reward APIs, and accepting a hunt calls Blizzard's accept function
+  directly. Preydator no longer opens that dialog at all
+  (`Modules/HuntScanner/HuntTableAdapter.lua`).
+
 ## 4.0.10 - 2026-10-21
 
 ### Fixed

@@ -1,17 +1,16 @@
 -- Preydator :: Modules/HuntScanner/HuntTableAdapter.lua
 -- Author: RagingAltoholic
 -- Responsibility: the only file that touches CovenantMissionFrame,
--- AdventureMapQuestChoiceDialog, gossip/interaction-manager state, and the
--- Adventure Map pin pool. Returns validated hunt records; nothing downstream
--- touches these Blizzard objects directly.
--- Reads: CovenantMissionFrame, AdventureMapQuestChoiceDialog,
--- C_GossipInfo, C_PlayerInteractionManager.
--- Writes: nothing lasting -- AcceptHunt briefly repositions
--- AdventureMapQuestChoiceDialog off-screen and always restores it.
+-- C_AdventureMap, gossip/interaction-manager state, and the Adventure Map
+-- pin pool. Returns validated hunt records; nothing downstream touches these
+-- Blizzard objects directly.
+-- Reads: CovenantMissionFrame, C_GossipInfo, C_PlayerInteractionManager,
+-- quest reward APIs.
+-- Writes: nothing. Never shows/hides AdventureMapQuestChoiceDialog (see the
+-- comment above AcceptHunt).
 
 local Preydator = _G.Preydator
 local C_GossipInfo = _G.C_GossipInfo
-local UIParent = _G.UIParent
 local UnitGUID = _G.UnitGUID
 local strsplit = _G.strsplit
 
@@ -221,11 +220,27 @@ function HuntTableAdapter.GetOfferedHunts()
     return hunts
 end
 
--- Accepts questID by driving the real AdventureMapQuestChoiceDialog off-screen
--- (SetAlpha 0, moved off-parent) so the player never sees it flash, then
--- restores it. This is the same call chain Blizzard's own pin-click uses, so
--- AcceptQuest() stays inside Blizzard's secure call chain rather than being
--- reimplemented.
+-- Shared root cause for both functions below (fixed 2026-10-23): through
+-- 4.0.10 they drove the real AdventureMapQuestChoiceDialog off-screen
+-- (ShowWithQuest/AcceptQuest/Hide) from addon code. Its OnShow -> Refresh
+-- -> RefreshDetails registers the dialog's own UIWidgetContainer for the
+-- quest's AdventureMapDetails widget set, so Blizzard's widget manager ran
+-- tainted by 'Preydator' and wrote shared state (UIWidgetManager's
+-- registeredWidgetContainers/processingUnit, and the dialog's questID via
+-- OnHide -> Finalize). Later widget tooltips read those fields and ran
+-- tainted -- Holy_Z on 4.0.10: "attempt to perform arithmetic on local
+-- 'textHeight' (a secret number value)" in UIWidgetTemplateTextWithState
+-- Setup, AreaPOI map tooltip, 46x until /reload. Same self-perpetuating
+-- pattern as the 4.0.10 GameTooltip fix (see QuestApiAdapter's
+-- getRewardEntries comment).
+-- Rule: never Show/Hide/ShowWithQuest AdventureMapQuestChoiceDialog (or any
+-- Blizzard frame hosting a UIWidgetContainer) from addon code -- call the
+-- underlying C_ API instead.
+
+-- Accepts questID via C_AdventureMap.StartQuest -- the exact call
+-- AdventureMapQuestChoiceDialogMixin:AcceptQuest makes, minus the dialog.
+-- The old path already reached StartQuest from addon (tainted) execution,
+-- so this doesn't change whether the accept is allowed.
 function HuntTableAdapter.AcceptHunt(questID)
     questID = safeToNumber(questID)
     if not questID then
@@ -240,47 +255,36 @@ function HuntTableAdapter.AcceptHunt(questID)
     end
 
     local mission = getMissionFrame()
-    local dialog = _G.AdventureMapQuestChoiceDialog
+    local C_AdventureMap = _G.C_AdventureMap
     if not (mission and mission.IsShown and mission:IsShown()
-        and dialog and type(dialog.ShowWithQuest) == "function"
-        and type(dialog.AcceptQuest) == "function") then
+        and type(C_AdventureMap) == "table" and type(C_AdventureMap.StartQuest) == "function") then
         return false
     end
 
-    local pin = findPinByQuestID(questID)
-    if not pin then
+    -- Only accept hunts the table is actually offering right now.
+    if not findPinByQuestID(questID) then
         return false
     end
 
-    local prevAlpha = (dialog.GetAlpha and dialog:GetAlpha()) or 1
-
-    local ok = pcall(function()
-        dialog:SetAlpha(0)
-        dialog:ClearAllPoints()
-        dialog:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -4000, 4000)
-        dialog:Hide()
-        dialog:ShowWithQuest(mission, pin, questID)
-        dialog:AcceptQuest()
-        dialog:Hide()
-        dialog:SetAlpha(prevAlpha)
-    end)
-
+    local ok = pcall(C_AdventureMap.StartQuest, questID)
     return ok == true
 end
 
--- Returns { {name, icon, quantity, rewardType}, ... } (rewardType is
--- Blizzard's own "currency"/"item" string, straight off the widget -- no
--- name-guessing needed to identify the chest/bag) by briefly showing the
--- real AdventureMapQuestChoiceDialog off-screen (the same technique
--- AcceptHunt already uses safely) and reading its rewardPool widgets'
--- .Name/.Icon/.Count fields. Confirmed live (2026-08-28, no taint on
--- Escape immediately after) that this read-only extraction -- type()/
--- GetText()/GetTexture() only, no arithmetic on any scraped value, no
--- protected-method calls on any widget -- does not reproduce the taint the
--- old codebase's own comments flagged for "reward-frame introspection."
--- Field names (.Name/.Icon/.Count/.rewardType) confirmed against this
--- client's actual live structure via a temporary diagnostic dump, not
--- guessed from the old (different-patch) codebase's ~8-alias approach.
+local function countText(count)
+    count = safeToNumber(count)
+    if count and count > 0 then
+        return tostring(count)
+    end
+    return nil
+end
+
+-- Returns { {name, icon, quantity, rewardType}, ... } built from the same
+-- data APIs AdventureMapQuestChoiceDialogMixin:RefreshRewards reads, in the
+-- same order (XP below max level, currencies, items, money), with the same
+-- "currency"/"item" rewardType strings the dialog stamps on its reward
+-- frames -- same shape the old dialog-scraping version returned, no frames
+-- involved. Item data can still arrive async pre-accept;
+-- HuntScannerRuntime's widgetRewardsIncomplete retry already handles that.
 -- Callers should only need to do this once per difficulty, not per quest --
 -- rewards are shared across every hunt of the same difficulty and only
 -- rotate every 2 completions/week (product owner, 2026-08-28) -- see
@@ -291,71 +295,60 @@ function HuntTableAdapter.GetRewardWidgets(questID)
         return {}
     end
 
-    local mission = getMissionFrame()
-    local dialog = _G.AdventureMapQuestChoiceDialog
-    if not (mission and mission.IsShown and mission:IsShown()
-        and dialog and type(dialog.ShowWithQuest) == "function") then
-        return {}
-    end
-
-    local pin = findPinByQuestID(questID)
-    if not pin then
-        return {}
-    end
-
-    local prevAlpha = (dialog.GetAlpha and dialog:GetAlpha()) or 1
     local rewards = {}
+    local function add(name, icon, quantity, rewardType)
+        name = (type(name) == "string" and name ~= "") and name or nil
+        if name or icon then
+            rewards[#rewards + 1] = {
+                name = name, icon = icon, quantity = quantity, rewardType = rewardType,
+            }
+        end
+    end
 
-    local ok = pcall(function()
-        dialog:SetAlpha(0)
-        dialog:ClearAllPoints()
-        dialog:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -4000, 4000)
-        dialog:Hide()
-        dialog:ShowWithQuest(mission, pin, questID)
+    local GameRulesUtil = _G.GameRulesUtil
+    local okLevel, atMaxLevel = false, false
+    if type(GameRulesUtil) == "table" and type(GameRulesUtil.IsPlayerAtEffectiveMaxLevel) == "function" then
+        okLevel, atMaxLevel = pcall(GameRulesUtil.IsPlayerAtEffectiveMaxLevel)
+    end
+    if not (okLevel and atMaxLevel) and type(_G.GetQuestLogRewardXP) == "function" then
+        local okXP, xp = pcall(_G.GetQuestLogRewardXP, questID)
+        xp = okXP and safeToNumber(xp)
+        if xp and xp > 0 then
+            local okFmt, text = pcall(_G.BreakUpLargeNumbers, xp)
+            add(okFmt and text or tostring(xp), "Interface\\Icons\\XP_Icon", nil, nil)
+        end
+    end
 
-        local pool = dialog.rewardPool
-        if pool and type(pool.EnumerateActive) == "function" then
-            for reward in pool:EnumerateActive() do
-                if type(reward) == "table" then
-                    local name = nil
-                    if type(reward.Name) == "table" and type(reward.Name.GetText) == "function" then
-                        local okName, text = pcall(reward.Name.GetText, reward.Name)
-                        name = (okName and type(text) == "string" and text ~= "") and text or nil
-                    end
-
-                    local icon = nil
-                    if type(reward.Icon) == "table" and type(reward.Icon.GetTexture) == "function" then
-                        local okIcon, tex = pcall(reward.Icon.GetTexture, reward.Icon)
-                        icon = okIcon and tex or nil
-                    end
-
-                    local quantity = nil
-                    if type(reward.Count) == "table" and type(reward.Count.GetText) == "function" then
-                        local okCount, text = pcall(reward.Count.GetText, reward.Count)
-                        quantity = (okCount and type(text) == "string" and text ~= "") and text or nil
-                    end
-
-                    local rewardType = type(reward.rewardType) == "string" and reward.rewardType or nil
-
-                    if name or icon then
-                        rewards[#rewards + 1] = {
-                            name = name, icon = icon, quantity = quantity, rewardType = rewardType,
-                        }
-                    end
+    local C_QuestLog = _G.C_QuestLog
+    if type(C_QuestLog) == "table" and type(C_QuestLog.GetQuestRewardCurrencies) == "function" then
+        local okCur, currencies = pcall(C_QuestLog.GetQuestRewardCurrencies, questID)
+        if okCur and type(currencies) == "table" then
+            for _, currency in ipairs(currencies) do
+                if type(currency) == "table" then
+                    add(currency.name, currency.texture, countText(currency.totalRewardAmount), "currency")
                 end
             end
         end
+    end
 
-        dialog:Hide()
-        dialog:SetAlpha(prevAlpha)
-    end)
+    if type(_G.GetNumQuestLogRewards) == "function" and type(_G.GetQuestLogRewardInfo) == "function" then
+        local okNum, numItems = pcall(_G.GetNumQuestLogRewards, questID)
+        numItems = okNum and safeToNumber(numItems) or 0
+        for itemIndex = 1, numItems do
+            local okItem, name, texture, count = pcall(_G.GetQuestLogRewardInfo, itemIndex, questID)
+            if okItem then
+                add(name, texture, countText(count), "item")
+            end
+        end
+    end
 
-    if not ok then
-        pcall(function()
-            dialog:Hide()
-            dialog:SetAlpha(prevAlpha)
-        end)
-        return {}
+    if type(_G.GetQuestLogRewardMoney) == "function" and type(_G.GetMoneyString) == "function" then
+        local okMoney, money = pcall(_G.GetQuestLogRewardMoney, questID)
+        money = okMoney and safeToNumber(money)
+        if money and money > 0 then
+            local okFmt, text = pcall(_G.GetMoneyString, money)
+            add(okFmt and text or nil, "Interface\\Icons\\inv_misc_coin_01", nil, nil)
+        end
     end
 
     return rewards

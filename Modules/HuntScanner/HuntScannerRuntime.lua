@@ -43,8 +43,10 @@ local rewardSummaryByQuestID = {}
 -- every 2 completions/week. One HuntTableAdapter.GetRewardWidgets() peek
 -- per difficulty (on whichever quest of that difficulty is scanned first)
 -- covers every hunt of that difficulty for the rest of the session --
--- avoids doing the off-screen dialog show/hide for all 15 offered hunts
--- when 3 (one per difficulty) already gives complete, accurate coverage.
+-- avoids re-reading rewards for all 15 offered hunts when 3 (one per
+-- difficulty) already gives complete, accurate coverage. (GetRewardWidgets
+-- reads quest reward APIs directly since 2026-10-23 -- it no longer shows
+-- AdventureMapQuestChoiceDialog; see HuntTableAdapter.)
 local rewardWidgetsByDifficulty = {}
 -- Named reward priority (2026-09-02, replaces a same-day generic type-based
 -- attempt) -- the product owner specified an exact order after seeing real
@@ -443,7 +445,9 @@ function HuntScannerRuntime.RefreshFromAdapter()
             end
 
             -- Confirmed live (2026-09-02): a difficulty's very first reward
-            -- peek can catch AdventureMapQuestChoiceDialog's reward pool
+            -- peek can catch the item reward data (then read via
+            -- AdventureMapQuestChoiceDialog's reward pool, now directly via
+            -- GetQuestLogRewardInfo -- same underlying data)
             -- before its item/container widget has finished populating --
             -- currency/money widgets are apparently ready first. Caching
             -- that incomplete result unconditionally (the original
